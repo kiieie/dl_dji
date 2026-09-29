@@ -36,3 +36,6 @@ app/src/main/assets/license*
 
 # 증빙 폴더의 테스트 보고서(재생성 가능, 용량 큼). 스크린샷, README, 스크립트만 커밋
 docs/evidence/**/reports/
+
+# DJI LDM 오프라인 라이선스 등 비밀 파일
+secrets/
