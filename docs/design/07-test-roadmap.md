@@ -45,7 +45,7 @@
 | 영역 그리기, 경로 미리보기(계획 화면 ③) | 완료 | `ui/MapScreen.kt`. 다각형 그리기(되돌리기), 이륙 지점, 소티별 경로 색과 예상치, 도달 불가 수. 앱 결과를 CSV 재계산으로 대조(`docs/evidence/2026-09-29-plan`) |
 | 핵심 파라미터 4개 UI, 전주 개별 포함/제외(F-06), 계획 저장(`MISSION`·`SORTIE`·`VISIT`) | 완료 | 소티별 재최적화(5.4) 추가. 앱 DB를 꺼내 대조(`docs/evidence/2026-09-29-plan-save`). 기본값 저장(DataStore)과 "고급" 패널은 ⑥ 설정 화면에서 |
 | ④ 비행 화면(`FakeDroneGateway`, 저장한 `MISSION` 실행, 알림음) | 완료 | `ui/FlightScreen.kt`, `data/RoomRecorder.kt`(`CAPTURE`·`DETECTION`·`FLIGHT_EVENT`). 모의 비행 후 DB·이미지·알림음 대조(`docs/evidence/2026-09-29-flight`). 알림은 신호음으로 대신. `DjiDroneGateway`는 PoC 뒤 |
-| ⑤ 결과 화면(전주 목록·사진 보기·이상만 보기), 내보내기 | 다음 | 5단계 중 기체 없이 가능한 부분 |
+| ⑤ 결과 화면(전주 목록·사진 보기·이상만 보기), 내보내기 | 완료 | `ui/ResultScreen.kt`, `data/MissionExport.kt`. ZIP을 DB·기기 사진과 대조(`docs/evidence/2026-09-29-result`). 모의 기체 JPEG과 모의 탐지기(`FakeDetector`)로 확인. 결과 지도·원본 일괄 다운로드는 4단계 뒤 |
 | 앱 재시작 복구(DB·SD 대조) | 4단계 | `InspectionExecutor`에 초기 방문 상태 주입 필요 |
 
 ### 13.1 개발 장비와 진행 순서

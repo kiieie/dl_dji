@@ -13,6 +13,7 @@ import com.example.myfirstapp.data.ProjectSummary
 import com.example.myfirstapp.ui.FlightScreen
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
+import com.example.myfirstapp.ui.ResultScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
@@ -31,16 +32,33 @@ class MainActivity : ComponentActivity() {
                 var verifying by remember { mutableStateOf(false) }
                 var openProject by remember { mutableStateOf<ProjectSummary?>(null) }
                 var flightMission by remember { mutableStateOf<Long?>(null) }
+                var resultMission by remember { mutableStateOf<Long?>(null) }
+                var resultFromList by remember { mutableStateOf(false) }
                 BackHandler(verifying || openProject != null) { verifying = false; openProject = null }
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val project = openProject
                     val mission = flightMission
+                    val result = resultMission
                     when {
                         verifying -> VerificationPanel()
+                        // 결과 화면에서 뒤로 가면 들어온 화면(계획 또는 프로젝트 목록)으로 돌아간다.
+                        project != null && result != null -> ResultScreen(project.id, result, dao, onBack = {
+                            resultMission = null
+                            if (resultFromList) openProject = null
+                        })
                         // 비행 화면은 자체 BackHandler로 비행 중 뒤로 가기를 막는다.
-                        project != null && mission != null -> FlightScreen(project.id, mission, dao, onExit = { flightMission = null })
+                        project != null && mission != null -> FlightScreen(
+                            project.id, mission, dao,
+                            onExit = { flightMission = null },
+                            onShowResult = { resultMission = mission; resultFromList = false; flightMission = null },
+                        )
                         project != null -> MapScreen(project, dao, onBack = { openProject = null }, onStartFlight = { flightMission = it })
-                        else -> ProjectScreen(dao, onOpenProject = { openProject = it }, onOpenVerification = { verifying = true })
+                        else -> ProjectScreen(
+                            dao,
+                            onOpenProject = { openProject = it },
+                            onOpenResult = { p, m -> openProject = p; resultMission = m; resultFromList = true },
+                            onOpenVerification = { verifying = true },
+                        )
                     }
                 }
             }

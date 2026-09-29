@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import android.graphics.Bitmap
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.util.Log
@@ -52,11 +53,13 @@ import com.example.myfirstapp.core.executor.Command
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.executor.ExecutorUiState
 import com.example.myfirstapp.core.executor.InspectionExecutor
+import com.example.myfirstapp.core.fake.FakeDetector
 import com.example.myfirstapp.core.fake.FakeDroneGateway
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.model.VisitStatus
+import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.Notifier
 import com.example.myfirstapp.core.port.Sound
 import com.example.myfirstapp.core.port.StorageMonitor
@@ -69,6 +72,7 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.RecorderSortie
 import com.example.myfirstapp.data.RoomRecorder
 import com.example.myfirstapp.data.flightParamsFromJson
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 /** 모의 기체의 시간 배속. 시연과 스모크 시험이 몇 분 안에 끝나게 한다. 실제 기체에는 해당 없음. */
@@ -90,7 +94,7 @@ private class Flight(
  * 저장한 `MISSION`에서 남은(PENDING·IN_PROGRESS) 방문만 읽어 소티를 만든다.
  */
 @Composable
-fun FlightScreen(projectId: Long, missionId: Long, dao: ProjectDao, onExit: () -> Unit) {
+fun FlightScreen(projectId: Long, missionId: Long, dao: ProjectDao, onExit: () -> Unit, onShowResult: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var flight by remember { mutableStateOf<Flight?>(null) }
@@ -118,10 +122,10 @@ fun FlightScreen(projectId: Long, missionId: Long, dao: ProjectDao, onExit: () -
             File(context.getExternalFilesDir(null), "projects/$projectId/missions/$missionId/images"),
             params.downloadMode,
         )
-        val drone = FakeDroneGateway(scope, home, FakeDroneGateway.Config(timeScale = FAKE_TIME_SCALE))
+        val drone = FakeDroneGateway(scope, home, FakeDroneGateway.Config(timeScale = FAKE_TIME_SCALE, image = ::fakePhoto))
         val storage = StorageMonitor { (context.getExternalFilesDir(null)?.usableSpace ?: 0L) >= MIN_FREE_BYTES }
-        // ponytail: 탐지 모델이 아직 없어 detector는 null이다(분석은 "탐지 모델 없음"으로 건너뜀, 6.5).
-        val executor = InspectionExecutor(scope, drone, recorder, notifier, storage, energy, null, sorties)
+        // 탐지 모델이 아직 없어 모의 탐지기를 쓴다(10장 ⑤). 모델을 넣으면 TFLite 탐지기로 바꾼다.
+        val executor = InspectionExecutor(scope, drone, recorder, notifier, storage, energy, FakeDetector(), sorties)
         executor.start()
         flight = Flight(executor, drone, energy, home, sorties.flatMap { it.poles })
     }
@@ -131,7 +135,12 @@ fun FlightScreen(projectId: Long, missionId: Long, dao: ProjectDao, onExit: () -
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(loadError ?: "미션을 불러오는 중입니다")
-                if (loadError != null) Button(onClick = onExit) { Text("나가기") }
+                if (loadError != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onShowResult) { Text("결과 보기") }
+                        OutlinedButton(onClick = onExit) { Text("나가기") }
+                    }
+                }
             }
         }
         return
@@ -152,7 +161,7 @@ fun FlightScreen(projectId: Long, missionId: Long, dao: ProjectDao, onExit: () -
             Column(
                 Modifier.padding(12.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) { Controls(f, ui, canExit, onExit) }
+            ) { Controls(f, ui, canExit, onExit, onShowResult) }
         }
         if (ui.state == ExecState.Paused) {
             // 보조용 큰 [재개]: 화면 하단 중앙, 초록, 일시정지 상태에서만(10장)
@@ -199,7 +208,7 @@ private fun ProgressLine(ui: ExecutorUiState) {
 }
 
 @Composable
-private fun Controls(f: Flight, ui: ExecutorUiState, canExit: Boolean, onExit: () -> Unit) {
+private fun Controls(f: Flight, ui: ExecutorUiState, canExit: Boolean, onExit: () -> Unit, onShowResult: () -> Unit) {
     val send = f.executor::send
     when (ui.state) {
         ExecState.Idle -> Button(onClick = { send(Command.Start) }) { Text("비행 시작") }
@@ -210,7 +219,10 @@ private fun Controls(f: Flight, ui: ExecutorUiState, canExit: Boolean, onExit: (
                 OutlinedButton(onClick = { send(Command.EndMission) }) { Text("미션 종료") }
             }
         }
-        ExecState.MissionDone -> Text("미션 완료", style = MaterialTheme.typography.titleMedium)
+        ExecState.MissionDone -> {
+            Text("미션 완료", style = MaterialTheme.typography.titleMedium)
+            Button(onClick = onShowResult) { Text("결과 보기") }
+        }
         ExecState.Paused -> {
             Text("일시정지됨 — 수동 조종 가능", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -234,6 +246,21 @@ private fun Controls(f: Flight, ui: ExecutorUiState, canExit: Boolean, onExit: (
         OutlinedButton(onClick = { f.drone.pressRcResume() }) { Text("RC 재개") }
     }
     OutlinedButton(onClick = { f.drone.setBattery((f.drone.telemetry.value.batteryPct - 30).coerceAtLeast(0.0)) }) { Text("배터리 −30%") }
+}
+
+/** 모의 기체 사진: 렌즈·미디어 번호·좌표를 그린 JPEG(10장 ⑤). 실제 기체에서는 쓰지 않는다. */
+private fun fakePhoto(c: CaptureInfo): ByteArray {
+    val bmp = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bmp)
+    canvas.drawColor(if (c.lens.name == "ZOOM") 0xFF3B4A5A.toInt() else 0xFF4A6072.toInt())
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF8C7B6B.toInt() }
+    canvas.drawRect(305f, 80f, 335f, 480f, paint) // 전주
+    canvas.drawRect(200f, 130f, 440f, 150f, paint) // 완금
+    paint.color = android.graphics.Color.WHITE
+    paint.textSize = 28f
+    canvas.drawText("모의 사진 ${c.lens} ${c.mediaId}", 20f, 40f, paint)
+    c.position?.let { canvas.drawText("%.6f, %.6f".format(it.lat, it.lon), 20f, 460f, paint) }
+    return ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 80, it); bmp.recycle() }.toByteArray()
 }
 
 /** 잘못 누르지 않도록 1초 이상 눌러야 동작하는 RTH 버튼(10장). */

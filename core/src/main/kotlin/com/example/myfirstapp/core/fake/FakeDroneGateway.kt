@@ -48,6 +48,8 @@ class FakeDroneGateway(
         val legStartMs: Long = 2_000,
         val captureMs: Long = 1_000,
         val downloadMs: Long = 1_500,
+        /** 다운로드가 돌려줄 사진. 앱은 렌즈·좌표를 그린 JPEG을 넘긴다(10장 ⑤). */
+        val image: (CaptureInfo) -> ByteArray = { "FAKE_JPEG:${it.mediaId}".toByteArray() },
     )
 
     private val proj = LocalProjection(homePoint)
@@ -139,7 +141,7 @@ class FakeDroneGateway(
             failNextDownloads--
             return Result.failure(IllegalStateException("모의 다운로드 실패"))
         }
-        return Result.success("FAKE_JPEG:${capture.mediaId}".toByteArray())
+        return Result.success(config.image(capture))
     }
 
     override suspend fun returnHome(): Result<Unit> {

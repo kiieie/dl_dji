@@ -160,5 +160,5 @@ erDiagram
 ├── models/<version>/model.tflite, labels.txt, model.json
 └── projects/<projectId>/missions/<missionId>/
     ├── images/<poleId>_<timestamp>_<lens>.jpg
-    └── export/<missionId>.zip
+    └── export/<missionId>.zip    # result.csv + mission.json + images/ (10장 ⑤)
 ```

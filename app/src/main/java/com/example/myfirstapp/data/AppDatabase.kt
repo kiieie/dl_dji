@@ -192,16 +192,33 @@ fun flightParamsFromJson(json: String): FlightParams {
     )
 }
 
+/** 결과 화면(10장 ⑤)과 내보내기의 전주 한 줄. */
+data class ResultRow(
+    val seq: Int,
+    val order: Int,
+    val visitId: Long,
+    val poleId: String,
+    val lat: Double,
+    val lon: Double,
+    val lineName: String?,
+    val status: String,
+    val skipReason: String?,
+    val arrivedAt: Long?,
+    val photoCount: Int,
+    val anomalyCount: Int,
+)
+
 /** 소티 하나의 저장용 입력: 방문 순서대로 전주 행 id. */
 data class SortieDraft(val estDistanceM: Double, val estBatteryPct: Double, val poleRowIds: List<Long>)
 
 /** 프로젝트 목록 카드용(10장 ①). */
-data class ProjectSummary(val id: Long, val name: String, val createdAt: Long, val poleCount: Int)
+data class ProjectSummary(val id: Long, val name: String, val createdAt: Long, val poleCount: Int, val lastMissionId: Long? = null)
 
 @Dao
 interface ProjectDao {
     @Query(
-        "SELECT project.id, project.name, project.createdAt, COUNT(pole.id) AS poleCount FROM project " +
+        "SELECT project.id, project.name, project.createdAt, COUNT(pole.id) AS poleCount, " +
+            "(SELECT MAX(mission.id) FROM mission WHERE mission.projectId = project.id) AS lastMissionId FROM project " +
             "LEFT JOIN pole ON pole.projectId = project.id GROUP BY project.id ORDER BY project.createdAt DESC",
     )
     fun observeProjects(): Flow<List<ProjectSummary>>
@@ -278,6 +295,30 @@ interface ProjectDao {
 
     @Insert
     suspend fun insertDetections(detections: List<DetectionEntity>)
+
+    @Query("SELECT name FROM project WHERE id = :projectId")
+    suspend fun projectName(projectId: Long): String?
+
+    @Query(
+        "SELECT s.seq, v.`order`, v.id AS visitId, p.poleId, p.lat, p.lon, p.lineName, v.status, v.skipReason, v.arrivedAt, " +
+            "(SELECT COUNT(*) FROM capture c WHERE c.visitId = v.id) AS photoCount, " +
+            "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id) AS anomalyCount " +
+            "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
+            "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`",
+    )
+    suspend fun resultRows(missionId: Long): List<ResultRow>
+
+    @Query(
+        "SELECT c.* FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId " +
+            "WHERE s.missionId = :missionId ORDER BY c.id",
+    )
+    suspend fun missionCaptures(missionId: Long): List<CaptureEntity>
+
+    @Query(
+        "SELECT d.* FROM detection d JOIN capture c ON c.id = d.captureId JOIN visit v ON v.id = c.visitId " +
+            "JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId ORDER BY d.id",
+    )
+    suspend fun missionDetections(missionId: Long): List<DetectionEntity>
 
     /** 계획 저장(F-07·F-08 결과): 미션과 소티, 방문 순서를 한 번에 넣는다. 소티 번호와 방문 순서는 1부터 센다. */
     @Transaction
