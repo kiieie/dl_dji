@@ -70,7 +70,7 @@ stateDiagram-v2
   Arrived --> Capturing: 도착 알림음
   Capturing --> Downloading: 촬영 완료
   Downloading --> Analyzing: 이미지 수신
-  Analyzing --> Waiting: 결과 저장·알림음(이상 시 경고음)
+  Analyzing --> Waiting: 결과 저장·알림음(검출 시 경고음)
   Waiting --> PreparingLeg: 5초 경과 & 다음 전주 있음 & 배터리 충분
   Waiting --> ReturningHome: 소티 마지막 전주 또는 배터리 부족
   FlyingLeg --> Paused: HW 일시정지 버튼
@@ -123,7 +123,7 @@ stateDiagram-v2
 
 ```
 Arrived ─► (짐벌 피치·렌즈·줌 설정) ─► 촬영(광각, 망원 순) ─► 사진 다운로드
-        ─► YOLO 분석 ─► DB 저장 ─► 알림음(정상: "점검 완료" / 이상: 경고음 + "이상 탐지")
+        ─► YOLO 분석 ─► DB 저장 ─► 알림음(검출 없음: "점검 완료" / 검출: 경고음 + "검출")
         ─► 5초 대기(화면에 카운트다운과 결과 썸네일 표시) ─► 다음 구간
 ```
 

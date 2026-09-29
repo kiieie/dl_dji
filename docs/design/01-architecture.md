@@ -127,7 +127,7 @@ erDiagram
   POLE ||--o{ VISIT : visited
   VISIT ||--o{ CAPTURE : photos
   CAPTURE ||--o{ DETECTION : results
-  VISIT ||--o{ REVIEW : "1차·2차 판독"
+  VISIT ||--o{ REVIEW : "1차 판독"
   SORTIE ||--o{ FLIGHT_EVENT : "state log"
   SORTIE ||--o{ TELEMETRY_SAMPLE : "flight log"
 
@@ -138,7 +138,7 @@ erDiagram
   VISIT { long id; long sortieId; long poleRowId; int order; string status; datetime arrivedAt; string skipReason }
   CAPTURE { long id; long visitId; string mediaId; string filePath; string lens; string source; double lat; double lon; double altRel; double gimbalPitch; double heading; datetime takenAt; bool originalDownloaded }
   DETECTION { long id; long captureId; string label; float score; float x; float y; float w; float h; bool alert }
-  REVIEW { long id; long visitId; int stage; string verdict; string tags; string memo; datetime at }
+  REVIEW { long id; long visitId; string verdict; string tags; string memo; datetime at }
   FLIGHT_EVENT { long id; long sortieId; string fromState; string toState; string reason; long visitId; datetime at }
   TELEMETRY_SAMPLE { long id; long sortieId; datetime at; double lat; double lon; double altRel; float speed; int batteryPct; string flightMode }
 ```
