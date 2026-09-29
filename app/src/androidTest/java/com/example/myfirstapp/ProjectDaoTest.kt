@@ -4,6 +4,8 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.myfirstapp.data.AppDatabase
+import com.example.myfirstapp.data.MissionEntity
+import com.example.myfirstapp.data.SortieDraft
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import kotlinx.coroutines.flow.first
@@ -38,5 +40,25 @@ class ProjectDaoTest {
     fun 전주번호_중복이면_프로젝트까지_되돌린다() = runTest {
         runCatching { dao.importProject("중복", listOf(pole("A-1"), pole("A-1"))) }
         assertTrue(dao.observeProjects().first().isEmpty())
+    }
+
+    @Test
+    fun 계획_저장은_소티와_방문_순서를_남기고_프로젝트와_함께_지워진다() = runTest {
+        val id = dao.importProject("계획", listOf(pole("A-1"), pole("A-2"), pole("A-3")))
+        val rows = dao.observePoles(id).first().associate { it.poleId to it.id }
+        val mission = MissionEntity(0, id, 0, "{}", 37.5, 127.0, "{}", null, "PLANNED")
+        val missionId = dao.saveMission(
+            mission,
+            listOf(SortieDraft(900.0, 40.0, listOf(rows.getValue("A-3"), rows.getValue("A-1"))), SortieDraft(500.0, 20.0, listOf(rows.getValue("A-2")))),
+        )
+
+        val sorties = dao.sorties(missionId)
+        assertEquals(listOf(1, 2), sorties.map { it.seq })
+        assertEquals(listOf(rows["A-3"], rows["A-1"]), dao.visits(sorties[0].id).map { it.poleRowId })
+        assertEquals(listOf(1, 2), dao.visits(sorties[0].id).map { it.order })
+
+        dao.deleteProject(id)
+        assertTrue(dao.missions(id).isEmpty())
+        assertTrue(dao.visits(sorties[0].id).isEmpty())
     }
 }

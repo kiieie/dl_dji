@@ -132,7 +132,7 @@ erDiagram
 
   PROJECT { long id; string name; datetime createdAt }
   POLE { long id; long projectId; string poleId; double lat; double lon; string lineName; string note }
-  MISSION { long id; long projectId; string areaGeoJson; json flightParams; string modelVersion; string status }
+  MISSION { long id; long projectId; datetime createdAt; string areaGeoJson; double homeLat; double homeLon; json flightParams; string modelVersion; string status }
   SORTIE { long id; long missionId; int seq; double estDistanceM; double estBatteryPct; string status; datetime startedAt; datetime endedAt }
   VISIT { long id; long sortieId; long poleRowId; int order; string status; datetime arrivedAt; string skipReason }
   CAPTURE { long id; long visitId; string filePath; string lens; string source; double lat; double lon; double altRel; double gimbalPitch; double heading; datetime takenAt; bool originalDownloaded }
@@ -141,7 +141,9 @@ erDiagram
   TELEMETRY_SAMPLE { long id; long sortieId; datetime at; double lat; double lon; double altRel; float speed; int batteryPct; string flightMode }
 ```
 
-- **구현 현황**: `PROJECT`, `POLE`만 구현했다(`POLE`은 `(projectId, poleId)` 고유, 프로젝트 삭제 시 함께 삭제). 나머지는 쓰는 단계(3·4단계)에서 추가하며, 출시 전이므로 스키마 버전은 1로 유지한다.
+- **구현 현황**: `PROJECT`, `POLE`, `MISSION`, `SORTIE`, `VISIT`을 구현했다(`POLE`은 `(projectId, poleId)` 고유, 하위 행은 상위 삭제 시 함께 삭제). 나머지는 4단계에서 추가하며, 출시 전이므로 스키마 버전은 1로 유지한다.
+- `MISSION.homeLat/homeLon`: 계획에 쓴 이륙 지점. 소티를 시작할 때 실제 홈 포인트와 비교해 다시 계획할지 정한다(5.4). 계획 화면에서 제외한 전주와 도달 불가 전주는 `VISIT`에 넣지 않는다.
+- 계획을 저장하면 `MISSION.status`는 `PLANNED`, `SORTIE.status`와 `VISIT.status`는 `PENDING`으로 시작한다. 실행 중 값은 4단계에서 정한다.
 - `VISIT.status`: `PENDING` / `IN_PROGRESS` / `DONE` / `SKIPPED` / `FAILED`
 - `CAPTURE.source`: `AUTO`(도착 시 자동), `MANUAL`(수동 촬영 버튼), `PERIODIC`(주기 분석 프레임)
 - `MISSION.flightParams`에는 실행 시점의 파라미터를 그대로 저장한다(나중에 설정을 바꿔도 기록은 유지된다).

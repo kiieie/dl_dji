@@ -71,4 +71,26 @@ class RoutePlannerTest {
         assertFalse(m.mustReturn(40.0, 300.0))
         assertTrue(m.mustReturn(20.5, 300.0))
     }
+
+    @Test
+    fun `소티마다 다시 최적화해 경로가 스스로 교차하지 않는다`() {
+        val rnd = Random(7)
+        val poles = List(150) { pole("P$it", rnd.nextDouble(-450.0, 450.0), rnd.nextDouble(-450.0, 450.0)) }
+        val plan = planner().plan(home, poles)
+        assertTrue(plan.sorties.size > 1)
+        plan.sorties.forEach { s ->
+            val pts = listOf(Enu(0.0, 0.0)) + s.poles.map { proj.toEnu(it.position) } + Enu(0.0, 0.0)
+            val edges = pts.zipWithNext()
+            for (a in edges.indices) for (b in a + 2 until edges.size) {
+                if (a == 0 && b == edges.size - 1) continue // 이륙 지점을 공유하는 첫·마지막 구간
+                assertFalse("교차: 구간 $a, $b", crosses(edges[a], edges[b]))
+            }
+        }
+    }
+
+    private fun crosses(p: Pair<Enu, Enu>, q: Pair<Enu, Enu>): Boolean {
+        fun side(a: Enu, b: Enu, c: Enu) = Math.signum((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
+        return side(p.first, p.second, q.first) * side(p.first, p.second, q.second) < 0 &&
+            side(q.first, q.second, p.first) * side(q.first, q.second, p.second) < 0
+    }
 }

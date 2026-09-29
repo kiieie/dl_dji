@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,14 +42,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.myfirstapp.data.MissionEntity
 import com.example.myfirstapp.data.PoleEntity
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.ProjectSummary
+import com.example.myfirstapp.data.SortieDraft
+import com.example.myfirstapp.data.toJson
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.route.EnergyModel
@@ -121,6 +127,10 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
     var planMs by remember { mutableStateOf(0L) }
     var planning by remember { mutableStateOf(false) }
     var focus by remember { mutableStateOf(emptyList<GeoPoint>()) }
+    var params by remember { mutableStateOf(FlightParams()) }
+    var excluded by remember { mutableStateOf(emptySet<String>()) }
+    var savedPlan by remember { mutableStateOf<RoutePlan?>(null) }
+    val paramErrors = remember(params) { params.validate() }
     val inArea = remember(poles, vertices) {
         val all = poles.orEmpty()
         if (vertices.size < 3) emptyList() else Polygon(vertices).let { area -> all.filter { area.contains(GeoPoint(it.lat, it.lon)) } }
@@ -139,13 +149,15 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
         }
     }
 
+    // 파라미터나 대상 전주가 바뀌면 이전 경로는 버린다.
+    fun updateParams(p: FlightParams) { params = p; plan = null }
+
     fun computePlan(start: GeoPoint) = scope.launch {
         planning = true
         val t0 = System.nanoTime()
-        // ponytail: 파라미터는 기본값(FlightParams, EnergyParams)으로 계산한다. 핵심 4개 설정 UI는 다음 단계에서 붙인다.
-        val result = withContext(Dispatchers.Default) {
-            RoutePlanner(EnergyModel(EnergyParams(), FlightParams())).plan(start, inArea.map { it.toPole() })
-        }
+        val targets = inArea.filter { it.poleId !in excluded }.map { it.toPole() }
+        // ponytail: 에너지 모델은 기본값(EnergyParams)이다. 보정값 설정은 ⑥ 설정 화면에서 붙인다.
+        val result = withContext(Dispatchers.Default) { RoutePlanner(EnergyModel(EnergyParams(), params)).plan(start, targets) }
         planMs = (System.nanoTime() - t0) / 1_000_000
         plan = result
         planning = false
@@ -153,10 +165,27 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
         Log.i(
             "RoutePlan",
             "vertices=${vertices.joinToString(";") { "${it.lat},${it.lon}" }} home=${start.lat},${start.lon} " +
-                "inArea=${inArea.size} sorties=${result.sorties.map { it.poles.size }} " +
+                "inArea=${inArea.size} excluded=${excluded.sorted().joinToString(";")} " +
+                "params=${params.transitAltitudeM},${params.inspectAltitudeM},${params.speedMps},${params.batteryReservePct} sorties=${result.sorties.map { it.poles.size }} " +
                 "vlos=${result.unreachable.count { it.reason == UnreachablePole.Reason.VLOS_EXCEEDED }} " +
                 "battery=${result.unreachable.count { it.reason == UnreachablePole.Reason.BATTERY_EXCEEDED }} ms=$planMs",
         )
+    }
+
+    fun savePlan(p: RoutePlan) = scope.launch {
+        val rowIds = poles.orEmpty().associate { it.poleId to it.id }
+        val mission = MissionEntity(
+            projectId = project.id, createdAt = System.currentTimeMillis(), areaGeoJson = areaPolygon(vertices).toJson(),
+            homeLat = p.home.lat, homeLon = p.home.lon, flightParams = params.toJson(), modelVersion = null, status = "PLANNED",
+        )
+        val sorties = p.sorties.map { s -> SortieDraft(s.estDistanceM, s.estBatteryPct, s.poles.map { rowIds.getValue(it.poleId) }) }
+        runCatching { dao.saveMission(mission, sorties) }
+            .onSuccess {
+                savedPlan = p
+                message = "계획을 저장했습니다: 미션 #$it (소티 ${sorties.size}개, 전주 ${sorties.sumOf { s -> s.poleRowIds.size }}개)"
+                Log.i("RoutePlan", "saved mission=$it")
+            }
+            .onFailure { message = "계획을 저장하지 못했습니다: ${it.message}" }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -164,7 +193,7 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
             PoleMap(
                 poles = it,
                 mapFiles = mapFiles,
-                overlay = Overlay(vertices, home, plan),
+                overlay = Overlay(vertices, home, plan, it.filter { p -> p.poleId in excluded }.map { p -> GeoPoint(p.lat, p.lon) }),
                 focus = focus,
                 onPoleClick = { id -> selected = id },
                 onMapTap = when (tool) {
@@ -183,13 +212,12 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onBack) { Text("← 목록") }
                     Text(project.name, style = MaterialTheme.typography.titleMedium)
-                    Text("전주 ${poles?.size ?: 0}개")
+                    Text("전주 ${poles?.size ?: 0}개 · 지도 ${mapFiles.size}개")
                 }
-                Text(
-                    if (mapFiles.isEmpty()) "오프라인 지도(.mbtiles)가 없습니다. 배경 없이 전주만 표시합니다."
-                    else "오프라인 지도: ${mapFiles.joinToString { it.name }}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                // 패널 높이를 아끼려고 지도 파일 이름은 뺐다. 지도가 없을 때만 알린다.
+                if (mapFiles.isEmpty()) {
+                    Text("오프라인 지도(.mbtiles)가 없습니다. 배경 없이 전주만 표시합니다.", style = MaterialTheme.typography.bodySmall)
+                }
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
 
                 when (tool) {
@@ -206,23 +234,39 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
                     }
                     Tool.NONE -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilledTonalButton(onClick = { vertices = emptyList(); plan = null; selected = null; tool = Tool.AREA }) { Text("영역 그리기") }
+                            FilledTonalButton(onClick = { vertices = emptyList(); excluded = emptySet(); plan = null; selected = null; tool = Tool.AREA }) { Text("영역 그리기") }
                             FilledTonalButton(onClick = { selected = null; tool = Tool.HOME }) { Text("이륙 지점") }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             val start = home
-                            Button(
-                                onClick = { if (start != null) computePlan(start) },
-                                enabled = start != null && inArea.isNotEmpty() && !planning,
-                            ) { Text(if (planning) "계산 중" else "경로 계산") }
-                            OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("지도 파일 추가") }
+                            val current = plan
+                            // 경로를 보는 동안에는 파라미터 대신 경로 요약을 보여 준다(가로 1080px 화면에 다 들어가게).
+                            if (current == null) {
+                                Button(
+                                    onClick = { if (start != null) computePlan(start) },
+                                    enabled = start != null && inArea.size > excluded.size && paramErrors.isEmpty() && !planning,
+                                ) { Text(if (planning) "계산 중" else "경로 계산") }
+                                OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("지도 파일 추가") }
+                            } else {
+                                Button(onClick = { savePlan(current) }, enabled = current !== savedPlan) {
+                                    Text(if (current === savedPlan) "저장됨" else "계획 저장")
+                                }
+                                OutlinedButton(onClick = { plan = null }) { Text("다시 설정") }
+                            }
                         }
                     }
                 }
 
-                if (vertices.size >= 3) Text("영역 안 전주 ${inArea.size}개", style = MaterialTheme.typography.titleSmall)
+                if (tool == Tool.NONE && plan == null) ParamSteppers(params, ::updateParams)
+                paramErrors.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                if (vertices.size >= 3) {
+                    Text(
+                        "영역 안 전주 ${inArea.size}개" + if (excluded.isEmpty()) "" else " · 제외 ${excluded.size}개",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
                 if (tool == Tool.NONE && vertices.size >= 3 && home == null) Text("이륙 지점을 정하면 경로를 계산할 수 있습니다", style = MaterialTheme.typography.bodySmall)
-                plan?.let { PlanSummary(it, planMs) }
+                plan?.let { PlanSummary(it, planMs, params) }
             }
         }
 
@@ -230,9 +274,18 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
         if (pole != null) {
             Card(Modifier.align(Alignment.BottomCenter).padding(24.dp)) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    val isExcluded = pole.poleId in excluded
                     Column {
                         Text(pole.poleId, style = MaterialTheme.typography.titleLarge)
                         Text("${pole.lat}, ${pole.lon}  ${pole.lineName.orEmpty()}  ${pole.note.orEmpty()}")
+                        if (isExcluded) Text("경로에서 제외됨", color = MaterialTheme.colorScheme.error)
+                    }
+                    // F-06: 영역 안 전주만 개별로 빼거나 다시 넣는다.
+                    if (inArea.any { it.id == pole.id }) {
+                        OutlinedButton(onClick = {
+                            excluded = if (isExcluded) excluded - pole.poleId else excluded + pole.poleId
+                            plan = null
+                        }) { Text(if (isExcluded) "포함" else "제외") }
                     }
                     Button(onClick = { selected = null }) { Text("닫기") }
                 }
@@ -243,9 +296,40 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
 
 private const val PANEL_WIDTH_DP = 420
 
+/** 핵심 파라미터 4개(6.3). 장갑 낀 손가락으로 누를 수 있게 48dp [−][+] 버튼으로 바꾼다. 범위 검증은 [FlightParams.validate]. */
+@Composable
+private fun ParamSteppers(p: FlightParams, onChange: (FlightParams) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Stepper("이동 고도", "${p.transitAltitudeM.toInt()}m", Modifier.weight(1f)) { onChange(p.copy(transitAltitudeM = p.transitAltitudeM + it * 5)) }
+        Stepper("점검 고도", "${p.inspectAltitudeM.toInt()}m", Modifier.weight(1f)) { onChange(p.copy(inspectAltitudeM = p.inspectAltitudeM + it * 5)) }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Stepper("속도", "${p.speedMps.toInt()}m/s", Modifier.weight(1f)) { onChange(p.copy(speedMps = p.speedMps + it)) }
+        Stepper("예비율", "${p.batteryReservePct.toInt()}%", Modifier.weight(1f)) { onChange(p.copy(batteryReservePct = p.batteryReservePct + it * 5)) }
+    }
+}
+
+/** [onStep]에는 −1 또는 +1이 넘어간다. 버튼 설명(contentDescription)은 스모크 스크립트가 찾는 이름이다. */
+@Composable
+private fun Stepper(label: String, value: String, modifier: Modifier, onStep: (Int) -> Unit) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelSmall)
+            Text(value, style = MaterialTheme.typography.titleSmall)
+        }
+        listOf(-1 to "−", 1 to "+").forEach { (d, sign) ->
+            OutlinedButton(
+                onClick = { onStep(d) },
+                modifier = Modifier.size(48.dp).semantics { contentDescription = "$label ${if (d < 0) "낮추기" else "높이기"}" },
+                contentPadding = PaddingValues(0.dp),
+            ) { Text(sign) }
+        }
+    }
+}
+
 /** 소티별 예상 거리·시간·배터리(F-08)와 도달 불가 전주(5.4). */
 @Composable
-private fun PlanSummary(plan: RoutePlan, planMs: Long) {
+private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
     val visits = plan.sorties.sumOf { it.poles.size }
     val km = plan.sorties.sumOf { it.estDistanceM } / 1000
     val min = plan.sorties.sumOf { it.estDurationSec } / 60
@@ -267,13 +351,17 @@ private fun PlanSummary(plan: RoutePlan, planMs: Long) {
             color = MaterialTheme.colorScheme.error,
         )
     }
-    Text("계산 ${planMs}ms · 기본 파라미터(고도 50m, 8m/s, 예비율 30%, 가시권 500m)", style = MaterialTheme.typography.bodySmall)
+    Text(
+        "이동 ${params.transitAltitudeM.toInt()}m · 점검 ${params.inspectAltitudeM.toInt()}m · ${params.speedMps.toInt()}m/s · " +
+            "예비율 ${params.batteryReservePct.toInt()}% · 가시권 ${params.vlosRadiusM.toInt()}m · 계산 ${planMs}ms",
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 private fun fmt(v: Double) = String.format(Locale.ROOT, "%.1f", v)
 
 /** 지도 위에 그릴 계획 요소. */
-private data class Overlay(val vertices: List<GeoPoint>, val home: GeoPoint?, val plan: RoutePlan?)
+private data class Overlay(val vertices: List<GeoPoint>, val home: GeoPoint?, val plan: RoutePlan?, val excluded: List<GeoPoint>)
 
 /**
  * MapLibre 지도. 배경은 앱 전용 폴더의 MBTiles를 모두 겹쳐 그린다(지역별 파일). 네트워크 소스는 쓰지 않는다.
@@ -357,6 +445,7 @@ private fun PoleMap(
                 style.addSource(GeoJsonSource("draw"))
                 style.addSource(GeoJsonSource("route"))
                 style.addSource(GeoJsonSource("home"))
+                style.addSource(GeoJsonSource("excluded"))
                 style.addLayer(
                     FillLayer("area-fill", "draw").withFilter(eq(geometryType(), literal("Polygon")))
                         .withProperties(fillColor(AREA_COLOR), fillOpacity(0.12f)),
@@ -365,7 +454,10 @@ private fun PoleMap(
                     LineLayer("area-line", "draw").withFilter(neq(geometryType(), literal("Point")))
                         .withProperties(lineColor(AREA_COLOR), lineWidth(3f)),
                 )
-                style.addLayer(LineLayer("route-line", "route").withProperties(lineColor(get("color")), lineWidth(4f)))
+                style.addLayer(
+                    LineLayer("route-line", "route").withFilter(eq(geometryType(), literal("LineString")))
+                        .withProperties(lineColor(get("color")), lineWidth(4f)),
+                )
                 style.addLayer(
                     CircleLayer("clusters", "poles").withFilter(has("point_count")).withProperties(
                         circleColor("#1F6F5C"),
@@ -376,6 +468,18 @@ private fun PoleMap(
                 style.addLayer(
                     CircleLayer("poles-point", "poles").withFilter(not(has("point_count"))).withProperties(
                         circleColor("#D9480F"), circleRadius(7f), circleStrokeColor("#FFFFFF"), circleStrokeWidth(2f),
+                    ),
+                )
+                // 경로가 꺾이는 곳마다 방문 전주를 소티 색 점으로 찍는다. 클러스터에 가려도 꺾이는 이유가 보이게 클러스터 위에 그린다.
+                style.addLayer(
+                    CircleLayer("route-stop", "route").withFilter(eq(geometryType(), literal("Point"))).withProperties(
+                        circleColor("#FFFFFF"), circleRadius(5f), circleStrokeColor(get("color")), circleStrokeWidth(3f),
+                    ),
+                )
+                // 제외한 전주(F-06)는 원래 점 위에 회색으로 덮어 그린다.
+                style.addLayer(
+                    CircleLayer("excluded-point", "excluded").withProperties(
+                        circleColor("#868E96"), circleRadius(7f), circleStrokeColor("#FFFFFF"), circleStrokeWidth(2f),
                     ),
                 )
                 style.addLayer(
@@ -421,6 +525,9 @@ private fun PoleMap(
             val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
             style.getSourceAs<GeoJsonSource>("draw")?.setGeoJson(drawFeatures(overlay.vertices))
             style.getSourceAs<GeoJsonSource>("route")?.setGeoJson(routeFeatures(overlay.plan))
+            style.getSourceAs<GeoJsonSource>("excluded")?.setGeoJson(
+                FeatureCollection.fromFeatures(overlay.excluded.map { Feature.fromGeometry(it.toPoint()) }),
+            )
             style.getSourceAs<GeoJsonSource>("home")?.setGeoJson(
                 FeatureCollection.fromFeatures(listOfNotNull(overlay.home?.let { Feature.fromGeometry(it.toPoint()) })),
             )
@@ -436,19 +543,24 @@ private fun GeoPoint.toPoint(): Point = Point.fromLngLat(lon, lat)
 private fun drawFeatures(vertices: List<GeoPoint>): FeatureCollection {
     val pts = vertices.map { it.toPoint() }
     val shape = when {
-        pts.size >= 3 -> Feature.fromGeometry(GeoJsonPolygon.fromLngLats(listOf(pts + pts.first())))
+        pts.size >= 3 -> Feature.fromGeometry(areaPolygon(vertices))
         pts.size == 2 -> Feature.fromGeometry(LineString.fromLngLats(pts))
         else -> null
     }
     return FeatureCollection.fromFeatures(listOfNotNull(shape) + pts.map { Feature.fromGeometry(it) })
 }
 
-/** 소티마다 이륙 지점 → 전주들 → 이륙 지점으로 닫힌 선 하나. */
+/** 점검 영역을 닫힌 GeoJSON 다각형으로. `MISSION.areaGeoJson`에도 이 형태로 저장한다. */
+private fun areaPolygon(vertices: List<GeoPoint>): GeoJsonPolygon =
+    vertices.map { it.toPoint() }.let { GeoJsonPolygon.fromLngLats(listOf(it + it.first())) }
+
+/** 소티마다 이륙 지점 → 전주들 → 이륙 지점으로 닫힌 선 하나와 방문 전주 점들. */
 private fun routeFeatures(plan: RoutePlan?): FeatureCollection = FeatureCollection.fromFeatures(
-    if (plan == null) emptyList() else plan.sorties.mapIndexed { i, s ->
+    if (plan == null) emptyList() else plan.sorties.flatMapIndexed { i, s ->
+        val color = SORTIE_COLORS[i % SORTIE_COLORS.size]
         val line = listOf(plan.home) + s.poles.map { it.position } + plan.home
-        Feature.fromGeometry(LineString.fromLngLats(line.map { it.toPoint() }))
-            .apply { addStringProperty("color", SORTIE_COLORS[i % SORTIE_COLORS.size]) }
+        (listOf(LineString.fromLngLats(line.map { it.toPoint() })) + s.poles.map { it.position.toPoint() })
+            .map { g -> Feature.fromGeometry(g).apply { addStringProperty("color", color) } }
     },
 )
 

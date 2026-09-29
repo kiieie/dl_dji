@@ -72,13 +72,11 @@ class RoutePlanner(
         var j = n
         while (j > 0) {
             val i = from[j]
-            val seg = i - 1 until j
-            val inner = (i until j).sumOf { enu[it - 1].distanceTo(enu[it]) }
-            val dist = enu[i - 1].distanceTo(origin) + inner + enu[j - 1].distanceTo(origin)
+            val (seq, dist) = reoptimize((i - 1 until j).toList(), enu, origin)
             val count = j - i + 1
             sorties.addFirst(
                 SortiePlan(
-                    poles = seg.map { ordered[it] },
+                    poles = seq.map { ordered[it] },
                     estDistanceM = dist,
                     estBatteryPct = energy.sortieCost(dist, count),
                     estDurationSec = energy.sortieDurationSec(dist, count),
@@ -87,5 +85,12 @@ class RoutePlanner(
             j = i - 1
         }
         return RoutePlan(home, sorties.toList(), unreachable)
+    }
+
+    /** 소티 재최적화(5.4): 이륙 지점 + 소티 전주로 TSP를 다시 풀어 더 짧으면 그 순서를 쓴다. (순서, 닫힌 경로 길이)를 돌려준다. */
+    private fun reoptimize(seg: List<Int>, enu: List<Enu>, origin: Enu): Pair<List<Int>, Double> {
+        fun length(s: List<Int>) = (listOf(origin) + s.map { enu[it] } + origin).zipWithNext { a, b -> a.distanceTo(b) }.sum()
+        val solved = tsp.solve(listOf(origin) + seg.map { enu[it] }).map { seg[it - 1] }
+        return listOf(seg, solved).map { it to length(it) }.minBy { it.second }
     }
 }
