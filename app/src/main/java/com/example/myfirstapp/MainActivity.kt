@@ -14,7 +14,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.myfirstapp.data.ProjectDao
-import com.example.myfirstapp.data.ProjectSummary
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
@@ -28,7 +27,6 @@ import dji.v5.manager.SDKManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
-import kotlinx.coroutines.flow.first
 
 class MainActivity : ComponentActivity() {
 
@@ -77,10 +75,7 @@ class MainActivity : ComponentActivity() {
             ) { e ->
                 val pid = e.arguments!!.getLong("pid")
                 val replan = e.arguments!!.getLong("replan").takeIf { it > 0 }
-                val project by produceState<ProjectSummary?>(null, pid) { value = dao.observeProjects().first().firstOrNull { it.id == pid } }
-                project?.let { p ->
-                    MapScreen(p, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") }, replanFrom = replan)
-                }
+                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") }, replanFrom = replan)
             }
             composable("flight/{pid}/{mid}", ids) { e ->
                 val pid = e.arguments!!.getLong("pid")

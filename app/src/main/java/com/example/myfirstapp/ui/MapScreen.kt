@@ -1,10 +1,6 @@
 package com.example.myfirstapp.ui
 
-import android.content.Context
 import android.graphics.RectF
-import android.net.Uri
-import android.provider.OpenableColumns
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -22,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -30,11 +27,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,23 +44,14 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.myfirstapp.data.MissionEntity
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.data.PoleEntity
 import com.example.myfirstapp.data.ProjectDao
-import com.example.myfirstapp.data.ProjectSummary
-import com.example.myfirstapp.data.SortieDraft
-import com.example.myfirstapp.data.toJson
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
-import com.example.myfirstapp.core.route.EnergyModel
-import com.example.myfirstapp.core.route.EnergyParams
-import com.example.myfirstapp.core.route.Polygon
 import com.example.myfirstapp.core.route.RoutePlan
-import com.example.myfirstapp.core.route.RoutePlanner
 import com.example.myfirstapp.core.route.UnreachablePole
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -102,10 +88,7 @@ import java.io.File
 import java.util.Locale
 import org.maplibre.geojson.Polygon as GeoJsonPolygon
 
-/** 지도 도구. AREA는 누를 때마다 꼭짓점을 더하고, HOME은 한 번 눌러 이륙 지점을 정한다. */
-private enum class Tool { NONE, AREA, HOME }
-
-/** 소티별 경로 색. 전주(주황)·제외(회색)·영역(파랑)과 겹치지 않는 색을 돌려 쓴다. */
+/** 소티별 경로 색. 전주(주황)·제외(회색)·영역(파랑)과 겹치지 않는 색을 돌려 쓴다(10.1 데이터 시각화 색). */
 private val SORTIE_COLORS = listOf("#9C36B5", "#0C8599", "#C2255C", "#F59F00", "#3B5BDB")
 private const val AREA_COLOR = "#1864AB"
 
@@ -115,209 +98,121 @@ private val POLE_STROKE = interpolate(linear(), zoom(), stop(11, 0.5f), stop(14,
 
 /**
  * 계획 화면 ③(10장): 전주 지도, 영역(다각형) 그리기, 이륙 지점, 경로와 소티 미리보기.
- * [replanFrom]이 있으면 그 미션의 남은 전주만 골라 연다(F-20 [남은 전주로 새 계획]). 저장하면 그 미션은 부분 완료로 닫힌다.
+ * 계획 로직은 [PlanViewModel]에 있고, 이 화면은 상태를 그리고 누른 것을 올려 보낸다.
  */
 @Composable
 fun MapScreen(
-    project: ProjectSummary,
+    projectId: Long,
     dao: ProjectDao,
     onBack: () -> Unit,
     onStartFlight: (missionId: Long) -> Unit,
     replanFrom: Long? = null,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val poles by remember(project.id) { dao.observePoles(project.id) }.collectAsState(initial = null)
-    val mapsDir = remember { File(context.getExternalFilesDir(null), "maps").apply { mkdirs() } }
-    var mapFiles by remember { mutableStateOf(listMbtiles(mapsDir)) }
-    var selected by remember { mutableStateOf<String?>(null) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var tool by remember { mutableStateOf(Tool.NONE) }
-    var vertices by remember { mutableStateOf(emptyList<GeoPoint>()) }
-    var home by remember { mutableStateOf<GeoPoint?>(null) }
-    var plan by remember { mutableStateOf<RoutePlan?>(null) }
-    var planMs by remember { mutableStateOf(0L) }
-    var planning by remember { mutableStateOf(false) }
-    var focus by remember { mutableStateOf(emptyList<GeoPoint>()) }
-    var params by remember { mutableStateOf(FlightParams()) }
-    var excluded by remember { mutableStateOf(emptySet<String>()) }
-    // 저장한 계획과 그 미션 번호. 계획이 바뀌면 plan이 달라지므로 [비행 시작]이 [계획 저장]으로 돌아간다.
-    var saved by remember { mutableStateOf<Pair<RoutePlan, Long>?>(null) }
-    val paramErrors = remember(params) { params.validate() }
-    val inArea = remember(poles, vertices) {
-        val all = poles.orEmpty()
-        if (vertices.size < 3) emptyList() else Polygon(vertices).let { area -> all.filter { area.contains(GeoPoint(it.lat, it.lon)) } }
-    }
-
-    // 남은 전주를 감싸는 사각형을 영역으로 두고, 그 안의 다른 전주는 제외한다(F-06 제외와 같은 방식)
-    LaunchedEffect(poles, replanFrom) {
-        val all = poles ?: return@LaunchedEffect
-        if (replanFrom == null || vertices.isNotEmpty()) return@LaunchedEffect
-        val remaining = dao.missionVisits(replanFrom).filter { it.status == "PENDING" || it.status == "IN_PROGRESS" }.map { it.poleId }.toSet()
-        val targets = all.filter { it.poleId in remaining }
-        if (targets.isEmpty()) return@LaunchedEffect
-        val pad = 0.0003 // 약 30m
-        val (s, n) = targets.minOf { it.lat } - pad to targets.maxOf { it.lat } + pad
-        val (w, e) = targets.minOf { it.lon } - pad to targets.maxOf { it.lon } + pad
-        vertices = listOf(GeoPoint(s, w), GeoPoint(s, e), GeoPoint(n, e), GeoPoint(n, w))
-        excluded = all.filter { it.lat in s..n && it.lon in w..e && it.poleId !in remaining }.map { it.poleId }.toSet()
-        focus = vertices
-        message = "미션 #$replanFrom 의 남은 전주 ${targets.size}개를 골랐습니다. 이륙 지점을 정하세요."
-    }
-
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            message = "지도 파일을 복사하는 중입니다"
-            runCatching { withContext(Dispatchers.IO) { copyMbtiles(context, uri, mapsDir) } }
-                .onSuccess {
-                    mapFiles = listMbtiles(mapsDir)
-                    message = "지도를 추가했습니다: $it"
-                }
-                .onFailure { message = "지도를 추가하지 못했습니다: ${it.message}" }
-        }
-    }
-
-    // 파라미터나 대상 전주가 바뀌면 이전 경로는 버린다.
-    fun updateParams(p: FlightParams) { params = p; plan = null }
-
-    fun computePlan(start: GeoPoint) = scope.launch {
-        planning = true
-        val t0 = System.nanoTime()
-        val targets = inArea.filter { it.poleId !in excluded }.map { it.toPole() }
-        // ponytail: 에너지 모델은 기본값(EnergyParams)이다. 보정값 설정은 ⑥ 설정 화면에서 붙인다.
-        val result = withContext(Dispatchers.Default) { RoutePlanner(EnergyModel(EnergyParams(), params)).plan(start, targets) }
-        planMs = (System.nanoTime() - t0) / 1_000_000
-        plan = result
-        planning = false
-        // 증빙 스크립트가 같은 입력으로 영역 판정과 가시권 판정을 다시 계산해 대조한다.
-        Log.i(
-            "RoutePlan",
-            "vertices=${vertices.joinToString(";") { "${it.lat},${it.lon}" }} home=${start.lat},${start.lon} " +
-                "inArea=${inArea.size} excluded=${excluded.sorted().joinToString(";")} " +
-                "params=${params.transitAltitudeM},${params.inspectAltitudeM},${params.speedMps},${params.batteryReservePct} sorties=${result.sorties.map { it.poles.size }} " +
-                "vlos=${result.unreachable.count { it.reason == UnreachablePole.Reason.VLOS_EXCEEDED }} " +
-                "battery=${result.unreachable.count { it.reason == UnreachablePole.Reason.BATTERY_EXCEEDED }} ms=$planMs",
-        )
-    }
-
-    fun savePlan(p: RoutePlan) = scope.launch {
-        val rowIds = poles.orEmpty().associate { it.poleId to it.id }
-        val mission = MissionEntity(
-            projectId = project.id, createdAt = System.currentTimeMillis(), areaGeoJson = areaPolygon(vertices).toJson(),
-            homeLat = p.home.lat, homeLon = p.home.lon, flightParams = params.toJson(), modelVersion = null, status = "PLANNED",
-        )
-        val sorties = p.sorties.map { s -> SortieDraft(s.estDistanceM, s.estBatteryPct, s.poles.map { rowIds.getValue(it.poleId) }) }
-        runCatching { dao.saveMission(mission, sorties) }
-            .onSuccess {
-                saved = p to it
-                replanFrom?.let { old -> dao.setMissionStatus(old, "PARTIAL") }
-                message = "계획을 저장했습니다: 미션 #$it (소티 ${sorties.size}개, 전주 ${sorties.sumOf { s -> s.poleRowIds.size }}개)"
-                Log.i("RoutePlan", "saved mission=$it")
-            }
-            .onFailure { message = "계획을 저장하지 못했습니다: ${it.message}" }
-    }
+    val vm: PlanViewModel = viewModel(
+        factory = PlanViewModel.factory(
+            dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() }, context.contentResolver,
+        ),
+    )
+    val s by vm.state.collectAsStateWithLifecycle()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::onMapFilePicked) }
+    val inArea = remember(s.poles, s.vertices) { s.inArea }
 
     Box(Modifier.fillMaxSize()) {
-        poles?.let {
+        s.poles?.let {
             PoleMap(
                 poles = it,
-                mapFiles = mapFiles,
-                overlay = Overlay(vertices, home, plan, it.filter { p -> p.poleId in excluded }.map { p -> GeoPoint(p.lat, p.lon) }),
-                focus = focus,
-                onPoleClick = { id -> selected = id },
-                onMapTap = when (tool) {
-                    Tool.NONE -> null
-                    Tool.AREA -> { p -> vertices = vertices + p; plan = null }
-                    Tool.HOME -> { p -> home = p; tool = Tool.NONE; plan = null }
-                },
+                mapFiles = s.mapFiles,
+                overlay = Overlay(s.vertices, s.home, s.plan, s.excludedPoints),
+                focus = s.focus,
+                onPoleClick = vm::selectPole,
+                onMapTap = if (s.tool == Tool.NONE) null else vm::onMapTap,
             )
         }
 
-        Card(Modifier.padding(16.dp).widthIn(max = PANEL_WIDTH_DP.dp)) {
+        Card(
+            Modifier.padding(16.dp).widthIn(max = PANEL_WIDTH_DP.dp),
+            colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainer),
+        ) {
             Column(
                 Modifier.padding(12.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = onBack) { Text("← 목록") }
-                    Text(project.name, style = MaterialTheme.typography.titleMedium)
-                    Text("전주 ${poles?.size ?: 0}개 · 지도 ${mapFiles.size}개")
+                    Text(s.projectName, style = MaterialTheme.typography.titleMedium)
+                    Text("전주 ${s.poles?.size ?: 0}개 · 지도 ${s.mapFiles.size}개", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 // 패널 높이를 아끼려고 지도 파일 이름은 뺐다. 지도가 없을 때만 알린다.
-                if (mapFiles.isEmpty()) {
-                    Text("오프라인 지도(.mbtiles)가 없습니다. 배경 없이 전주만 표시합니다.", style = MaterialTheme.typography.bodySmall)
+                if (s.mapFiles.isEmpty()) {
+                    Text("오프라인 지도(.mbtiles)가 없습니다. 배경 없이 전주만 표시합니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                s.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
 
-                when (tool) {
+                when (s.tool) {
                     Tool.AREA -> {
-                        Text("지도를 눌러 꼭짓점을 추가하세요 (${vertices.size}개)", color = MaterialTheme.colorScheme.primary)
+                        Text("지도를 눌러 꼭짓점을 추가하세요 (${s.vertices.size}개)", color = MaterialTheme.colorScheme.primary)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { tool = Tool.NONE; focus = vertices }, enabled = vertices.size >= 3) { Text("완료") }
-                            OutlinedButton(onClick = { vertices = vertices.dropLast(1) }, enabled = vertices.isNotEmpty()) { Text("되돌리기") }
+                            Button(onClick = vm::finishArea, enabled = s.vertices.size >= 3) { Text("완료") }
+                            OutlinedButton(onClick = vm::undoVertex, enabled = s.vertices.isNotEmpty()) { Text("되돌리기") }
                         }
                     }
                     Tool.HOME -> {
                         Text("지도를 눌러 이륙 지점을 정하세요", color = MaterialTheme.colorScheme.primary)
-                        OutlinedButton(onClick = { tool = Tool.NONE }) { Text("취소") }
+                        OutlinedButton(onClick = vm::cancelTool) { Text("취소") }
                     }
                     Tool.NONE -> {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilledTonalButton(onClick = { vertices = emptyList(); excluded = emptySet(); plan = null; selected = null; tool = Tool.AREA }) { Text("영역 그리기") }
-                            FilledTonalButton(onClick = { selected = null; tool = Tool.HOME }) { Text("이륙 지점") }
+                            FilledTonalButton(onClick = vm::startArea) { Text("영역 그리기") }
+                            FilledTonalButton(onClick = vm::startHome) { Text("이륙 지점") }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val start = home
-                            val current = plan
                             // 경로를 보는 동안에는 파라미터 대신 경로 요약을 보여 준다(가로 1080px 화면에 다 들어가게).
-                            if (current == null) {
-                                Button(
-                                    onClick = { if (start != null) computePlan(start) },
-                                    enabled = start != null && inArea.size > excluded.size && paramErrors.isEmpty() && !planning,
-                                ) { Text(if (planning) "계산 중" else "경로 계산") }
+                            if (s.plan == null) {
+                                Button(onClick = vm::computePlan, enabled = s.canPlan) { Text(if (s.planning) "계산 중" else "경로 계산") }
                                 OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("지도 파일 추가") }
                             } else {
-                                val missionId = saved?.takeIf { it.first === current }?.second
-                                if (missionId == null) Button(onClick = { savePlan(current) }) { Text("계획 저장") }
+                                val missionId = s.savedMissionId
+                                if (missionId == null) Button(onClick = vm::savePlan) { Text("계획 저장") }
                                 else Button(onClick = { onStartFlight(missionId) }) { Text("비행 시작") }
-                                OutlinedButton(onClick = { plan = null }) { Text("다시 설정") }
+                                OutlinedButton(onClick = vm::resetPlan) { Text("다시 설정") }
                             }
                         }
                     }
                 }
 
-                if (tool == Tool.NONE && plan == null) ParamSteppers(params, ::updateParams)
-                paramErrors.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-                if (vertices.size >= 3) {
+                if (s.tool == Tool.NONE && s.plan == null) ParamSteppers(s.params, vm::updateParams)
+                s.paramErrors.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                if (s.vertices.size >= 3) {
                     Text(
-                        "영역 안 전주 ${inArea.size}개" + if (excluded.isEmpty()) "" else " · 제외 ${excluded.size}개",
+                        "영역 안 전주 ${inArea.size}개" + if (s.excluded.isEmpty()) "" else " · 제외 ${s.excluded.size}개",
                         style = MaterialTheme.typography.titleSmall,
                     )
                 }
-                if (tool == Tool.NONE && vertices.size >= 3 && home == null) Text("이륙 지점을 정하면 경로를 계산할 수 있습니다", style = MaterialTheme.typography.bodySmall)
-                plan?.let { PlanSummary(it, planMs, params) }
+                if (s.tool == Tool.NONE && s.vertices.size >= 3 && s.home == null) {
+                    Text("이륙 지점을 정하면 경로를 계산할 수 있습니다", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                s.plan?.let { PlanSummary(it, s.planMs, s.params) }
             }
         }
 
-        val pole = poles?.firstOrNull { it.poleId == selected }
+        val pole = s.poles?.firstOrNull { it.poleId == s.selected }
         if (pole != null) {
-            Card(Modifier.align(Alignment.BottomCenter).padding(24.dp)) {
+            Card(
+                Modifier.align(Alignment.BottomCenter).padding(24.dp),
+                colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh),
+            ) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    val isExcluded = pole.poleId in excluded
+                    val isExcluded = pole.poleId in s.excluded
                     Column {
                         Text(pole.poleId, style = MaterialTheme.typography.titleLarge)
-                        Text("${pole.lat}, ${pole.lon}  ${pole.lineName.orEmpty()}  ${pole.note.orEmpty()}")
+                        Text("${pole.lat}, ${pole.lon}  ${pole.lineName.orEmpty()}  ${pole.note.orEmpty()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (isExcluded) Text("경로에서 제외됨", color = MaterialTheme.colorScheme.error)
                     }
-                    // F-06: 영역 안 전주만 개별로 빼거나 다시 넣는다.
                     if (inArea.any { it.id == pole.id }) {
-                        OutlinedButton(onClick = {
-                            excluded = if (isExcluded) excluded - pole.poleId else excluded + pole.poleId
-                            plan = null
-                        }) { Text(if (isExcluded) "포함" else "제외") }
+                        OutlinedButton(onClick = { vm.toggleExcluded(pole.poleId) }) { Text(if (isExcluded) "포함" else "제외") }
                     }
-                    Button(onClick = { selected = null }) { Text("닫기") }
+                    Button(onClick = { vm.selectPole(null) }) { Text("닫기") }
                 }
             }
         }
@@ -565,7 +460,7 @@ private fun drawFeatures(vertices: List<GeoPoint>): FeatureCollection {
 }
 
 /** 점검 영역을 닫힌 GeoJSON 다각형으로. `MISSION.areaGeoJson`에도 이 형태로 저장한다. */
-private fun areaPolygon(vertices: List<GeoPoint>): GeoJsonPolygon =
+internal fun areaPolygon(vertices: List<GeoPoint>): GeoJsonPolygon =
     vertices.map { it.toPoint() }.let { GeoJsonPolygon.fromLngLats(listOf(it + it.first())) }
 
 /** 소티마다 이륙 지점 → 전주들 → 이륙 지점으로 닫힌 선 하나와 방문 전주 점들. */
@@ -583,37 +478,4 @@ private fun styleJson(mapFiles: List<File>): String {
     val layers = listOf("""{"id":"background","type":"background","paint":{"background-color":"#E6EAE7"}}""") +
         mapFiles.indices.map { """{"id":"base$it","type":"raster","source":"base$it"}""" }
     return """{"version":8,"sources":{${sources.joinToString(",")}},"layers":[${layers.joinToString(",")}]}"""
-}
-
-private fun listMbtiles(dir: File) = dir.listFiles { f -> f.extension == "mbtiles" }.orEmpty().sortedBy { it.name }
-
-/** SAF로 고른 MBTiles를 앱 전용 폴더(4.3 `maps/`)에 복사한다. SQLite 파일인지 머리글로 확인한다. */
-private fun copyMbtiles(context: Context, uri: Uri, dir: File): String {
-    val resolver = context.contentResolver
-    val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-        if (it.moveToFirst() && !it.isNull(0)) it.getString(0) else null
-    } ?: "map.mbtiles"
-    require(name.endsWith(".mbtiles", ignoreCase = true)) { ".mbtiles 파일만 추가할 수 있습니다" }
-    // 파일 이름은 스타일 JSON에 들어가므로 글자·숫자·`.`·`-`·`_`만 남긴다.
-    val target = File(dir, name.replace(Regex("[^\\p{L}\\p{N}._-]"), "_"))
-    val part = File(dir, target.name + ".part")
-    resolver.openInputStream(uri)?.use { input -> part.outputStream().use { input.copyTo(it) } } ?: error("파일을 열 수 없습니다")
-    val header = part.inputStream().use { String(it.readNBytesCompat(15), Charsets.US_ASCII) }
-    if (header != "SQLite format 3") {
-        part.delete()
-        error("MBTiles(SQLite) 형식이 아닙니다")
-    }
-    check(part.renameTo(target)) { "파일 이름을 바꾸지 못했습니다" }
-    return target.name
-}
-
-private fun java.io.InputStream.readNBytesCompat(n: Int): ByteArray {
-    val buf = ByteArray(n)
-    var read = 0
-    while (read < n) {
-        val r = read(buf, read, n - read)
-        if (r < 0) break
-        read += r
-    }
-    return buf.copyOf(read)
 }
