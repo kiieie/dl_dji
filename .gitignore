@@ -39,3 +39,7 @@ docs/evidence/**/reports/
 
 # DJI LDM 오프라인 라이선스 등 비밀 파일
 secrets/
+
+# design-sync 산출물(.design-sync/build.mjs로 재생성)
+ds-bundle/
+.design-sync/.cache/
