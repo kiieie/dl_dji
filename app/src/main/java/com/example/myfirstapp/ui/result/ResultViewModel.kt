@@ -82,6 +82,7 @@ class ResultViewModel(
     private val missionId: Long,
     private val exportDir: File,
     private val openOutput: (Uri) -> OutputStream?,
+    private val initialFilter: ResultFilter? = null,
     private val now: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ResultUiState(missionId = missionId))
@@ -106,6 +107,7 @@ class ResultViewModel(
                     tagOptions = (TargetLabels.names.keys + found).distinct(),
                 )
             }
+            initialFilter?.let(::setFilter)
         }
     }
 
@@ -181,7 +183,8 @@ class ResultViewModel(
     }
 
     companion object {
-        fun factory(dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File, openOutput: (Uri) -> OutputStream?) =
-            viewModelFactory { initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput) } }
+        fun factory(
+            dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File, initialFilter: ResultFilter?, openOutput: (Uri) -> OutputStream?,
+        ) = viewModelFactory { initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput, initialFilter) } }
     }
 }

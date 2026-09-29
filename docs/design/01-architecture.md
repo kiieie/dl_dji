@@ -84,7 +84,7 @@ flowchart TB
 | 영역 | 선택 | 비고 |
 |------|------|------|
 | 언어/UI | Kotlin, Jetpack Compose, Material3 | 기존 프로젝트 유지 |
-| 아키텍처 | MVVM + Clean, Coroutines/Flow | |
+| 아키텍처 | MVVM + Clean, Coroutines/Flow | 화면별 `ViewModel` + `StateFlow`(UDF), 화면 이동은 Navigation Compose 2.9 |
 | DI | 수동 DI(`Application`에서 조립) | Hilt는 AGP 9/KSP 호환 부담이 있어 1차 제외, 필요 시 도입 |
 | DB | Room 2.8.5 (SQLite) + KSP 2.3.12 | 오프라인 저장. `:app`의 `data` 패키지 |
 | 설정 | DataStore | 비행 파라미터 기본값 등 |

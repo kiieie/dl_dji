@@ -1,7 +1,6 @@
 package com.example.myfirstapp.ui.result
 
 import android.graphics.BitmapFactory
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -78,11 +77,10 @@ private val OtherBox = Color(0xFFFFC53D)
 
 /** 결과 화면 ⑤와 1차 판독(F-19). 상태는 [ResultViewModel]이 갖고, 이 화면은 그리기와 입력 전달만 한다. */
 @Composable
-fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, onBack: () -> Unit) {
+fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, initialFilter: ResultFilter? = null, onBack: () -> Unit) {
     val context = LocalContext.current
     val vm: ResultViewModel = viewModel(
-        key = "result-$missionId",
-        factory = ResultViewModel.factory(dao, projectId, missionId, context.getExternalFilesDir(null)!!) {
+        factory = ResultViewModel.factory(dao, projectId, missionId, context.getExternalFilesDir(null)!!, initialFilter) {
             context.contentResolver.openOutputStream(it)
         },
     )
@@ -91,7 +89,6 @@ fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, onBack: () -
     LaunchedEffect(vm) {
         vm.events.collect { e -> when (e) { is ResultEvent.PickSaveTarget -> saver.launch(e.fileName) } }
     }
-    BackHandler(onBack = onBack)
     ResultContent(state, vm, onBack)
 }
 

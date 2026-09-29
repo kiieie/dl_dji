@@ -2,17 +2,23 @@ package com.example.myfirstapp
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.ProjectSummary
-import com.example.myfirstapp.ui.FlightScreen
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
+import com.example.myfirstapp.ui.flight.FlightScreen
+import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import dji.v5.common.error.IDJIError
@@ -21,6 +27,7 @@ import dji.v5.manager.SDKManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
+import kotlinx.coroutines.flow.first
 
 class MainActivity : ComponentActivity() {
 
@@ -29,39 +36,58 @@ class MainActivity : ComponentActivity() {
         val dao = (application as InspectionApp).database.projectDao()
         setContent {
             MyFirstAppTheme {
-                var verifying by remember { mutableStateOf(false) }
-                var openProject by remember { mutableStateOf<ProjectSummary?>(null) }
-                var flightMission by remember { mutableStateOf<Long?>(null) }
-                var resultMission by remember { mutableStateOf<Long?>(null) }
-                var resultFromList by remember { mutableStateOf(false) }
-                BackHandler(verifying || openProject != null) { verifying = false; openProject = null }
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    val project = openProject
-                    val mission = flightMission
-                    val result = resultMission
-                    when {
-                        verifying -> VerificationPanel()
-                        // 결과 화면에서 뒤로 가면 들어온 화면(계획 또는 프로젝트 목록)으로 돌아간다.
-                        project != null && result != null -> ResultScreen(project.id, result, dao, onBack = {
-                            resultMission = null
-                            if (resultFromList) openProject = null
-                        })
-                        // 비행 화면은 자체 BackHandler로 비행 중 뒤로 가기를 막는다.
-                        project != null && mission != null -> FlightScreen(
-                            project.id, mission, dao,
-                            onExit = { flightMission = null },
-                            onShowResult = { resultMission = mission; resultFromList = false; flightMission = null },
-                        )
-                        project != null -> MapScreen(project, dao, onBack = { openProject = null }, onStartFlight = { flightMission = it })
-                        else -> ProjectScreen(
-                            dao,
-                            onOpenProject = { openProject = it },
-                            onOpenResult = { p, m -> openProject = p; resultMission = m; resultFromList = true },
-                            onOpenVerification = { verifying = true },
-                        )
-                    }
+                    AppNavHost(dao)
                 }
             }
+        }
+    }
+
+    /**
+     * 화면 이동(10장 화면 흐름). 화면마다 백 스택 항목이 생기고, 그 화면의 ViewModel은 항목이 스택에서 빠질 때 정리된다.
+     * 비행 화면은 1차 판독 화면에 다녀오는 동안 스택에 남아 실행기가 이어진다.
+     */
+    @Composable
+    private fun AppNavHost(dao: ProjectDao) {
+        val nav = rememberNavController()
+        val ids = listOf(navArgument("pid") { type = NavType.LongType }, navArgument("mid") { type = NavType.LongType })
+        NavHost(nav, startDestination = "projects") {
+            composable("projects") {
+                ProjectScreen(
+                    dao,
+                    onOpenProject = { nav.navigate("map/${it.id}") },
+                    onOpenResult = { p, m -> nav.navigate("result/${p.id}/$m") },
+                    onOpenVerification = { nav.navigate("verify") },
+                )
+            }
+            composable("map/{pid}", listOf(navArgument("pid") { type = NavType.LongType })) { e ->
+                val pid = e.arguments!!.getLong("pid")
+                val project by produceState<ProjectSummary?>(null, pid) { value = dao.observeProjects().first().firstOrNull { it.id == pid } }
+                project?.let { p -> MapScreen(p, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") }) }
+            }
+            composable("flight/{pid}/{mid}", ids) { e ->
+                val pid = e.arguments!!.getLong("pid")
+                val mid = e.arguments!!.getLong("mid")
+                FlightScreen(
+                    pid, mid, dao,
+                    onExit = { nav.popBackStack() },
+                    // 미션이 끝나면 비행 화면을 스택에서 빼고 결과로 간다(뒤로 가면 계획 화면)
+                    onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}") { inclusive = true } } },
+                    // 소티 완료 뒤 1차 판독은 검출 전주부터 연다(뒤로 가면 비행 화면)
+                    onReview = { nav.navigate("result/$pid/$mid?filter=DETECTED") },
+                )
+            }
+            composable(
+                "result/{pid}/{mid}?filter={filter}",
+                ids + navArgument("filter") { type = NavType.StringType; nullable = true },
+            ) { e ->
+                ResultScreen(
+                    e.arguments!!.getLong("pid"), e.arguments!!.getLong("mid"), dao,
+                    initialFilter = e.arguments!!.getString("filter")?.let(ResultFilter::valueOf),
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable("verify") { VerificationPanel() }
         }
     }
 
