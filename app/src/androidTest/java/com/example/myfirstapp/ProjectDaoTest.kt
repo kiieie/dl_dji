@@ -6,6 +6,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.myfirstapp.data.AppDatabase
 import com.example.myfirstapp.data.MissionEntity
 import com.example.myfirstapp.data.SortieDraft
+import com.example.myfirstapp.data.flightParamsFromJson
+import com.example.myfirstapp.data.toJson
+import com.example.myfirstapp.core.model.DownloadMode
+import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import kotlinx.coroutines.flow.first
@@ -60,5 +65,12 @@ class ProjectDaoTest {
         dao.deleteProject(id)
         assertTrue(dao.missions(id).isEmpty())
         assertTrue(dao.visits(sorties[0].id).isEmpty())
+    }
+
+    @Test
+    fun 비행_파라미터는_JSON으로_저장했다가_그대로_읽는다() {
+        val p = FlightParams(transitAltitudeM = 70.0, speedMps = 11.0, lenses = listOf(Lens.ZOOM), waitSec = 3, downloadMode = DownloadMode.ORIGINAL)
+        assertEquals(p, flightParamsFromJson(p.toJson()))
+        assertEquals(FlightParams(), flightParamsFromJson("{}"))
     }
 }

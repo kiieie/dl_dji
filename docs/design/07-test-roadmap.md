@@ -44,7 +44,8 @@
 | VWorld 타일 내려받기(F-04) | 보류 | 개발 인증키 발급(2026-09-29, 만료 2027-03-29, `secrets/`). 남은 확인: ① 타일 저장·오프라인 사용이 약관상 허용되는지 VWorld에 서면 문의(미정 2) ② 인증키 활용 API에 WMTS/TMS 추가 ③ 운용 전 운영키 신청. 그동안 MBTiles 파일을 SAF로 추가 |
 | 영역 그리기, 경로 미리보기(계획 화면 ③) | 완료 | `ui/MapScreen.kt`. 다각형 그리기(되돌리기), 이륙 지점, 소티별 경로 색과 예상치, 도달 불가 수. 앱 결과를 CSV 재계산으로 대조(`docs/evidence/2026-09-29-plan`) |
 | 핵심 파라미터 4개 UI, 전주 개별 포함/제외(F-06), 계획 저장(`MISSION`·`SORTIE`·`VISIT`) | 완료 | 소티별 재최적화(5.4) 추가. 앱 DB를 꺼내 대조(`docs/evidence/2026-09-29-plan-save`). 기본값 저장(DataStore)과 "고급" 패널은 ⑥ 설정 화면에서 |
-| ④ 비행 화면(`FakeDroneGateway`, 저장한 `MISSION` 실행, 알림음) | 다음 | 4단계 중 기체 없이 가능한 부분. `DjiDroneGateway`는 PoC 뒤 |
+| ④ 비행 화면(`FakeDroneGateway`, 저장한 `MISSION` 실행, 알림음) | 완료 | `ui/FlightScreen.kt`, `data/RoomRecorder.kt`(`CAPTURE`·`DETECTION`·`FLIGHT_EVENT`). 모의 비행 후 DB·이미지·알림음 대조(`docs/evidence/2026-09-29-flight`). 알림은 신호음으로 대신. `DjiDroneGateway`는 PoC 뒤 |
+| ⑤ 결과 화면(전주 목록·사진 보기·이상만 보기), 내보내기 | 다음 | 5단계 중 기체 없이 가능한 부분 |
 | 앱 재시작 복구(DB·SD 대조) | 4단계 | `InspectionExecutor`에 초기 방문 상태 주입 필요 |
 
 ### 13.1 개발 장비와 진행 순서

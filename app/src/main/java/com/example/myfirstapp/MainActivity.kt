@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.myfirstapp.data.ProjectSummary
+import com.example.myfirstapp.ui.FlightScreen
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
@@ -29,12 +30,16 @@ class MainActivity : ComponentActivity() {
             MyFirstAppTheme {
                 var verifying by remember { mutableStateOf(false) }
                 var openProject by remember { mutableStateOf<ProjectSummary?>(null) }
+                var flightMission by remember { mutableStateOf<Long?>(null) }
                 BackHandler(verifying || openProject != null) { verifying = false; openProject = null }
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val project = openProject
+                    val mission = flightMission
                     when {
                         verifying -> VerificationPanel()
-                        project != null -> MapScreen(project, dao, onBack = { openProject = null })
+                        // 비행 화면은 자체 BackHandler로 비행 중 뒤로 가기를 막는다.
+                        project != null && mission != null -> FlightScreen(project.id, mission, dao, onExit = { flightMission = null })
+                        project != null -> MapScreen(project, dao, onBack = { openProject = null }, onStartFlight = { flightMission = it })
                         else -> ProjectScreen(dao, onOpenProject = { openProject = it }, onOpenVerification = { verifying = true })
                     }
                 }

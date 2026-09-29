@@ -112,7 +112,7 @@ private const val AREA_COLOR = "#1864AB"
 
 /** 계획 화면 ③(10장): 전주 지도, 영역(다각형) 그리기, 이륙 지점, 경로와 소티 미리보기. */
 @Composable
-fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
+fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit, onStartFlight: (missionId: Long) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val poles by remember(project.id) { dao.observePoles(project.id) }.collectAsState(initial = null)
@@ -129,7 +129,8 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
     var focus by remember { mutableStateOf(emptyList<GeoPoint>()) }
     var params by remember { mutableStateOf(FlightParams()) }
     var excluded by remember { mutableStateOf(emptySet<String>()) }
-    var savedPlan by remember { mutableStateOf<RoutePlan?>(null) }
+    // 저장한 계획과 그 미션 번호. 계획이 바뀌면 plan이 달라지므로 [비행 시작]이 [계획 저장]으로 돌아간다.
+    var saved by remember { mutableStateOf<Pair<RoutePlan, Long>?>(null) }
     val paramErrors = remember(params) { params.validate() }
     val inArea = remember(poles, vertices) {
         val all = poles.orEmpty()
@@ -181,7 +182,7 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
         val sorties = p.sorties.map { s -> SortieDraft(s.estDistanceM, s.estBatteryPct, s.poles.map { rowIds.getValue(it.poleId) }) }
         runCatching { dao.saveMission(mission, sorties) }
             .onSuccess {
-                savedPlan = p
+                saved = p to it
                 message = "계획을 저장했습니다: 미션 #$it (소티 ${sorties.size}개, 전주 ${sorties.sumOf { s -> s.poleRowIds.size }}개)"
                 Log.i("RoutePlan", "saved mission=$it")
             }
@@ -248,9 +249,9 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit) {
                                 ) { Text(if (planning) "계산 중" else "경로 계산") }
                                 OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("지도 파일 추가") }
                             } else {
-                                Button(onClick = { savePlan(current) }, enabled = current !== savedPlan) {
-                                    Text(if (current === savedPlan) "저장됨" else "계획 저장")
-                                }
+                                val missionId = saved?.takeIf { it.first === current }?.second
+                                if (missionId == null) Button(onClick = { savePlan(current) }) { Text("계획 저장") }
+                                else Button(onClick = { onStartFlight(missionId) }) { Text("비행 시작") }
                                 OutlinedButton(onClick = { plan = null }) { Text("다시 설정") }
                             }
                         }

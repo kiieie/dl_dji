@@ -70,7 +70,7 @@ tap "닫기"
 $ADB logcat -c
 tap "경로 계산"; sleep 3
 has "소티 "; tap "계획 저장"; sleep 2
-has "계획을 저장했습니다: 미션 #1"; has "저장됨"; shot 4-saved
+has "계획을 저장했습니다: 미션 #1"; has "비행 시작"; shot 4-saved
 $ADB logcat -d -s RoutePlan:I | grep -E "vertices=|saved mission=" >"$DIR/routeplan.log"
 cat "$DIR/routeplan.log"
 

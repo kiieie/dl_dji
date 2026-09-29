@@ -473,7 +473,7 @@ class InspectionExecutor(
         gen++
         countdown = null
         state = to
-        recorder.recordTransition(from.name, to.name, reason, target?.pole?.poleId)
+        recorder.recordTransition(sortieIndex, from.name, to.name, reason, target?.pole?.poleId)
 
         if (to !in setOf(Arrived, Capturing, Downloading, Analyzing)) {
             arrivalJob?.cancel()

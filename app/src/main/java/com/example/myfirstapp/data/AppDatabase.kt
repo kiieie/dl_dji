@@ -12,15 +12,16 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Pole
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
 import org.json.JSONObject
 
-// 4.2 엔티티 중 가져오기·계획 저장에 필요한 PROJECT, POLE, MISSION, SORTIE, VISIT만 둔다.
-// ponytail: CAPTURE~TELEMETRY_SAMPLE은 4단계에서 쓰는 시점에 추가한다(출시 전이므로 스키마 버전은 올리지 않는다).
+// 4.2 엔티티. TELEMETRY_SAMPLE은 에너지 모델 보정(6단계) 때 추가한다(출시 전이므로 스키마 버전은 올리지 않는다).
 
 @Entity(tableName = "project")
 data class ProjectEntity(
@@ -106,6 +107,91 @@ fun FlightParams.toJson(): String = JSONObject()
     .put("batteryReservePct", batteryReservePct).put("vlosRadiusM", vlosRadiusM).put("downloadMode", downloadMode.name)
     .toString()
 
+@Entity(
+    tableName = "capture",
+    foreignKeys = [ForeignKey(VisitEntity::class, ["id"], ["visitId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("visitId")],
+)
+data class CaptureEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val visitId: Long,
+    val mediaId: String,
+    val filePath: String? = null,
+    val lens: String,
+    val source: String,
+    val lat: Double?,
+    val lon: Double?,
+    val altRel: Double,
+    val gimbalPitch: Double,
+    val heading: Double,
+    val takenAt: Long,
+    val originalDownloaded: Boolean = false,
+)
+
+@Entity(
+    tableName = "detection",
+    foreignKeys = [ForeignKey(CaptureEntity::class, ["id"], ["captureId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("captureId")],
+)
+data class DetectionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val captureId: Long,
+    val label: String,
+    val score: Float,
+    val x: Float,
+    val y: Float,
+    val w: Float,
+    val h: Float,
+)
+
+@Entity(
+    tableName = "flight_event",
+    foreignKeys = [ForeignKey(SortieEntity::class, ["id"], ["sortieId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("sortieId")],
+)
+data class FlightEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sortieId: Long,
+    val fromState: String,
+    val toState: String,
+    val reason: String,
+    val visitId: Long?,
+    val at: Long,
+)
+
+/** 비행 화면이 읽는 방문 한 건(소티 순서, 방문 순서대로). */
+data class MissionVisitRow(
+    val sortieId: Long,
+    val seq: Int,
+    val visitId: Long,
+    val status: String,
+    val poleId: String,
+    val lat: Double,
+    val lon: Double,
+    val lineName: String?,
+    val note: String?,
+)
+
+/** `MISSION.flightParams`(JSON)를 읽는다. 없는 필드는 기본값을 쓴다. */
+fun flightParamsFromJson(json: String): FlightParams {
+    val o = JSONObject(json)
+    val d = FlightParams()
+    return FlightParams(
+        transitAltitudeM = o.optDouble("transitAltitudeM", d.transitAltitudeM),
+        inspectAltitudeM = o.optDouble("inspectAltitudeM", d.inspectAltitudeM),
+        speedMps = o.optDouble("speedMps", d.speedMps),
+        offsetDistanceM = o.optDouble("offsetDistanceM", d.offsetDistanceM),
+        offsetBearingDeg = o.optDouble("offsetBearingDeg", d.offsetBearingDeg),
+        gimbalPitchDeg = o.optDouble("gimbalPitchDeg", d.gimbalPitchDeg),
+        lenses = o.optJSONArray("lenses")?.let { a -> List(a.length()) { Lens.valueOf(a.getString(it)) } } ?: d.lenses,
+        zoomRatio = o.optDouble("zoomRatio", d.zoomRatio),
+        waitSec = o.optInt("waitSec", d.waitSec),
+        batteryReservePct = o.optDouble("batteryReservePct", d.batteryReservePct),
+        vlosRadiusM = o.optDouble("vlosRadiusM", d.vlosRadiusM),
+        downloadMode = o.optString("downloadMode").let { m -> DownloadMode.entries.firstOrNull { it.name == m } } ?: d.downloadMode,
+    )
+}
+
 /** 소티 하나의 저장용 입력: 방문 순서대로 전주 행 id. */
 data class SortieDraft(val estDistanceM: Double, val estBatteryPct: Double, val poleRowIds: List<Long>)
 
@@ -150,6 +236,49 @@ interface ProjectDao {
     @Query("SELECT * FROM visit WHERE sortieId = :sortieId ORDER BY `order`")
     suspend fun visits(sortieId: Long): List<VisitEntity>
 
+    @Query("SELECT * FROM mission WHERE id = :missionId")
+    suspend fun mission(missionId: Long): MissionEntity?
+
+    @Query(
+        "SELECT s.id AS sortieId, s.seq, v.id AS visitId, v.status, p.poleId, p.lat, p.lon, p.lineName, p.note " +
+            "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
+            "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`",
+    )
+    suspend fun missionVisits(missionId: Long): List<MissionVisitRow>
+
+    @Query("UPDATE mission SET status = :status WHERE id = :missionId")
+    suspend fun setMissionStatus(missionId: Long, status: String)
+
+    @Query("UPDATE mission SET modelVersion = :version WHERE id = :missionId")
+    suspend fun setModelVersion(missionId: Long, version: String)
+
+    @Query("UPDATE sortie SET status = 'IN_PROGRESS', startedAt = :at WHERE id = :sortieId AND startedAt IS NULL")
+    suspend fun startSortie(sortieId: Long, at: Long)
+
+    @Query("UPDATE sortie SET status = 'DONE', endedAt = :at WHERE id = :sortieId")
+    suspend fun endSortie(sortieId: Long, at: Long)
+
+    @Query("UPDATE visit SET status = :status, skipReason = :skipReason WHERE id = :visitId")
+    suspend fun setVisitStatus(visitId: Long, status: String, skipReason: String?)
+
+    @Query("UPDATE visit SET arrivedAt = :at WHERE id = :visitId")
+    suspend fun setArrived(visitId: Long, at: Long)
+
+    @Insert
+    suspend fun insertEvent(event: FlightEventEntity)
+
+    @Insert
+    suspend fun insertCapture(capture: CaptureEntity): Long
+
+    @Query("UPDATE capture SET filePath = :path, originalDownloaded = :original WHERE id = :captureId")
+    suspend fun setCaptureFile(captureId: Long, path: String, original: Boolean)
+
+    @Query("SELECT * FROM capture WHERE id = :captureId")
+    suspend fun capture(captureId: Long): CaptureEntity?
+
+    @Insert
+    suspend fun insertDetections(detections: List<DetectionEntity>)
+
     /** 계획 저장(F-07·F-08 결과): 미션과 소티, 방문 순서를 한 번에 넣는다. 소티 번호와 방문 순서는 1부터 센다. */
     @Transaction
     suspend fun saveMission(mission: MissionEntity, sorties: List<SortieDraft>): Long {
@@ -170,7 +299,14 @@ interface ProjectDao {
     }
 }
 
-@Database(entities = [ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class], version = 1, exportSchema = false)
+@Database(
+    entities = [
+        ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
+        CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class,
+    ],
+    version = 1,
+    exportSchema = false,
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
 

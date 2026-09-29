@@ -27,7 +27,7 @@ fun interface StorageMonitor {
  * 방문은 (소티 순번, 소티 안 순서)로 식별한다.
  */
 interface InspectionRecorder {
-    suspend fun recordTransition(from: String, to: String, reason: String, poleId: String?)
+    suspend fun recordTransition(sortieIndex: Int, from: String, to: String, reason: String, poleId: String?)
     suspend fun updateVisit(sortieIndex: Int, order: Int, status: VisitStatus, skipReason: String? = null)
 
     /** 사진 기록을 저장하고 ID를 돌려준다. */

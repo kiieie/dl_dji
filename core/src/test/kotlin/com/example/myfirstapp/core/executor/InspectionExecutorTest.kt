@@ -41,7 +41,7 @@ class InspectionExecutorTest {
         val captures = mutableListOf<Pair<Int, CaptureSource>>()
         val images = mutableListOf<Long>()
         val detections = mutableMapOf<Long, List<Detection>>()
-        override suspend fun recordTransition(from: String, to: String, reason: String, poleId: String?) {
+        override suspend fun recordTransition(sortieIndex: Int, from: String, to: String, reason: String, poleId: String?) {
             transitions += from to to
         }
         override suspend fun updateVisit(sortieIndex: Int, order: Int, status: VisitStatus, skipReason: String?) {
