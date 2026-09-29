@@ -2,12 +2,15 @@ package com.example.myfirstapp
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.myfirstapp.ui.ProjectScreen
+import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.SDKManager
@@ -19,53 +22,61 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val dao = (application as InspectionApp).database.projectDao()
         setContent {
-            var djiStatus by remember { mutableStateOf("DJI SDK: 초기화되지 않음") }
-            var yoloStatus by remember { mutableStateOf("YOLO TFLite: 초기화되지 않음") }
-
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(text = "M1 Mac Mini 연동 테스트", style = MaterialTheme.typography.headlineMedium)
-                    Spacer(modifier = Modifier.height(30.dp))
-
-                    // 라이브러리 연동 현황판
-                    Text(text = djiStatus, style = MaterialTheme.typography.bodyLarge)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(text = yoloStatus, style = MaterialTheme.typography.bodyLarge)
-                    Spacer(modifier = Modifier.height(40.dp))
-
-                    // 검증 시작 버튼들
-                    Button(
-                        onClick = {
-                            djiStatus = "DJI 라이브러리 검증 중..."
-                            testDjiInitialization { success, message ->
-                                djiStatus = if (success) "✅ DJI SDK 검증 완료: $message" else "❌ DJI SDK 실패: $message"
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("DJI SDK V5 라이브러리 검증")
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            yoloStatus = "YOLO Interpreter 테스트 중..."
-                            val success = testTfliteInterpreter()
-                            yoloStatus = if (success) "✅ YOLO TFLite 엔진 정상 작동!" else "❌ YOLO TFLite 구동 실패"
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("YOLO (TFLite) 엔진 검증")
-                    }
+            MyFirstAppTheme {
+                var verifying by remember { mutableStateOf(false) }
+                BackHandler(verifying) { verifying = false }
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    if (verifying) VerificationPanel() else ProjectScreen(dao, onOpenVerification = { verifying = true })
                 }
+            }
+        }
+    }
+
+    /** DJI SDK와 TFLite 로드 확인용 검증 화면(PoC 전까지 유지). */
+    @Composable
+    private fun VerificationPanel() {
+        var djiStatus by remember { mutableStateOf("DJI SDK: 초기화되지 않음") }
+        var yoloStatus by remember { mutableStateOf("YOLO TFLite: 초기화되지 않음") }
+
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(text = "M1 Mac Mini 연동 테스트", style = MaterialTheme.typography.headlineMedium)
+            Spacer(modifier = Modifier.height(30.dp))
+
+            // 라이브러리 연동 현황판
+            Text(text = djiStatus, style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = yoloStatus, style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // 검증 시작 버튼들
+            Button(
+                onClick = {
+                    djiStatus = "DJI 라이브러리 검증 중..."
+                    testDjiInitialization { success, message ->
+                        djiStatus = if (success) "✅ DJI SDK 검증 완료: $message" else "❌ DJI SDK 실패: $message"
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("DJI SDK V5 라이브러리 검증")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    yoloStatus = "YOLO Interpreter 테스트 중..."
+                    val success = testTfliteInterpreter()
+                    yoloStatus = if (success) "✅ YOLO TFLite 엔진 정상 작동!" else "❌ YOLO TFLite 구동 실패"
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("YOLO (TFLite) 엔진 검증")
             }
         }
     }

@@ -33,3 +33,6 @@ app/src/main/assets/license*
 # 탐지 모델과 지도 타일(용량 큼, 별도 배포)
 *.tflite
 *.mbtiles
+
+# 증빙 폴더의 테스트 보고서(재생성 가능, 용량 큼). 스크린샷, README, 스크립트만 커밋
+docs/evidence/**/reports/

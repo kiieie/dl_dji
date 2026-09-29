@@ -77,7 +77,7 @@ flowchart TB
 
 > **1차는 3개 모듈로 시작한다**: `:app`(UI, 데이터, `FakeDroneGateway`, 탐지기는 패키지로 구분) + `:core`(JVM: model, domain, route 통합) + `:drone:dji`. 위 표의 세분화는 규모가 커질 때 `:core`와 `:app`에서 패키지 단위로 분리해 나간다. 기체 능력 차이(렌즈 목록, 줌)는 `DroneGateway`가 능력(capabilities)으로 노출해, 새 기체를 추가해도 도메인이 바뀌지 않게 한다.
 
-**`:core` 패키지 구성(구현됨)**: `com.example.myfirstapp.core` 아래에 `model`(도메인 모델, `FlightParams` 검증), `port`(`DroneGateway`, `Detector`, `Notifier`, `StorageMonitor`, `InspectionRecorder`), `csv`(`PoleCsvParser`), `route`(투영, 다각형, `TspSolver`, `RoutePlanner`, `EnergyModel`), `executor`(`InspectionExecutor`, `PreflightEvaluator`), `fake`(`FakeDroneGateway`)를 둔다. `FakeDroneGateway`는 순수 Kotlin이므로 `:app`이 아니라 `:core`에 두어 단위 테스트와 앱(에뮬레이터 시연)이 함께 쓴다.
+**`:core` 패키지 구성(구현됨)**: `com.example.myfirstapp.core` 아래에 `model`(도메인 모델, `FlightParams` 검증), `port`(`DroneGateway`, `Detector`, `Notifier`, `StorageMonitor`, `InspectionRecorder`), `csv`(`PoleCsvParser`), `route`(투영, 다각형, `TspSolver`, `RoutePlanner`, `EnergyModel`), `executor`(`InspectionExecutor`, `PreflightEvaluator`), `fake`(`FakeDroneGateway`)를 둔다. `:app`의 `data` 패키지(구현됨)에는 Room `AppDatabase`와 `ProjectDao`(가져오기 트랜잭션)를 둔다. 화면 ①·②는 `:app`의 `ui/ProjectScreen.kt` 한 화면(왼쪽 목록, 오른쪽 가져오기)으로 구현했고, `InspectionApp`(`Application`)이 DB를 만든다. `FakeDroneGateway`는 순수 Kotlin이므로 `:app`이 아니라 `:core`에 두어 단위 테스트와 앱(에뮬레이터 시연)이 함께 쓴다.
 
 ### 3.4 기술 스택
 
@@ -86,7 +86,7 @@ flowchart TB
 | 언어/UI | Kotlin, Jetpack Compose, Material3 | 기존 프로젝트 유지 |
 | 아키텍처 | MVVM + Clean, Coroutines/Flow | |
 | DI | 수동 DI(`Application`에서 조립) | Hilt는 AGP 9/KSP 호환 부담이 있어 1차 제외, 필요 시 도입 |
-| DB | Room (SQLite) | 오프라인 저장 |
+| DB | Room 2.8.5 (SQLite) + KSP 2.3.12 | 오프라인 저장. `:app`의 `data` 패키지 |
 | 설정 | DataStore | 비행 파라미터 기본값 등 |
 | 지도 | MapLibre Native Android + VWorld 타일(MBTiles) | 오픈소스, 중국계 아님 |
 | 드론 | DJI MSDK V5 5.18.0 + UX SDK(FPV 위젯 등, 샘플 저장소 소스 활용) | [공식 샘플](https://github.com/dji-sdk/Mobile-SDK-Android-V5) 기준 |
@@ -141,6 +141,7 @@ erDiagram
   TELEMETRY_SAMPLE { long id; long sortieId; datetime at; double lat; double lon; double altRel; float speed; int batteryPct; string flightMode }
 ```
 
+- **구현 현황**: `PROJECT`, `POLE`만 구현했다(`POLE`은 `(projectId, poleId)` 고유, 프로젝트 삭제 시 함께 삭제). 나머지는 쓰는 단계(3·4단계)에서 추가하며, 출시 전이므로 스키마 버전은 1로 유지한다.
 - `VISIT.status`: `PENDING` / `IN_PROGRESS` / `DONE` / `SKIPPED` / `FAILED`
 - `CAPTURE.source`: `AUTO`(도착 시 자동), `MANUAL`(수동 촬영 버튼), `PERIODIC`(주기 분석 프레임)
 - `MISSION.flightParams`에는 실행 시점의 파라미터를 그대로 저장한다(나중에 설정을 바꿔도 기록은 유지된다).
