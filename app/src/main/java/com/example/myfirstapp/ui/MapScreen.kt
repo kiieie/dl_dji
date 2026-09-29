@@ -76,12 +76,12 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression.eq
 import org.maplibre.android.style.expressions.Expression.geometryType
 import org.maplibre.android.style.expressions.Expression.get
-import org.maplibre.android.style.expressions.Expression.has
+import org.maplibre.android.style.expressions.Expression.interpolate
+import org.maplibre.android.style.expressions.Expression.linear
 import org.maplibre.android.style.expressions.Expression.literal
 import org.maplibre.android.style.expressions.Expression.neq
-import org.maplibre.android.style.expressions.Expression.not
 import org.maplibre.android.style.expressions.Expression.stop
-import org.maplibre.android.style.expressions.Expression.step
+import org.maplibre.android.style.expressions.Expression.zoom
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
@@ -93,7 +93,6 @@ import org.maplibre.android.style.layers.PropertyFactory.fillColor
 import org.maplibre.android.style.layers.PropertyFactory.fillOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
-import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -106,9 +105,13 @@ import org.maplibre.geojson.Polygon as GeoJsonPolygon
 /** 지도 도구. AREA는 누를 때마다 꼭짓점을 더하고, HOME은 한 번 눌러 이륙 지점을 정한다. */
 private enum class Tool { NONE, AREA, HOME }
 
-/** 소티별 경로 색. 클러스터(초록)·전주(주황)·영역(파랑)과 겹치지 않는 색을 돌려 쓴다. */
+/** 소티별 경로 색. 전주(주황)·제외(회색)·영역(파랑)과 겹치지 않는 색을 돌려 쓴다. */
 private val SORTIE_COLORS = listOf("#9C36B5", "#0C8599", "#C2255C", "#F59F00", "#3B5BDB")
 private const val AREA_COLOR = "#1864AB"
+
+// 전주 점 크기: 축소하면 작게(전체 1,000개가 서로 덜 겹치게), 확대하면 손가락으로 누르기 쉽게 키운다.
+private val POLE_RADIUS = interpolate(linear(), zoom(), stop(11, 2.5f), stop(14, 4.5f), stop(16, 7f))
+private val POLE_STROKE = interpolate(linear(), zoom(), stop(11, 0.5f), stop(14, 1.5f), stop(16, 2f))
 
 /** 계획 화면 ③(10장): 전주 지도, 영역(다각형) 그리기, 이륙 지점, 경로와 소티 미리보기. */
 @Composable
@@ -366,7 +369,7 @@ private data class Overlay(val vertices: List<GeoPoint>, val home: GeoPoint?, va
 
 /**
  * MapLibre 지도. 배경은 앱 전용 폴더의 MBTiles를 모두 겹쳐 그린다(지역별 파일). 네트워크 소스는 쓰지 않는다.
- * ponytail: 글리프(폰트) 파일이 없어 지도 위 글자(클러스터 개수, 전주번호)는 그리지 않는다. 전주번호는 탭하면 카드로 보여 준다.
+ * ponytail: 글리프(폰트) 파일이 없어 지도 위 글자(전주번호)는 그리지 않는다. 전주번호는 탭하면 카드로 보여 준다.
  */
 @Composable
 private fun PoleMap(
@@ -419,11 +422,7 @@ private fun PoleMap(
                 val p = map.projection.toScreenLocation(latLng)
                 val touch = 24 * density // 장갑 낀 손가락 기준 48dp 영역
                 val box = RectF(p.x - touch, p.y - touch, p.x + touch, p.y + touch)
-                if (map.queryRenderedFeatures(box, "clusters").isNotEmpty()) {
-                    map.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, map.cameraPosition.zoom + 2))
-                } else {
-                    onClick(map.queryRenderedFeatures(box, "poles-point").firstOrNull()?.getStringProperty("poleId"))
-                }
+                onClick(map.queryRenderedFeatures(box, "poles-point").firstOrNull()?.getStringProperty("poleId"))
                 true
             }
         }
@@ -435,13 +434,8 @@ private fun PoleMap(
                 val features = poles.map {
                     Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply { addStringProperty("poleId", it.poleId) }
                 }
-                // N-04: 전주 1,000개 이상에서도 원활하도록 클러스터링한다.
-                style.addSource(
-                    GeoJsonSource(
-                        "poles", FeatureCollection.fromFeatures(features),
-                        GeoJsonOptions().withCluster(true).withClusterRadius(50).withClusterMaxZoom(15),
-                    ),
-                )
+                // 전주는 묶지 않고 하나하나 점으로 그린다(N-04). 1,000개 수준의 원 레이어는 MapLibre가 무리 없이 그린다.
+                style.addSource(GeoJsonSource("poles", FeatureCollection.fromFeatures(features)))
                 // 영역과 경로는 전주 아래에, 꼭짓점과 이륙 지점은 맨 위에 그린다.
                 style.addSource(GeoJsonSource("draw"))
                 style.addSource(GeoJsonSource("route"))
@@ -460,18 +454,11 @@ private fun PoleMap(
                         .withProperties(lineColor(get("color")), lineWidth(4f)),
                 )
                 style.addLayer(
-                    CircleLayer("clusters", "poles").withFilter(has("point_count")).withProperties(
-                        circleColor("#1F6F5C"),
-                        circleRadius(step(get("point_count"), literal(14f), stop(50, 18f), stop(200, 24f))),
-                        circleStrokeColor("#FFFFFF"), circleStrokeWidth(2f),
+                    CircleLayer("poles-point", "poles").withProperties(
+                        circleColor("#D9480F"), circleRadius(POLE_RADIUS), circleStrokeColor("#FFFFFF"), circleStrokeWidth(POLE_STROKE),
                     ),
                 )
-                style.addLayer(
-                    CircleLayer("poles-point", "poles").withFilter(not(has("point_count"))).withProperties(
-                        circleColor("#D9480F"), circleRadius(7f), circleStrokeColor("#FFFFFF"), circleStrokeWidth(2f),
-                    ),
-                )
-                // 경로가 꺾이는 곳마다 방문 전주를 소티 색 점으로 찍는다. 클러스터에 가려도 꺾이는 이유가 보이게 클러스터 위에 그린다.
+                // 경로가 꺾이는 곳마다 방문 전주를 소티 색 점으로 찍는다(꺾이는 곳이 전주임을 보이게).
                 style.addLayer(
                     CircleLayer("route-stop", "route").withFilter(eq(geometryType(), literal("Point"))).withProperties(
                         circleColor("#FFFFFF"), circleRadius(5f), circleStrokeColor(get("color")), circleStrokeWidth(3f),
@@ -480,7 +467,7 @@ private fun PoleMap(
                 // 제외한 전주(F-06)는 원래 점 위에 회색으로 덮어 그린다.
                 style.addLayer(
                     CircleLayer("excluded-point", "excluded").withProperties(
-                        circleColor("#868E96"), circleRadius(7f), circleStrokeColor("#FFFFFF"), circleStrokeWidth(2f),
+                        circleColor("#868E96"), circleRadius(POLE_RADIUS), circleStrokeColor("#FFFFFF"), circleStrokeWidth(POLE_STROKE),
                     ),
                 )
                 style.addLayer(

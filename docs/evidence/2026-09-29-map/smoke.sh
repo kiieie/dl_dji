@@ -47,6 +47,6 @@ $ADB shell svc wifi disable; $ADB shell svc data disable
 $ADB shell am force-stop com.example.myfirstapp
 launch
 tap "poles-1000"; sleep 3
-has "오프라인 지도: test-grid.mbtiles"; shot 5-offline-restart
+has "전주 1000개 · 지도 1개"; shot 5-offline-restart
 $ADB shell svc wifi enable; $ADB shell svc data enable
 echo "스모크 시험 통과"

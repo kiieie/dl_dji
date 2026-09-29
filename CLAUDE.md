@@ -73,7 +73,7 @@ app/src/main/
 │   ├── data/AppDatabase.kt      # Room DB(4.2 엔티티, TELEMETRY_SAMPLE 제외)와 ProjectDao
 │   ├── data/RoomRecorder.kt     # 실행 기록 포트(InspectionRecorder)의 Room 구현
 │   ├── ui/ProjectScreen.kt      # ① 프로젝트 목록 + ② CSV 가져오기(SAF)
-│   ├── ui/MapScreen.kt          # ③ 계획(MapLibre, MBTiles, 클러스터링, 영역 그리기, 파라미터, 전주 제외, 경로 미리보기, 계획 저장)
+│   ├── ui/MapScreen.kt          # ③ 계획(MapLibre, MBTiles, 전주 개별 점, 영역 그리기, 파라미터, 전주 제외, 경로 미리보기, 계획 저장)
 │   ├── ui/FlightScreen.kt       # ④ 비행(모의 기체, 상태머신 실행, 신호음 알림)
 │   └── ui/theme/                # Compose 테마 (Color, Theme, Type)
 ├── keepRules/rules.keep         # R8 keep 규칙 (AGP 9 방식)
