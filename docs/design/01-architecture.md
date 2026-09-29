@@ -136,7 +136,7 @@ erDiagram
   SORTIE { long id; long missionId; int seq; double estDistanceM; double estBatteryPct; string status; datetime startedAt; datetime endedAt }
   VISIT { long id; long sortieId; long poleRowId; int order; string status; datetime arrivedAt; string skipReason }
   CAPTURE { long id; long visitId; string mediaId; string filePath; string lens; string source; double lat; double lon; double altRel; double gimbalPitch; double heading; datetime takenAt; bool originalDownloaded }
-  DETECTION { long id; long captureId; string label; float score; float x; float y; float w; float h }
+  DETECTION { long id; long captureId; string label; float score; float x; float y; float w; float h; bool alert }
   FLIGHT_EVENT { long id; long sortieId; string fromState; string toState; string reason; long visitId; datetime at }
   TELEMETRY_SAMPLE { long id; long sortieId; datetime at; double lat; double lon; double altRel; float speed; int batteryPct; string flightMode }
 ```

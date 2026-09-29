@@ -38,7 +38,7 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
         append('﻿')
         append("소티,순서,전주번호,위도,경도,선로명,상태,건너뛴 이유,도착 시각,사진 수,이상 수,이상 라벨\r\n")
         rows.forEach { r ->
-            val labels = capturesByVisit[r.visitId].orEmpty().flatMap { c -> detections[c.id].orEmpty().map { it.label } }.distinct()
+            val labels = capturesByVisit[r.visitId].orEmpty().flatMap { c -> detections[c.id].orEmpty().filter { it.alert }.map { it.label } }.distinct()
             listOf(
                 r.seq, r.order, r.poleId, r.lat, r.lon, r.lineName, r.status, r.skipReason,
                 r.arrivedAt?.let { timeFormat.format(Date(it)) }, r.photoCount, r.anomalyCount, labels.joinToString(";"),
@@ -74,7 +74,7 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
                         .put("file", file?.let { "images/${it.name}" } ?: JSONObject.NULL)
                         .put("detections", JSONArray(detections[c.id].orEmpty().map { d ->
                             JSONObject().put("label", d.label).put("score", d.score.toDouble())
-                                .put("x", d.x.toDouble()).put("y", d.y.toDouble()).put("w", d.w.toDouble()).put("h", d.h.toDouble())
+                                .put("x", d.x.toDouble()).put("y", d.y.toDouble()).put("w", d.w.toDouble()).put("h", d.h.toDouble()).put("alert", d.alert)
                         }))
                 }))
         }))

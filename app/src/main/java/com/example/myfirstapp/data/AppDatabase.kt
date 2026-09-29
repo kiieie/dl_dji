@@ -142,6 +142,8 @@ data class DetectionEntity(
     val y: Float,
     val w: Float,
     val h: Float,
+    /** 경고 라벨(9.1 `alertLabels`)이면 true. 이상 개수는 이것만 센다. */
+    val alert: Boolean,
 )
 
 @Entity(
@@ -302,7 +304,7 @@ interface ProjectDao {
     @Query(
         "SELECT s.seq, v.`order`, v.id AS visitId, p.poleId, p.lat, p.lon, p.lineName, v.status, v.skipReason, v.arrivedAt, " +
             "(SELECT COUNT(*) FROM capture c WHERE c.visitId = v.id) AS photoCount, " +
-            "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id) AS anomalyCount " +
+            "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert) AS anomalyCount " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
             "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`",
     )

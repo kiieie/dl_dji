@@ -19,7 +19,7 @@ enum class CaptureSource { AUTO, MANUAL, PERIODIC }
 
 enum class Lens { WIDE, ZOOM, THERMAL }
 
-/** 탐지 결과 한 개. 좌표는 이미지 크기 대비 0~1 비율(좌상단 기준). */
+/** 탐지 결과 한 개. 좌표는 이미지 크기 대비 0~1 비율(좌상단 기준). [alert]는 경고 라벨(9.1 `alertLabels`)인지다. */
 data class Detection(
     val label: String,
     val score: Float,
@@ -27,4 +27,5 @@ data class Detection(
     val y: Float,
     val w: Float,
     val h: Float,
+    val alert: Boolean = false,
 )

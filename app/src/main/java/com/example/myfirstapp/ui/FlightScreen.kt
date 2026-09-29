@@ -54,6 +54,7 @@ import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.executor.ExecutorUiState
 import com.example.myfirstapp.core.executor.InspectionExecutor
 import com.example.myfirstapp.core.fake.FakeDetector
+import com.example.myfirstapp.detect.TfliteYoloDetector
 import com.example.myfirstapp.core.fake.FakeDroneGateway
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
@@ -72,6 +73,8 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.RecorderSortie
 import com.example.myfirstapp.data.RoomRecorder
 import com.example.myfirstapp.data.flightParamsFromJson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -100,7 +103,8 @@ fun FlightScreen(projectId: Long, missionId: Long, dao: ProjectDao, onExit: () -
     var flight by remember { mutableStateOf<Flight?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     val notifier = remember { ToneNotifier() }
-    DisposableEffect(Unit) { onDispose { notifier.release() } }
+    var model by remember { mutableStateOf<TfliteYoloDetector?>(null) }
+    DisposableEffect(Unit) { onDispose { notifier.release(); model?.close() } }
 
     LaunchedEffect(missionId) {
         val mission = dao.mission(missionId) ?: return@LaunchedEffect run { loadError = "미션을 찾을 수 없습니다" }
@@ -122,10 +126,16 @@ fun FlightScreen(projectId: Long, missionId: Long, dao: ProjectDao, onExit: () -
             File(context.getExternalFilesDir(null), "projects/$projectId/missions/$missionId/images"),
             params.downloadMode,
         )
-        val drone = FakeDroneGateway(scope, home, FakeDroneGateway.Config(timeScale = FAKE_TIME_SCALE, image = ::fakePhoto))
+        val ext = context.getExternalFilesDir(null)
+        // 앱 폴더 fake_photos/에 JPEG이 있으면 차례로 돌려준다(탐지 모델 시험용, 10장 ⑤)
+        val samples = File(ext, "fake_photos").listFiles { f -> f.extension.lowercase() == "jpg" }.orEmpty().sortedBy { it.name }
+        var shot = 0
+        val image = if (samples.isEmpty()) ::fakePhoto else { _: CaptureInfo -> samples[shot++ % samples.size].readBytes() }
+        val drone = FakeDroneGateway(scope, home, FakeDroneGateway.Config(timeScale = FAKE_TIME_SCALE, image = image))
         val storage = StorageMonitor { (context.getExternalFilesDir(null)?.usableSpace ?: 0L) >= MIN_FREE_BYTES }
-        // 탐지 모델이 아직 없어 모의 탐지기를 쓴다(10장 ⑤). 모델을 넣으면 TFLite 탐지기로 바꾼다.
-        val executor = InspectionExecutor(scope, drone, recorder, notifier, storage, energy, FakeDetector(), sorties)
+        // 앱 폴더 models/에 규격에 맞는 모델이 있으면 TFLite 탐지기, 없으면 모의 탐지기(9.1)
+        model = withContext(Dispatchers.IO) { TfliteYoloDetector.loadLatest(File(ext, "models")) }
+        val executor = InspectionExecutor(scope, drone, recorder, notifier, storage, energy, model ?: FakeDetector(), sorties)
         executor.start()
         flight = Flight(executor, drone, energy, home, sorties.flatMap { it.poles })
     }

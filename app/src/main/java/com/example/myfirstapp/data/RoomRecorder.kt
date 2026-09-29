@@ -69,6 +69,6 @@ class RoomRecorder(
 
     override suspend fun saveDetections(captureId: Long, modelVersion: String, detections: List<Detection>) {
         dao.setModelVersion(missionId, modelVersion)
-        dao.insertDetections(detections.map { DetectionEntity(0, captureId, it.label, it.score, it.x, it.y, it.w, it.h) })
+        dao.insertDetections(detections.map { DetectionEntity(0, captureId, it.label, it.score, it.x, it.y, it.w, it.h, it.alert) })
     }
 }

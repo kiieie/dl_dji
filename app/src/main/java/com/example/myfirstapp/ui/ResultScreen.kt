@@ -186,14 +186,16 @@ private fun PoleDetail(r: ResultRow, captures: List<CaptureEntity>, detections: 
                 Column(Modifier.weight(1f)) {
                     Photo(c, detections[c.id].orEmpty())
                     Text("${if (c.lens == "ZOOM") "망원" else if (c.lens == "WIDE") "광각" else c.lens} · ${c.source}")
-                    detections[c.id].orEmpty().forEach { Text("${it.label} ${(it.score * 100).toInt()}%", color = MaterialTheme.colorScheme.error) }
+                    detections[c.id].orEmpty().forEach {
+                        Text("${it.label} ${(it.score * 100).toInt()}%", color = if (it.alert) MaterialTheme.colorScheme.error else Color.Unspecified)
+                    }
                 }
             }
         }
     }
 }
 
-/** 사진 위에 탐지 박스(0~1 비율 좌표)를 그린다. 파일이 없거나 읽지 못하면 자리만 표시한다. */
+/** 사진 위에 탐지 박스(0~1 비율 좌표)를 그린다. 경고 라벨은 빨강, 그 밖은 노랑. 파일이 없거나 읽지 못하면 자리만 표시한다. */
 @Composable
 private fun Photo(c: CaptureEntity, boxes: List<DetectionEntity>) {
     val bitmap = remember(c.filePath) { c.filePath?.let { BitmapFactory.decodeFile(it) }?.asImageBitmap() }
@@ -201,9 +203,15 @@ private fun Photo(c: CaptureEntity, boxes: List<DetectionEntity>) {
         if (bitmap != null) Image(bitmap, contentDescription = "${c.lens} 사진", modifier = Modifier.fillMaxSize())
         else Text("사진 파일 없음", color = Color.White, modifier = Modifier.align(Alignment.Center))
         Canvas(Modifier.fillMaxSize()) {
+            // 사진은 비율을 지켜 가운데 그려지므로(ContentScale.Fit) 상자도 실제 사진 영역에 맞춘다
+            val scale = bitmap?.let { minOf(size.width / it.width, size.height / it.height) }
+            val w = bitmap?.let { it.width * scale!! } ?: size.width
+            val h = bitmap?.let { it.height * scale!! } ?: size.height
+            val left = (size.width - w) / 2
+            val top = (size.height - h) / 2
             boxes.forEach { b ->
                 drawRect(
-                    Color(0xFFFF5252), Offset(b.x * size.width, b.y * size.height), Size(b.w * size.width, b.h * size.height),
+                    if (b.alert) Color(0xFFFF5252) else Color(0xFFFFD740), Offset(left + b.x * w, top + b.y * h), Size(b.w * w, b.h * h),
                     style = Stroke(3.dp.toPx()),
                 )
             }

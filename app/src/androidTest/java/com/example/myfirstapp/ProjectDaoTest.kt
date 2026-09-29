@@ -96,7 +96,13 @@ class ProjectDaoTest {
         val image = File(dir, "A-1_1_WIDE.jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
         val wide = dao.insertCapture(CaptureEntity(0, v1, "m1", image.absolutePath, "WIDE", "AUTO", 37.5, 127.0, 30.0, -10.0, 0.0, 1))
         dao.insertCapture(CaptureEntity(0, v1, "m2", null, "ZOOM", "AUTO", 37.5, 127.0, 30.0, -10.0, 0.0, 2))
-        dao.insertDetections(listOf(DetectionEntity(0, wide, "모의 이상", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f)))
+        // 경고 라벨 1개와 일반 탐지 1개: 이상 수와 이상 라벨은 경고 라벨만 센다
+        dao.insertDetections(
+            listOf(
+                DetectionEntity(0, wide, "모의 이상", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true),
+                DetectionEntity(0, wide, "전주", 0.8f, 0.5f, 0.1f, 0.1f, 0.8f, alert = false),
+            ),
+        )
 
         val result = dao.resultRows(missionId)
         assertEquals(listOf(2 to 1, 0 to 0), result.map { it.photoCount to it.anomalyCount })
@@ -115,7 +121,9 @@ class ProjectDaoTest {
             val caps = json.getJSONArray("poles").getJSONObject(0).getJSONArray("captures")
             assertEquals("images/A-1_1_WIDE.jpg", caps.getJSONObject(0).getString("file"))
             assertTrue(caps.getJSONObject(1).isNull("file"))
-            assertEquals("모의 이상", caps.getJSONObject(0).getJSONArray("detections").getJSONObject(0).getString("label"))
+            val dets = caps.getJSONObject(0).getJSONArray("detections")
+            assertEquals(2, dets.length())
+            assertEquals(setOf("모의 이상" to true, "전주" to false), (0 until 2).map { dets.getJSONObject(it).let { d -> d.getString("label") to d.getBoolean("alert") } }.toSet())
         }
     }
 }

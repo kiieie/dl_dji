@@ -24,7 +24,7 @@ events = q("SELECT fromState, toState, reason FROM flight_event ORDER BY id")
 # 사진 순서(id)에서 몇 번째 사진에 탐지가 있는지, 그리고 이상 탐지 전주
 cap_ids = [r[0] for r in q("SELECT id FROM capture ORDER BY id")]
 det_caps = {cap_ids.index(r[0]) + 1 for r in q("SELECT DISTINCT captureId FROM detection")}
-anomalous = {r[0] for r in q("SELECT DISTINCT c.visitId FROM detection d JOIN capture c ON c.id = d.captureId")}
+anomalous = {r[0] for r in q("SELECT DISTINCT c.visitId FROM detection d JOIN capture c ON c.id = d.captureId WHERE d.alert")}
 chain_ok = all(events[i][0] == events[i - 1][1] for i in range(1, len(events)))
 
 checks = [

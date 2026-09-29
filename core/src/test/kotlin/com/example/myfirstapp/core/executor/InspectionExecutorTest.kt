@@ -132,10 +132,20 @@ class InspectionExecutorTest {
 
     @Test
     fun `이상 탐지 시 경고음`() = runTest {
-        val h = harness(detector = FixedDetector(listOf(Detection("crack", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f))))
+        val h = harness(detector = FixedDetector(listOf(Detection("crack", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true))))
         h.send(Command.Start)
         h.awaitState(ExecState.MissionDone)
         assertEquals(3, h.sounds.count { it == Sound.ANOMALY })
+        assertEquals(6, h.recorder.detections.size)
+    }
+
+    @Test
+    fun `경고 라벨이 아닌 탐지는 저장만 하고 정상음`() = runTest {
+        val h = harness(detector = FixedDetector(listOf(Detection("pole", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f))))
+        h.send(Command.Start)
+        h.awaitState(ExecState.MissionDone)
+        assertEquals(0, h.sounds.count { it == Sound.ANOMALY })
+        assertEquals(3, h.sounds.count { it == Sound.INSPECTION_OK })
         assertEquals(6, h.recorder.detections.size)
     }
 

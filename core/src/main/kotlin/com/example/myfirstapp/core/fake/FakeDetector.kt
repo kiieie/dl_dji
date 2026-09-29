@@ -12,5 +12,5 @@ class FakeDetector(private val every: Int = 5) : Detector {
     private var count = 0
 
     override suspend fun detect(image: ByteArray): List<Detection> =
-        if (++count % every == 0) listOf(Detection("모의 이상", 0.9f, 0.35f, 0.3f, 0.3f, 0.4f)) else emptyList()
+        if (++count % every == 0) listOf(Detection("모의 이상", 0.9f, 0.35f, 0.3f, 0.3f, 0.4f, alert = true)) else emptyList()
 }

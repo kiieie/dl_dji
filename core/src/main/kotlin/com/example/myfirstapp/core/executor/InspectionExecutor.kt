@@ -265,7 +265,7 @@ class InspectionExecutor(
                         message = "분석 건너뜀: ${r.error}"
                         notifier.play(Sound.ERROR)
                     }
-                    lastDetections.isNotEmpty() -> notifier.play(Sound.ANOMALY)
+                    lastDetections.any { it.alert } -> notifier.play(Sound.ANOMALY)
                     else -> notifier.play(Sound.INSPECTION_OK)
                 }
                 afterArrivalStep(Waiting, "분석 완료")
