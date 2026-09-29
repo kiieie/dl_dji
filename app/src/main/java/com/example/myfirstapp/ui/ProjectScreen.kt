@@ -45,7 +45,12 @@ import java.util.Date
 
 /** 10장 ① 프로젝트 목록(왼쪽)과 ② 데이터 가져오기(오른쪽). 가로 화면 한 장에 둔다. */
 @Composable
-fun ProjectScreen(dao: ProjectDao, onOpenVerification: () -> Unit, modifier: Modifier = Modifier) {
+fun ProjectScreen(
+    dao: ProjectDao,
+    onOpenProject: (ProjectSummary) -> Unit,
+    onOpenVerification: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val projects by remember(dao) { dao.observeProjects() }.collectAsState(initial = emptyList())
@@ -77,7 +82,7 @@ fun ProjectScreen(dao: ProjectDao, onOpenVerification: () -> Unit, modifier: Mod
             if (projects.isEmpty()) Text("프로젝트가 없습니다. 오른쪽에서 전주 CSV를 가져오세요.")
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(projects, key = { it.id }) { project ->
-                    Card(Modifier.fillMaxWidth()) {
+                    Card(onClick = { onOpenProject(project) }, modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(project.name, style = MaterialTheme.typography.titleMedium)

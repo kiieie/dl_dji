@@ -4,11 +4,11 @@
 
 ## 현재 단계: 구현 — 2단계 기반 (M3E 기체 없음)
 
-- 설계서 v1.0이 **승인**되었습니다(2026-09-29, 현재 v1.2). 구현은 `docs/design/07-test-roadmap.md` 13장의 단계 순서를 따릅니다.
+- 설계서 v1.0이 **승인**되었습니다(2026-09-29, 현재 v1.3). 구현은 `docs/design/07-test-roadmap.md` 13장의 단계 순서를 따릅니다.
 - **M3E 기체가 아직 없습니다.** 2~3단계(기반, 계획)를 `FakeDroneGateway`로 진행하고, 기체를 확보하면 1단계 PoC를 먼저 수행합니다. 기체가 필요한 항목(6.1 방식 B, 6.4 하드웨어 버튼 재개, LDM 오프라인 등록 등)은 PoC 전까지 가정으로만 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
-- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면은 완료했고, 다음은 오프라인 지도입니다.
+- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시)는 완료했고, 다음은 3단계 계획 화면(영역 그리기, 경로 미리보기)입니다. VWorld 타일 내려받기는 약관 확인 전까지 보류합니다.
 
 ## 프로젝트 개요
 
@@ -20,7 +20,7 @@
 4. 자동 비행: 전주 도착 → 촬영 → 이미지 다운로드 → YOLO(TFLite) 분석 → 알림음 → 5초 대기 → 다음 전주
 5. RC Pro의 **하드웨어 일시정지 버튼**을 누르면 수동 조종으로 전환하고, 화면의 큰 **[재개]** 버튼을 누르면 다음 미점검 전주로 이동합니다.
 
-자세한 내용은 `docs/DESIGN.md`(목차와 요구사항)와 `docs/design/`(장별 상세 설계)를 참고하세요. 장 번호(예: 6.4)는 전체에서 유일하므로 번호로 찾습니다. `:app`에는 프로젝트 목록·가져오기 화면과, DJI SDK·TFLite 로드를 확인하는 검증 화면(`MainActivity`의 "연동 검증")이 있고, 도메인 로직은 `:core`에 있습니다.
+자세한 내용은 `docs/DESIGN.md`(목차와 요구사항)와 `docs/design/`(장별 상세 설계)를 참고하세요. 장 번호(예: 6.4)는 전체에서 유일하므로 번호로 찾습니다. `:app`에는 프로젝트 목록·가져오기 화면, 지도 화면과, DJI SDK·TFLite 로드를 확인하는 검증 화면(`MainActivity`의 "연동 검증")이 있고, 도메인 로직은 `:core`에 있습니다.
 
 ## 핵심 제약 사항
 
@@ -46,7 +46,8 @@
 - 현재 의존성: `com.dji:dji-sdk-v5-aircraft:5.18.0`(+ `-provided`는 `compileOnly`), `org.tensorflow:tensorflow-lite:2.17.0`, `tensorflow-lite-gpu`, `tensorflow-lite-support:0.4.4`
 - `:core`: `kotlinx-coroutines-core` 1.10.2(테스트는 `kotlinx-coroutines-test`), Kotlin JVM 플러그인, JVM 17
 - Room 2.8.5 + KSP 2.3.12(`:app`, `ksp(libs.androidx.room.compiler)`)
-- 설계상 추가 예정: DataStore, MapLibre Native (`docs/design/01-architecture.md` 3.4). Hilt는 1차에서 제외하고 수동 DI를 씁니다.
+- MapLibre Native Android 13.6.1(`android-sdk-opengl`, Vulkan 기본 패키지 아님)
+- 설계상 추가 예정: DataStore (`docs/design/01-architecture.md` 3.4). Hilt는 1차에서 제외하고 수동 DI를 씁니다.
 
 ## 자주 쓰는 명령
 
@@ -71,6 +72,7 @@ app/src/main/
 │   ├── MainActivity.kt          # 프로젝트 화면 진입 + 연동 검증 화면(DJI/TFLite)
 │   ├── data/AppDatabase.kt      # Room DB(PROJECT, POLE)와 ProjectDao
 │   ├── ui/ProjectScreen.kt      # ① 프로젝트 목록 + ② CSV 가져오기(SAF)
+│   ├── ui/MapScreen.kt          # 지도(MapLibre, MBTiles, 전주 클러스터링)
 │   └── ui/theme/                # Compose 테마 (Color, Theme, Type)
 ├── keepRules/rules.keep         # R8 keep 규칙 (AGP 9 방식)
 └── res/
@@ -81,7 +83,9 @@ core/src/                        # 순수 Kotlin(JVM) 도메인 모듈
 │   ├── executor/                # InspectionExecutor 상태머신, 비행 전 점검 판정
 │   └── fake/                    # FakeDroneGateway (모의 기체)
 └── test/                        # JUnit + kotlinx-coroutines-test
+tools/make_test_data.py          # 시험용 전주 CSV와 합성 MBTiles 생성(python3 + Pillow)
 docs/
+├── evidence/                    # 작업별 증빙(스크린샷, README, 스모크 스크립트). reports/는 git 제외
 ├── DESIGN.md                    # 설계서 목차, 개요, 요구사항, 확정·미정 사항
 └── design/                      # 장별 상세 설계 (01-architecture ~ 07-test-roadmap)
 ```

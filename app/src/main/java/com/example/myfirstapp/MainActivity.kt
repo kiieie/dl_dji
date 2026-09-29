@@ -9,6 +9,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.example.myfirstapp.data.ProjectSummary
+import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import dji.v5.common.error.IDJIError
@@ -26,9 +28,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyFirstAppTheme {
                 var verifying by remember { mutableStateOf(false) }
-                BackHandler(verifying) { verifying = false }
+                var openProject by remember { mutableStateOf<ProjectSummary?>(null) }
+                BackHandler(verifying || openProject != null) { verifying = false; openProject = null }
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    if (verifying) VerificationPanel() else ProjectScreen(dao, onOpenVerification = { verifying = true })
+                    val project = openProject
+                    when {
+                        verifying -> VerificationPanel()
+                        project != null -> MapScreen(project, dao, onBack = { openProject = null })
+                        else -> ProjectScreen(dao, onOpenProject = { openProject = it }, onOpenVerification = { verifying = true })
+                    }
                 }
             }
         }
