@@ -32,8 +32,8 @@ bash docs/evidence/2026-09-29-detect/smoke.sh       # 약 4분, 에뮬레이터 
   - 상자 IoU는 최소 0.972였습니다.
   - 점수 차이는 최대 0.014였습니다.
   - 차이는 리사이즈 방식(Android Canvas와 PIL)에서 옵니다.
-- `person`만 `alert`로 저장했습니다. 결과 화면의 이상 전주는 1, 3, 5번째로, 기준값과 같았습니다.
-- 알림음은 이상음 3회, 점검 완료음 2회였고 오류음은 없었습니다.
+- `person`만 `alert`(검출 대상)로 저장했습니다. 결과 화면의 검출 전주는 1, 3, 5번째로, 기준값과 같았습니다.
+- 알림음은 검출음 3회, 점검 완료음 2회였고 오류음은 없었습니다.
 - 추론 시간 로그가 사진마다 1줄씩, 모두 10줄 남았습니다.
   - 에뮬레이터 추론 시간은 중앙값 약 110ms였습니다.
   - 전처리는 약 120ms 걸렸습니다.
@@ -44,10 +44,10 @@ bash docs/evidence/2026-09-29-detect/smoke.sh       # 약 4분, 에뮬레이터 
 | 파일 | 내용 |
 |------|------|
 | `1-flight-analyzed.png` | 첫 전주 분석 뒤 대기 |
-| `2-result-list.png` | 결과 목록: 이상 3, 모델 `coco-yolo11n-fp16` |
+| `2-result-list.png` | 결과 목록: 검출 3, 모델 `coco-yolo11n-fp16` |
 | `3-bus-zidane.png` | 사진 위 상자: 경고 라벨(person)은 빨강, 그 밖(bus, tie)은 노랑 |
-| `4-no-person.png` | 사람이 없는 전주: 이상 없음 |
-| `5-anomaly-filter.png` | [이상만] 필터 |
+| `4-no-person.png` | 사람이 없는 전주: 검출 없음 |
+| `5-detected-filter.png` | [검출] 필터 |
 
 ## 이번 작업에서 고친 것
 

@@ -1,5 +1,7 @@
 package com.example.myfirstapp.data
 
+import com.example.myfirstapp.core.model.ReviewVerdict
+import com.example.myfirstapp.core.model.TargetLabels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -23,7 +25,7 @@ private fun csvField(v: Any?): String {
 
 /**
  * 미션 결과를 ZIP으로 묶는다(F-16, 10장 ⑤). 들어가는 것:
- * - `result.csv`: 전주별 결과(UTF-8 BOM, 엑셀에서 한글이 깨지지 않게)
+ * - `result.csv`: 전주별 결과와 1차 판독(UTF-8 BOM, 엑셀에서 한글이 깨지지 않게). 2차 판독(다른 플랫폼)의 입력이다
  * - `mission.json`: 미션·소티·파라미터와 전주별 사진·탐지
  * - `images/`: 받은 사진(파일이 없는 사진은 JSON에만 남는다)
  */
@@ -33,15 +35,19 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
     val captures = dao.missionCaptures(missionId)
     val detections = dao.missionDetections(missionId).groupBy { it.captureId }
     val capturesByVisit = captures.groupBy { it.visitId }
+    val reviews = dao.latestReviews(missionId).associateBy { it.visitId }
 
     val csv = buildString {
         append('﻿')
-        append("소티,순서,전주번호,위도,경도,선로명,상태,건너뛴 이유,도착 시각,사진 수,이상 수,이상 라벨\r\n")
+        append("소티,순서,전주번호,위도,경도,선로명,상태,건너뛴 이유,도착 시각,사진 수,검출 수,검출 대상,1차 판정,판정 대상,메모\r\n")
         rows.forEach { r ->
             val labels = capturesByVisit[r.visitId].orEmpty().flatMap { c -> detections[c.id].orEmpty().filter { it.alert }.map { it.label } }.distinct()
+            val review = reviews[r.visitId]
             listOf(
                 r.seq, r.order, r.poleId, r.lat, r.lon, r.lineName, r.status, r.skipReason,
-                r.arrivedAt?.let { timeFormat.format(Date(it)) }, r.photoCount, r.anomalyCount, labels.joinToString(";"),
+                r.arrivedAt?.let { timeFormat.format(Date(it)) }, r.photoCount, r.detectCount, labels.joinToString(";", transform = TargetLabels::title),
+                review?.let { ReviewVerdict.valueOf(it.verdict).title },
+                review?.tags?.split(';')?.filter { it.isNotEmpty() }?.joinToString(";", transform = TargetLabels::title), review?.memo,
             ).joinTo(this, ",") { csvField(it) }
             append("\r\n")
         }
@@ -65,6 +71,10 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
             JSONObject().put("sortie", r.seq).put("order", r.order).put("poleId", r.poleId).put("lat", r.lat).put("lon", r.lon)
                 .put("status", r.status).put("skipReason", r.skipReason ?: JSONObject.NULL)
                 .put("arrivedAt", r.arrivedAt ?: JSONObject.NULL)
+                .put("review", reviews[r.visitId]?.let { v ->
+                    JSONObject().put("verdict", v.verdict).put("tags", JSONArray(v.tags.split(';').filter { it.isNotEmpty() }))
+                        .put("memo", v.memo ?: JSONObject.NULL).put("at", v.at)
+                } ?: JSONObject.NULL)
                 .put("captures", JSONArray(capturesByVisit[r.visitId].orEmpty().map { c ->
                     val file = c.filePath?.let(::File)?.takeIf { it.isFile }
                     JSONObject().put("mediaId", c.mediaId).put("lens", c.lens).put("source", c.source).put("takenAt", c.takenAt)

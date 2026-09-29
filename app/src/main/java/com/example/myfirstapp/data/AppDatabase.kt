@@ -146,6 +146,24 @@ data class DetectionEntity(
     val alert: Boolean,
 )
 
+/**
+ * 1차 판독(F-19). 판정할 때마다 한 줄을 더하고, 전주마다 가장 최근 줄이 현재 판정이다.
+ * [verdict]: `CONFIRMED`(검출 맞음) / `NONE`(검출 없음) / `RETAKE`(재촬영), [tags]: 대상 라벨을 `;`로 이은 값.
+ */
+@Entity(
+    tableName = "review",
+    foreignKeys = [ForeignKey(VisitEntity::class, ["id"], ["visitId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("visitId")],
+)
+data class ReviewEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val visitId: Long,
+    val verdict: String,
+    val tags: String,
+    val memo: String?,
+    val at: Long,
+)
+
 @Entity(
     tableName = "flight_event",
     foreignKeys = [ForeignKey(SortieEntity::class, ["id"], ["sortieId"], onDelete = ForeignKey.CASCADE)],
@@ -207,7 +225,8 @@ data class ResultRow(
     val skipReason: String?,
     val arrivedAt: Long?,
     val photoCount: Int,
-    val anomalyCount: Int,
+    /** 검출 대상(경고 라벨) 탐지 수. */
+    val detectCount: Int,
 )
 
 /** 소티 하나의 저장용 입력: 방문 순서대로 전주 행 id. */
@@ -304,7 +323,7 @@ interface ProjectDao {
     @Query(
         "SELECT s.seq, v.`order`, v.id AS visitId, p.poleId, p.lat, p.lon, p.lineName, v.status, v.skipReason, v.arrivedAt, " +
             "(SELECT COUNT(*) FROM capture c WHERE c.visitId = v.id) AS photoCount, " +
-            "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert) AS anomalyCount " +
+            "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert) AS detectCount " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
             "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`",
     )
@@ -321,6 +340,16 @@ interface ProjectDao {
             "JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId ORDER BY d.id",
     )
     suspend fun missionDetections(missionId: Long): List<DetectionEntity>
+
+    @Insert
+    suspend fun insertReview(review: ReviewEntity): Long
+
+    /** 미션의 전주별 현재 판정(가장 최근 판독). */
+    @Query(
+        "SELECT r.* FROM review r JOIN visit v ON v.id = r.visitId JOIN sortie s ON s.id = v.sortieId " +
+            "WHERE s.missionId = :missionId AND r.id = (SELECT MAX(r2.id) FROM review r2 WHERE r2.visitId = r.visitId)",
+    )
+    suspend fun latestReviews(missionId: Long): List<ReviewEntity>
 
     /** 계획 저장(F-07·F-08 결과): 미션과 소티, 방문 순서를 한 번에 넣는다. 소티 번호와 방문 순서는 1부터 센다. */
     @Transaction
@@ -345,7 +374,7 @@ interface ProjectDao {
 @Database(
     entities = [
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
-        CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class,
+        CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class,
     ],
     version = 1,
     exportSchema = false,

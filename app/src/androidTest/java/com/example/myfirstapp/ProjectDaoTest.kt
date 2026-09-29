@@ -7,6 +7,7 @@ import com.example.myfirstapp.data.AppDatabase
 import com.example.myfirstapp.data.CaptureEntity
 import com.example.myfirstapp.data.DetectionEntity
 import com.example.myfirstapp.data.MissionEntity
+import com.example.myfirstapp.data.ReviewEntity
 import com.example.myfirstapp.data.SortieDraft
 import com.example.myfirstapp.data.exportMission
 import com.example.myfirstapp.data.flightParamsFromJson
@@ -96,16 +97,21 @@ class ProjectDaoTest {
         val image = File(dir, "A-1_1_WIDE.jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
         val wide = dao.insertCapture(CaptureEntity(0, v1, "m1", image.absolutePath, "WIDE", "AUTO", 37.5, 127.0, 30.0, -10.0, 0.0, 1))
         dao.insertCapture(CaptureEntity(0, v1, "m2", null, "ZOOM", "AUTO", 37.5, 127.0, 30.0, -10.0, 0.0, 2))
-        // 경고 라벨 1개와 일반 탐지 1개: 이상 수와 이상 라벨은 경고 라벨만 센다
+        // 검출 대상 1개와 일반 탐지 1개: 검출 수와 검출 대상은 경고 라벨만 센다
         dao.insertDetections(
             listOf(
-                DetectionEntity(0, wide, "모의 이상", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true),
+                DetectionEntity(0, wide, "bird_nest", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true),
                 DetectionEntity(0, wide, "전주", 0.8f, 0.5f, 0.1f, 0.1f, 0.8f, alert = false),
             ),
         )
 
         val result = dao.resultRows(missionId)
-        assertEquals(listOf(2 to 1, 0 to 0), result.map { it.photoCount to it.anomalyCount })
+        assertEquals(listOf(2 to 1, 0 to 0), result.map { it.photoCount to it.detectCount })
+
+        // 1차 판독: 같은 전주를 두 번 판정하면 나중 판정이 현재 판정이다
+        dao.insertReview(ReviewEntity(0, v1, "RETAKE", "", null, 10))
+        dao.insertReview(ReviewEntity(0, v1, "CONFIRMED", "bird_nest;foreign_object", "둥지, \"큼\"", 20))
+        assertEquals(listOf(v1 to "CONFIRMED"), dao.latestReviews(missionId).map { it.visitId to it.verdict })
 
         val r = exportMission(dao, missionId, File(dir, "out.zip"))
         assertEquals(2 to 1, r.poleCount to r.imageCount)
@@ -115,15 +121,19 @@ class ProjectDaoTest {
             assertTrue(csv.startsWith("\uFEFF소티,"))
             val lines = csv.trimEnd().split("\r\n")
             assertEquals(3, lines.size)
-            assertTrue(lines[1].startsWith("1,1,A-1,") && lines[1].endsWith(",2,1,모의 이상"))
+            assertTrue(lines[1], lines[1].startsWith("1,1,A-1,") && lines[1].endsWith(",2,1,조류 둥지,검출 맞음,조류 둥지;이물질,\"둥지, \"\"큼\"\"\""))
             assertTrue(lines[2].contains(",SKIPPED,\"강풍, \"\"접근 불가\"\"\","))
+            assertTrue(lines[2], lines[2].endsWith(",0,0,,,,"))
             val json = JSONObject(zip.getInputStream(zip.getEntry("mission.json")).readBytes().decodeToString())
             val caps = json.getJSONArray("poles").getJSONObject(0).getJSONArray("captures")
             assertEquals("images/A-1_1_WIDE.jpg", caps.getJSONObject(0).getString("file"))
             assertTrue(caps.getJSONObject(1).isNull("file"))
             val dets = caps.getJSONObject(0).getJSONArray("detections")
             assertEquals(2, dets.length())
-            assertEquals(setOf("모의 이상" to true, "전주" to false), (0 until 2).map { dets.getJSONObject(it).let { d -> d.getString("label") to d.getBoolean("alert") } }.toSet())
+            val review = json.getJSONArray("poles").getJSONObject(0).getJSONObject("review")
+            assertEquals("CONFIRMED" to 2, review.getString("verdict") to review.getJSONArray("tags").length())
+            assertTrue(json.getJSONArray("poles").getJSONObject(1).isNull("review"))
+            assertEquals(setOf("bird_nest" to true, "전주" to false), (0 until 2).map { dets.getJSONObject(it).let { d -> d.getString("label") to d.getBoolean("alert") } }.toSet())
         }
     }
 }

@@ -89,13 +89,13 @@ tap "비행 시작"
 wait_for "대기 [0-9]s" 90; shot 1-flight-analyzed
 wait_for "미션 완료" 300
 
-# 2) 결과 화면: 이상(사람) 전주 3개, 사진 위 빨강(person)·노랑(bus, tie) 상자
+# 2) 결과 화면: 검출(사람) 전주 3개, 사진 위 빨강(person)·노랑(bus, tie) 상자
 tap "결과 보기"
 has "결과 — 미션 #1"; has "모델 coco-yolo11n-fp16"
 shot 2-result-list
-tapk text "1-1"; has "person"; has "bus"; shot 3-bus-zidane
-tap "1-2"; has "사진 2"; shot 4-no-person
-tap "이상만 3"; shot 5-anomaly-filter
+tap "1-1 · 완료 · 사진 2"; has "person"; has "bus"; shot 3-bus-zidane
+tap "1-2 · 완료 · 사진 2"; has "T-[0-9]* · 완료"; shot 4-no-person
+tap "검출 3"; shot 5-detected-filter
 $ADB logcat -d -s Sound:I Detector:I | grep -o "\(Sound\|Detector\) *: .*" | sed 's/ *: /: /' >"$DIR/detect.log"
 
 # 3) DB(WAL 포함)와 저장 사진을 꺼내 대조한다.

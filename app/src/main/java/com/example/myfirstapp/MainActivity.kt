@@ -13,7 +13,7 @@ import com.example.myfirstapp.data.ProjectSummary
 import com.example.myfirstapp.ui.FlightScreen
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
-import com.example.myfirstapp.ui.ResultScreen
+import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent

@@ -29,3 +29,17 @@ data class Detection(
     val h: Float,
     val alert: Boolean = false,
 )
+
+/** 1차 판독 판정(F-19). 앱은 이상 유무가 아니라 AI 검출이 맞는지를 판정한다(9.2). */
+enum class ReviewVerdict(val title: String) {
+    CONFIRMED("검출 맞음"),
+    NONE("검출 없음"),
+    RETAKE("재촬영"),
+}
+
+/** 검출 대상 라벨의 화면 이름(9.2). 목록에 없는 라벨은 그대로 보여 준다. */
+object TargetLabels {
+    val names = linkedMapOf("bird_nest" to "조류 둥지", "foreign_object" to "이물질")
+
+    fun title(label: String) = names[label] ?: label
+}

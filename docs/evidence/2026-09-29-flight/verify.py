@@ -21,7 +21,7 @@ caps = q("SELECT c.visitId, c.lens, c.source, c.filePath, c.originalDownloaded, 
 sorties = q("SELECT status, startedAt, endedAt FROM sortie")
 events = q("SELECT fromState, toState, reason FROM flight_event ORDER BY id")
 (model_version,), = q("SELECT modelVersion FROM mission")
-# 사진 순서(id)에서 몇 번째 사진에 탐지가 있는지, 그리고 이상 탐지 전주
+# 사진 순서(id)에서 몇 번째 사진에 탐지가 있는지, 그리고 검출 전주
 cap_ids = [r[0] for r in q("SELECT id FROM capture ORDER BY id")]
 det_caps = {cap_ids.index(r[0]) + 1 for r in q("SELECT DISTINCT captureId FROM detection")}
 anomalous = {r[0] for r in q("SELECT DISTINCT c.visitId FROM detection d JOIN capture c ON c.id = d.captureId WHERE d.alert")}
@@ -46,7 +46,7 @@ checks = [
     ("도착음 = 완료 전주 수", len(done), sounds["ARRIVED"]),
     ("일시정지음 1, 재개음 1", (1, 1), (sounds["PAUSED"], sounds["RESUMED"])),
     ("모의 탐지기 모델 버전", "fake-1", model_version),
-    ("이상음 = 이상 탐지 전주 수, 점검 완료음 = 나머지 완료 전주", (len(anomalous), len(done) - len(anomalous)),
+    ("이상음 = 검출 전주 수, 점검 완료음 = 나머지 완료 전주", (len(anomalous), len(done) - len(anomalous)),
      (sounds["ANOMALY"], sounds["INSPECTION_OK"])),
     ("분석 오류음 없음", 0, sounds["ERROR"]),
     ("모의 탐지: 사진 5장마다 1장", [i for i in range(1, len(caps) + 1) if i % 5 == 0], sorted(det_caps)),
