@@ -37,7 +37,7 @@ $ADB shell svc wifi enable; $ADB shell svc data enable
 launch
 
 tap "CSV 파일 선택"; tap "poles-1000.csv"; has "전주 1000개 · 제외 0행"; tap "저장"
-tap "poles-1000"; sleep 3
+tap "poles-1000"; sleep 2; tap "+ 새 계획"; sleep 3  # 프로젝트 → 미션 목록 → 계획 화면
 has "전주 1000개"; has "오프라인 지도(.mbtiles)가 없습니다"; shot 1-map-no-base
 tap "지도 파일 추가"; tap "test-grid.mbtiles"; sleep 3
 has "지도를 추가했습니다: test-grid.mbtiles"; shot 2-map-with-base
@@ -46,7 +46,7 @@ has "지도를 추가했습니다: test-grid.mbtiles"; shot 2-map-with-base
 $ADB shell svc wifi disable; $ADB shell svc data disable
 $ADB shell am force-stop com.example.myfirstapp
 launch
-tap "poles-1000"; sleep 3
+tap "poles-1000"; sleep 2; tap "+ 새 계획"; sleep 3  # 프로젝트 → 미션 목록 → 계획 화면
 has "전주 1000개 · 지도 1개"; shot 5-offline-restart
 $ADB shell svc wifi enable; $ADB shell svc data enable
 echo "스모크 시험 통과"

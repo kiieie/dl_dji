@@ -229,6 +229,20 @@ data class ResultRow(
     val detectCount: Int,
 )
 
+/** 미션 목록(①-1) 카드 한 장. [lastFlightAt]은 소티 착륙(없으면 이륙) 시각 중 가장 늦은 값이다. */
+data class MissionSummary(
+    val id: Long,
+    val status: String,
+    val createdAt: Long,
+    val sortieCount: Int,
+    val poleCount: Int,
+    val doneCount: Int,
+    val remainingCount: Int,
+    val detectedCount: Int,
+    val reviewedCount: Int,
+    val lastFlightAt: Long?,
+)
+
 /** 소티 하나의 저장용 입력: 방문 순서대로 전주 행 id. */
 data class SortieDraft(val estDistanceM: Double, val estBatteryPct: Double, val poleRowIds: List<Long>)
 
@@ -343,6 +357,22 @@ interface ProjectDao {
 
     @Insert
     suspend fun insertReview(review: ReviewEntity): Long
+
+    @Query(
+        "SELECT m.id, m.status, m.createdAt, " +
+            "(SELECT COUNT(*) FROM sortie s WHERE s.missionId = m.id) AS sortieCount, " +
+            "(SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS poleCount, " +
+            "(SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id AND v.status = 'DONE') AS doneCount, " +
+            "(SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id " +
+            "AND v.status IN ('PENDING', 'IN_PROGRESS')) AS remainingCount, " +
+            "(SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id AND EXISTS " +
+            "(SELECT 1 FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert)) AS detectedCount, " +
+            "(SELECT COUNT(DISTINCT r.visitId) FROM review r JOIN visit v ON v.id = r.visitId JOIN sortie s ON s.id = v.sortieId " +
+            "WHERE s.missionId = m.id) AS reviewedCount, " +
+            "(SELECT MAX(COALESCE(s.endedAt, s.startedAt)) FROM sortie s WHERE s.missionId = m.id) AS lastFlightAt " +
+            "FROM mission m WHERE m.projectId = :projectId ORDER BY m.id DESC",
+    )
+    fun observeMissions(projectId: Long): Flow<List<MissionSummary>>
 
     /** 미션의 전주별 현재 판정(가장 최근 판독). */
     @Query(

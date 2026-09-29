@@ -16,4 +16,4 @@
 일치: 추론 시간 로그 = 사진 수 기대 10, 앱 10
 전주 5개, 사진 10장, 사용 사진 ['1-bus.jpg', '2-zidane.jpg', '3-pole.jpg', '4-pole.jpg', '1-bus.jpg', '2-zidane.jpg', '3-pole.jpg', '4-pole.jpg', '1-bus.jpg', '2-zidane.jpg']
 짝지은 탐지 21개, 최소 IoU 0.972, 최대 점수 차 0.014
-에뮬레이터 추론 시간(ms) 중앙값 114.0, 최대 146 — RC Pro 측정은 PoC ⑤
+에뮬레이터 추론 시간(ms) 중앙값 116.5, 최대 164 — RC Pro 측정은 PoC ⑤

@@ -48,7 +48,6 @@ import java.util.Date
 fun ProjectScreen(
     dao: ProjectDao,
     onOpenProject: (ProjectSummary) -> Unit,
-    onOpenResult: (ProjectSummary, Long) -> Unit,
     onOpenVerification: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -89,7 +88,6 @@ fun ProjectScreen(
                                 Text(project.name, style = MaterialTheme.typography.titleMedium)
                                 Text("전주 ${project.poleCount}개 · ${DateFormat.getDateTimeInstance().format(Date(project.createdAt))}")
                             }
-                            project.lastMissionId?.let { m -> TextButton(onClick = { onOpenResult(project, m) }) { Text("결과") } }
                             TextButton(onClick = { deleting = project }) { Text("삭제") }
                         }
                     }

@@ -49,7 +49,7 @@
 | AI 탐지 연결(범용 모델) | 완료 | `detect/TfliteYoloDetector.kt`, `:core` `detect/YoloDecoder.kt`(레터박스 복원, 클래스별 NMS, 단위 테스트 3개), `DETECTION.alert`. COCO yolo11n(`tools/export_coco_model.sh`)으로 앱 결과를 PC 기준값과 대조(`docs/evidence/2026-09-29-detect`). 에뮬레이터 추론 약 110ms. 전력 설비 모델과 RC Pro 측정은 뒤에 |
 | 결과 화면 `ViewModel` 전환, "검출" 문구, 1차 판독(F-19, `REVIEW`), 내보내기 판정 열 | 완료 | `ui/result/`. Android 개발 규칙(MVVM·UDF) 첫 적용. 판정 3종과 CSV·JSON을 DB와 대조(`docs/evidence/2026-09-29-result`) |
 | 비행 화면 `ViewModel` 전환, 소티 완료 화면(보조자 1차 판독 진입) | 완료 | `ui/flight/`. 기체는 `droneFactory`로 주입. Navigation Compose로 판독 화면에 다녀와도 실행기 유지(`docs/evidence/2026-09-29-sortie`) |
-| 미션 목록(①-1), 이어하기와 날짜 확인(F-20) | 예정 | 프로젝트 카드 [결과]를 미션 목록으로 대체 |
+| 미션 목록(①-1), 이어하기와 날짜 확인(F-20) | 완료 | `ui/mission/`, `:core` `needsResumeConfirm`. [남은 전주로 새 계획]은 기존 미션을 `PARTIAL`로 닫음(`docs/evidence/2026-09-29-missions`) |
 | DJI UX SDK FPV·계기 위젯(비행 화면) | 기체 확보 뒤 | 공식 샘플 `android-sdk-v5-uxsdk`(5.18.0) 모듈, `DefaultLayoutActivity` 참고. PoC와 함께 |
 | 앱 재시작 복구(DB·SD 대조) | 4단계 | `InspectionExecutor`에 초기 방문 상태 주입 필요 |
 

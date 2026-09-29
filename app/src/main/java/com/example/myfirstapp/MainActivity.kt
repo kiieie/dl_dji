@@ -18,6 +18,7 @@ import com.example.myfirstapp.data.ProjectSummary
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
+import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
@@ -55,15 +56,31 @@ class MainActivity : ComponentActivity() {
             composable("projects") {
                 ProjectScreen(
                     dao,
-                    onOpenProject = { nav.navigate("map/${it.id}") },
-                    onOpenResult = { p, m -> nav.navigate("result/${p.id}/$m") },
+                    onOpenProject = { nav.navigate("missions/${it.id}") },
                     onOpenVerification = { nav.navigate("verify") },
                 )
             }
-            composable("map/{pid}", listOf(navArgument("pid") { type = NavType.LongType })) { e ->
+            composable("missions/{pid}", listOf(navArgument("pid") { type = NavType.LongType })) { e ->
                 val pid = e.arguments!!.getLong("pid")
+                MissionListScreen(
+                    pid, dao,
+                    onBack = { nav.popBackStack() },
+                    onNewPlan = { nav.navigate("map/$pid") },
+                    onFlight = { nav.navigate("flight/$pid/$it") },
+                    onReplan = { nav.navigate("map/$pid?replan=$it") },
+                    onResult = { nav.navigate("result/$pid/$it") },
+                )
+            }
+            composable(
+                "map/{pid}?replan={replan}",
+                listOf(navArgument("pid") { type = NavType.LongType }, navArgument("replan") { type = NavType.LongType; defaultValue = -1L }),
+            ) { e ->
+                val pid = e.arguments!!.getLong("pid")
+                val replan = e.arguments!!.getLong("replan").takeIf { it > 0 }
                 val project by produceState<ProjectSummary?>(null, pid) { value = dao.observeProjects().first().firstOrNull { it.id == pid } }
-                project?.let { p -> MapScreen(p, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") }) }
+                project?.let { p ->
+                    MapScreen(p, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") }, replanFrom = replan)
+                }
             }
             composable("flight/{pid}/{mid}", ids) { e ->
                 val pid = e.arguments!!.getLong("pid")

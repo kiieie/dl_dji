@@ -1,22 +1,22 @@
 Detector: 모델 거부 zz-broken: 출력 텐서 [1, 84, 8400] FLOAT32 ≠ [1, 14, N] FLOAT32 (라벨 10개)
 Detector: model=coco-yolo11n-fp16 dir=coco-yolo11n-fp16
 Sound: ARRIVED
-Detector: pre=138ms infer=144ms post=16ms n=5
-Detector: pre=59ms infer=108ms post=5ms n=3
+Detector: pre=130ms infer=164ms post=18ms n=5
+Detector: pre=60ms infer=108ms post=6ms n=3
 Sound: ANOMALY
 Sound: ARRIVED
-Detector: pre=82ms infer=117ms post=5ms n=0
-Detector: pre=58ms infer=109ms post=5ms n=0
+Detector: pre=86ms infer=119ms post=5ms n=0
+Detector: pre=63ms infer=108ms post=8ms n=0
 Sound: INSPECTION_OK
 Sound: ARRIVED
-Detector: pre=104ms infer=144ms post=6ms n=5
-Detector: pre=59ms infer=108ms post=5ms n=3
+Detector: pre=112ms infer=150ms post=5ms n=5
+Detector: pre=58ms infer=108ms post=5ms n=3
 Sound: ANOMALY
 Sound: ARRIVED
-Detector: pre=95ms infer=111ms post=5ms n=0
-Detector: pre=63ms infer=136ms post=5ms n=0
+Detector: pre=98ms infer=114ms post=6ms n=0
+Detector: pre=60ms infer=142ms post=7ms n=0
 Sound: INSPECTION_OK
 Sound: ARRIVED
-Detector: pre=103ms infer=146ms post=4ms n=5
-Detector: pre=58ms infer=108ms post=4ms n=3
+Detector: pre=109ms infer=135ms post=4ms n=5
+Detector: pre=57ms infer=111ms post=4ms n=3
 Sound: ANOMALY

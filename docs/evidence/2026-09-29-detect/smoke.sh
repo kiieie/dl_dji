@@ -72,7 +72,7 @@ $ADB push "$DATA"/photos/. $APPFILES/fake_photos/ >/dev/null
 $ADB shell ls $APPFILES/models $APPFILES/fake_photos
 
 tap "CSV 파일 선택"; tap "poles-1000.csv"; tap "저장"
-tap "poles-1000"; sleep 3
+tap "poles-1000"; sleep 2; tap "+ 새 계획"; sleep 3  # 프로젝트 → 미션 목록 → 계획 화면
 tap "지도 파일 추가"; tap "test-grid.mbtiles"; sleep 3
 
 # 1) 비행 스모크와 같은 작은 영역(전주 5개) → 계획 저장 → 비행

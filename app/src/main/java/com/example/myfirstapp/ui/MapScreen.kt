@@ -113,9 +113,18 @@ private const val AREA_COLOR = "#1864AB"
 private val POLE_RADIUS = interpolate(linear(), zoom(), stop(11, 2.5f), stop(14, 4.5f), stop(16, 7f))
 private val POLE_STROKE = interpolate(linear(), zoom(), stop(11, 0.5f), stop(14, 1.5f), stop(16, 2f))
 
-/** 계획 화면 ③(10장): 전주 지도, 영역(다각형) 그리기, 이륙 지점, 경로와 소티 미리보기. */
+/**
+ * 계획 화면 ③(10장): 전주 지도, 영역(다각형) 그리기, 이륙 지점, 경로와 소티 미리보기.
+ * [replanFrom]이 있으면 그 미션의 남은 전주만 골라 연다(F-20 [남은 전주로 새 계획]). 저장하면 그 미션은 부분 완료로 닫힌다.
+ */
 @Composable
-fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit, onStartFlight: (missionId: Long) -> Unit) {
+fun MapScreen(
+    project: ProjectSummary,
+    dao: ProjectDao,
+    onBack: () -> Unit,
+    onStartFlight: (missionId: Long) -> Unit,
+    replanFrom: Long? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val poles by remember(project.id) { dao.observePoles(project.id) }.collectAsState(initial = null)
@@ -138,6 +147,22 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit, onSt
     val inArea = remember(poles, vertices) {
         val all = poles.orEmpty()
         if (vertices.size < 3) emptyList() else Polygon(vertices).let { area -> all.filter { area.contains(GeoPoint(it.lat, it.lon)) } }
+    }
+
+    // 남은 전주를 감싸는 사각형을 영역으로 두고, 그 안의 다른 전주는 제외한다(F-06 제외와 같은 방식)
+    LaunchedEffect(poles, replanFrom) {
+        val all = poles ?: return@LaunchedEffect
+        if (replanFrom == null || vertices.isNotEmpty()) return@LaunchedEffect
+        val remaining = dao.missionVisits(replanFrom).filter { it.status == "PENDING" || it.status == "IN_PROGRESS" }.map { it.poleId }.toSet()
+        val targets = all.filter { it.poleId in remaining }
+        if (targets.isEmpty()) return@LaunchedEffect
+        val pad = 0.0003 // 약 30m
+        val (s, n) = targets.minOf { it.lat } - pad to targets.maxOf { it.lat } + pad
+        val (w, e) = targets.minOf { it.lon } - pad to targets.maxOf { it.lon } + pad
+        vertices = listOf(GeoPoint(s, w), GeoPoint(s, e), GeoPoint(n, e), GeoPoint(n, w))
+        excluded = all.filter { it.lat in s..n && it.lon in w..e && it.poleId !in remaining }.map { it.poleId }.toSet()
+        focus = vertices
+        message = "미션 #$replanFrom 의 남은 전주 ${targets.size}개를 골랐습니다. 이륙 지점을 정하세요."
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -186,6 +211,7 @@ fun MapScreen(project: ProjectSummary, dao: ProjectDao, onBack: () -> Unit, onSt
         runCatching { dao.saveMission(mission, sorties) }
             .onSuccess {
                 saved = p to it
+                replanFrom?.let { old -> dao.setMissionStatus(old, "PARTIAL") }
                 message = "계획을 저장했습니다: 미션 #$it (소티 ${sorties.size}개, 전주 ${sorties.sumOf { s -> s.poleRowIds.size }}개)"
                 Log.i("RoutePlan", "saved mission=$it")
             }

@@ -21,6 +21,7 @@ has() { $ADB exec-out uiautomator dump /dev/tty | grep -q "$1" && echo "확인: 
 
 $ADB shell pm clear com.example.myfirstapp >/dev/null
 $ADB push "$DIR/poles.csv" /sdcard/Download/poles.csv >/dev/null
+$ADB shell touch /sdcard/Download/poles.csv  # 수정 시각을 새로 해야 미디어 색인이 다시 잡는다
 $ADB shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Download/poles.csv >/dev/null
 $ADB shell settings put system accelerometer_rotation 0
 $ADB shell settings put system user_rotation 1

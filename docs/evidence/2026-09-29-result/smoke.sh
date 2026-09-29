@@ -66,9 +66,10 @@ has "poles-1000_mission1.zip"; shot 4-save-dialog
 tapk text "SAVE" 2>/dev/null || tap "저장"
 wait_for "내보냈습니다: 전주 5개, 사진 8장"; shot 5-exported
 
-# 5) 나가기 → 계획 화면 → 프로젝트 목록의 [결과]로 다시 열면 판정이 남아 있다.
+# 5) 나가기 → 계획 화면 → 미션 목록(①-1)의 [결과·판독]으로 다시 열면 판정이 남아 있다.
 tapk content-desc "나가기"; $ADB shell input keyevent BACK; sleep 2
-tap "결과"; has "결과 — 미션 #1"; has "판독 3/4"; shot 6-reopen-from-list
+has "미션 #1 · 완료"; has "1차 판독 3/4"
+tap "결과·판독"; has "결과 — 미션 #1"; has "판독 3/4"; shot 6-reopen-from-list
 
 # 6) 꺼내서 대조: SAF로 저장한 ZIP, 앱 폴더 ZIP, 기기 사진, DB(WAL 포함)
 $ADB pull /sdcard/Download/poles-1000_mission1.zip "$DATA/saved.zip" >/dev/null

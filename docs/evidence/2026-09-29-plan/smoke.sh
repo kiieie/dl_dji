@@ -35,7 +35,7 @@ sleep 3
 $ADB exec-out uiautomator dump /dev/tty | grep -q "Android App Compatibility" && tap "OK" || true
 
 tap "CSV 파일 선택"; tap "poles-1000.csv"; tap "저장"
-tap "poles-1000"; sleep 3
+tap "poles-1000"; sleep 2; tap "+ 새 계획"; sleep 3  # 프로젝트 → 미션 목록 → 계획 화면
 tap "지도 파일 추가"; tap "test-grid.mbtiles"; sleep 3
 has "경로 계산"; shot 1-plan-start
 

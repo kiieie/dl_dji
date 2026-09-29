@@ -8,7 +8,7 @@
 - **M3E 기체가 아직 없습니다.** 2~3단계(기반, 계획)를 `FakeDroneGateway`로 진행하고, 기체를 확보하면 1단계 PoC를 먼저 수행합니다. 기체가 필요한 항목(6.1 방식 B, 6.4 하드웨어 버튼 재개, LDM 오프라인 등록 등)은 PoC 전까지 가정으로만 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
-- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 전력 설비 탐지 모델은 아직 없고 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)로 검증합니다. 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20) ④ 기체 확보 뒤 DJI UX SDK FPV. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. VWorld 타일 내려받기는 약관 확인 전까지 보류합니다.
+- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 전력 설비 탐지 모델은 아직 없고 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)로 검증합니다. 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 기체 확보 뒤 DJI UX SDK FPV. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. VWorld 타일 내려받기는 약관 확인 전까지 보류합니다.
 
 ## 프로젝트 개요
 
@@ -73,6 +73,7 @@ app/src/main/
 │   ├── data/AppDatabase.kt      # Room DB(4.2 엔티티, TELEMETRY_SAMPLE 제외)와 ProjectDao
 │   ├── data/RoomRecorder.kt     # 실행 기록 포트(InspectionRecorder)의 Room 구현
 │   ├── ui/ProjectScreen.kt      # ① 프로젝트 목록 + ② CSV 가져오기(SAF)
+│   ├── ui/mission/              # ①-1 미션 목록과 이어하기(MissionListViewModel + MissionListScreen)
 │   ├── ui/MapScreen.kt          # ③ 계획(MapLibre, MBTiles, 전주 개별 점, 영역 그리기, 파라미터, 전주 제외, 경로 미리보기, 계획 저장)
 │   ├── ui/flight/               # ④ 비행과 소티 완료 화면(FlightViewModel + FlightScreen, 모의 기체)
 │   ├── sound/ToneNotifier.kt    # 알림음(신호음, 11장)
@@ -134,5 +135,5 @@ docs/
 
 - DJI SDK 초기화가 `Application`(`InspectionApp`)이 아니라 Activity(검증 화면)에서 이루어지고, LDM이 적용되어 있지 않습니다.
 - `SDKManagerCallback` 콜백에서 Compose 상태를 직접 갱신합니다(스레드 안전성 확인 필요).
-- `:app`의 테스트는 Room 계측 테스트 6개(`ProjectDaoTest`, 에뮬레이터 필요)와 템플릿 예제뿐입니다(`:core`는 단위 테스트 44개).
+- `:app`의 테스트는 Room 계측 테스트 6개(`ProjectDaoTest`, 에뮬레이터 필요)와 템플릿 예제뿐입니다(`:core`는 단위 테스트 45개).
 - TFLite·DJI 의존성이 `libs.*`가 아니라 문자열 좌표로 선언되어 있습니다(코드 규칙 위반, 정리 필요).
