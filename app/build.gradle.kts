@@ -1,8 +1,15 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+// DJI SDK 앱 키는 secrets/dji.properties(git 제외)에서 읽어 매니페스트에 넣는다. 없으면 빈 값으로 빌드되고 SDK 등록만 실패한다.
+val djiApiKey: String = rootProject.file("secrets/dji.properties").takeIf { it.exists() }
+    ?.let { f -> Properties().apply { f.inputStream().use(::load) }.getProperty("DJI_API_KEY") }
+    ?: "".also { logger.warn("secrets/dji.properties 없음: DJI_API_KEY 없이 빌드합니다") }
 
 android {
     namespace = "com.example.myfirstapp"
@@ -16,6 +23,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["DJI_API_KEY"] = djiApiKey
 
         // M1 Mac 및 DJI SDK 기기 구동을 위한 아키텍처 고정
         ndk {

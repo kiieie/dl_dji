@@ -95,7 +95,7 @@ core/src/                        # 순수 Kotlin(JVM) 도메인 모듈
 tools/make_test_data.py          # 시험용 전주 CSV와 합성 MBTiles 생성(python3 + Pillow)
 tools/export_coco_model.sh       # 개발용 COCO yolo11n 모델 폴더 생성(build/models/)
 tools/yolo_ref.py                # 같은 모델을 PC에서 돌린 탐지 기준값(스모크 대조용)
-secrets/                         # git 제외: DJI LDM 라이선스, VWorld 인증키
+secrets/                         # git 제외: DJI LDM 라이선스, VWorld 인증키, DJI API 키(dji.properties)
 docs/
 ├── evidence/                    # 작업별 증빙(스크린샷, README, 스모크 스크립트). reports/는 git 제외
 ├── DESIGN.md                    # 설계서 목차, 개요, 요구사항, 확정·미정 사항
@@ -110,7 +110,7 @@ docs/
 - **네이티브 라이브러리 충돌 방지**: `packaging`의 `pickFirsts`(`libc++_shared.so`, `libcrypto.so`)와 `useLegacyPackaging = true`는 DJI SDK 연동에 필요하므로 지우지 마세요.
 - **TensorFlow 중복 제외**: DJI SDK와 TFLite 보조 라이브러리에서 `org.tensorflow` 그룹을 `exclude`하여 버전 충돌을 막고 있습니다. 의존성을 추가할 때 이 패턴을 유지하세요.
 - **Release 빌드 난독화 비활성화**: `optimization { enable = false }`. 활성화할 경우 DJI/TFLite 클래스에 대한 keep 규칙을 `keepRules/rules.keep`에 먼저 추가해야 합니다.
-- **DJI API 키**: `AndroidManifest.xml`의 `com.dji.sdk.API_KEY`에 하드코딩되어 있습니다. 키는 `applicationId`(`com.example.myfirstapp`)에 묶여 있으므로 패키지명을 바꾸면 키도 새로 발급해야 합니다.
+- **DJI API 키**: `secrets/dji.properties`(git 제외)의 `DJI_API_KEY`를 `app/build.gradle.kts`가 읽어 매니페스트 자리표시자 `${DJI_API_KEY}`에 넣습니다. 파일이 없으면 빈 키로 빌드되고 SDK 등록만 실패합니다. 키는 `applicationId`(`com.example.myfirstapp`)에 묶여 있으므로 패키지명을 바꾸면 키도 새로 발급해야 합니다.
 
 ## 코드 작성 규칙 (구현 단계부터 적용)
 
