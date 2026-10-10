@@ -49,6 +49,12 @@
 - MapLibre Native Android 13.6.1(`android-sdk-opengl`, Vulkan 기본 패키지 아님)
 - 설계상 추가 예정: DataStore (`docs/design/01-architecture.md` 3.4). Hilt는 1차에서 제외하고 수동 DI를 씁니다.
 
+## 저장소와 push
+
+- 원격: https://github.com/kiieie/dl_dji (공개). 새 컴퓨터 준비 절차는 `README.md`의 "다른 컴퓨터에서 쓰는 법"에 있습니다.
+- push는 SSH 배포 키로 합니다(`~/.ssh/config`의 호스트 별칭 `github-dl_dji`, 원격 `git@github-dl_dji:kiieie/dl_dji.git`).
+- **`main`만 push합니다.** 로컬 `feat/room-import-screen`과 `master`는 이력에 DJI API 키가 남아 있으므로 절대 push하지 않습니다.
+
 ## 자주 쓰는 명령
 
 터미널에는 Java가 없으므로 Android Studio의 JBR을 씁니다: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`
@@ -66,7 +72,7 @@
 
 ```
 app/src/main/
-├── AndroidManifest.xml          # DJI API 키(meta-data) 포함
+├── AndroidManifest.xml          # DJI API 키 자리표시자(meta-data, 값은 secrets/dji.properties)
 ├── java/com/example/myfirstapp/
 │   ├── InspectionApp.kt         # Application, 수동 DI(DB 생성)
 │   ├── MainActivity.kt          # 화면 이동(Navigation Compose) + 연동 검증 화면(DJI/TFLite)
@@ -96,6 +102,8 @@ tools/make_test_data.py          # 시험용 전주 CSV와 합성 MBTiles 생성
 tools/export_coco_model.sh       # 개발용 COCO yolo11n 모델 폴더 생성(build/models/)
 tools/yolo_ref.py                # 같은 모델을 PC에서 돌린 탐지 기준값(스모크 대조용)
 secrets/                         # git 제외: DJI LDM 라이선스, VWorld 인증키, DJI API 키(dji.properties)
+.design-sync/                    # Claude Design용 토큰 묶음 생성(build.mjs, conventions.md). 출력 ds-bundle/은 git 제외
+README.md                        # 프로젝트 소개, 다른 컴퓨터에서 빌드·실행하는 법
 docs/
 ├── evidence/                    # 작업별 증빙(스크린샷, README, 스모크 스크립트). reports/는 git 제외
 ├── DESIGN.md                    # 설계서 목차, 개요, 요구사항, 확정·미정 사항
