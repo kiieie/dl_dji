@@ -5,6 +5,7 @@ import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.Detection
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.port.CaptureInfo
@@ -93,13 +94,18 @@ class InspectionExecutorTest {
         sorties: List<List<Pole>> = listOf(threePoles),
         detector: Detector? = FixedDetector(emptyList()),
         params: FlightParams = FlightParams(),
+        droneConfig: FakeDroneGateway.Config = FakeDroneGateway.Config(),
+        recoverSortie: Int? = null,
+        prepare: (FakeDroneGateway) -> Unit = {},
     ): Harness {
-        val drone = FakeDroneGateway(backgroundScope, home)
+        val drone = FakeDroneGateway(backgroundScope, home, droneConfig).also(prepare)
         val recorder = MemoryRecorder()
         val sounds = mutableListOf<Sound>()
         val energy = EnergyModel(EnergyParams(), params)
         val plans = sorties.map { SortiePlan(it, 0.0, 10.0, 0.0) }
-        val executor = InspectionExecutor(backgroundScope, drone, recorder, { sounds += it }, { true }, energy, detector, plans)
+        val executor = InspectionExecutor(
+            backgroundScope, drone, recorder, { sounds += it }, { true }, energy, detector, plans, recoverSortie = recoverSortie,
+        )
         executor.start()
         runCurrent()
         return Harness(this, drone, executor, recorder, sounds)
@@ -382,5 +388,47 @@ class InspectionExecutorTest {
         h.scope.runCurrent()
         assertEquals(ExecState.Paused, h.state)
         assertTrue(h.executor.uiState.value.message!!.contains("장애물"))
+    }
+
+    @Test
+    fun `앱 재시작 복구 - 기체가 떠 있으면 일시정지로 돌아가고 재개하면 남은 전주를 점검한다`() = runTest {
+        val h = harness(droneConfig = FakeDroneGateway.Config(airborneAt = threePoles[0].position), recoverSortie = 0)
+        assertEquals(ExecState.Paused, h.state)
+        assertEquals("Idle" to "Paused", h.recorder.transitions.first())
+        assertTrue("takeoff" !in h.drone.calls)
+
+        h.send(Command.Resume)
+        assertEquals(ExecState.PreparingLeg, h.state)
+        assertEquals("A", h.executor.uiState.value.target?.pole?.poleId)
+        h.awaitState(ExecState.MissionDone)
+        assertTrue(h.executor.uiState.value.visits.all { it.status == VisitStatus.DONE })
+    }
+
+    @Test
+    fun `앱 재시작 복구 - 착륙 상태면 소티를 닫고 남은 전주는 다음 소티로 남긴다`() = runTest {
+        val h = harness(recoverSortie = 0)
+        assertEquals(ExecState.SortieDone, h.state)
+        assertEquals(listOf("Idle" to "SortieDone"), h.recorder.transitions)
+        assertTrue(h.executor.uiState.value.visits.all { it.status == VisitStatus.PENDING })
+    }
+
+    @Test
+    fun `앱 재시작 복구 - 연결이 없으면 연결 끊김으로 두고 재연결되면 일시정지`() = runTest {
+        val h = harness(
+            droneConfig = FakeDroneGateway.Config(airborneAt = threePoles[1].position), recoverSortie = 0,
+            prepare = { it.simulateLinkLost() },
+        )
+        assertEquals(ExecState.LinkLost, h.state)
+        h.drone.simulateLinkRestored()
+        h.scope.runCurrent()
+        assertEquals(ExecState.Paused, h.state)
+    }
+
+    @Test
+    fun `SD 대조 - 도착 뒤 찍혔고 DB에 없는 사진만 되살린다`() {
+        fun media(id: String, at: Long) = CaptureInfo(id, Lens.WIDE, null, 30.0, -90.0, 0.0, at)
+        val sd = listOf(media("M1", 900), media("M2", 1_000), media("M3", 1_500))
+        assertEquals(listOf("M3"), recoveredCaptures(1_000, sd, setOf("M2")).map { it.mediaId })
+        assertTrue(recoveredCaptures(null, sd, emptySet()).isEmpty())
     }
 }

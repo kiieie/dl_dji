@@ -243,6 +243,9 @@ data class MissionSummary(
     val lastFlightAt: Long?,
 )
 
+/** 앱 재시작 복구(6.4): 시작했지만 끝나지 않은 소티가 속한 미션. */
+data class OpenSortieMission(val projectId: Long, val missionId: Long)
+
 /** 소티 하나의 저장용 입력: 방문 순서대로 전주 행 id. */
 data class SortieDraft(val estDistanceM: Double, val estBatteryPct: Double, val poleRowIds: List<Long>)
 
@@ -297,6 +300,12 @@ interface ProjectDao {
             "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`",
     )
     suspend fun missionVisits(missionId: Long): List<MissionVisitRow>
+
+    @Query(
+        "SELECT m.projectId, m.id AS missionId FROM sortie s JOIN mission m ON m.id = s.missionId " +
+            "WHERE s.startedAt IS NOT NULL AND s.endedAt IS NULL ORDER BY s.startedAt DESC LIMIT 1",
+    )
+    suspend fun openSortieMission(): OpenSortieMission?
 
     @Query("UPDATE mission SET status = :status WHERE id = :missionId")
     suspend fun setMissionStatus(missionId: Long, status: String)

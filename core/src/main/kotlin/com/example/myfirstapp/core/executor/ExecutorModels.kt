@@ -3,6 +3,7 @@ package com.example.myfirstapp.core.executor
 import com.example.myfirstapp.core.model.Detection
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.VisitStatus
+import com.example.myfirstapp.core.port.CaptureInfo
 
 /** 실행 상태(6.4 상태도). */
 enum class ExecState {
@@ -57,3 +58,11 @@ data class ExecutorUiState(
     val message: String? = null,
     val preflightFailures: List<String> = emptyList(),
 )
+
+/**
+ * 앱 재시작 복구의 SD 대조(6.4): 목표 전주에 도착한 뒤 SD에 저장되었지만 DB에 없는 사진.
+ * 도착 기록이 없으면 그 전주에서 찍은 사진도 없다.
+ * ponytail: 기체 사진 시각과 조종기 시각을 같은 시계로 본다. 차이가 크면 PoC에서 허용 오차를 둔다.
+ */
+fun recoveredCaptures(arrivedAtMs: Long?, sdMedia: List<CaptureInfo>, dbMediaIds: Set<String>): List<CaptureInfo> =
+    if (arrivedAtMs == null) emptyList() else sdMedia.filter { it.takenAtMs >= arrivedAtMs && it.mediaId !in dbMediaIds }

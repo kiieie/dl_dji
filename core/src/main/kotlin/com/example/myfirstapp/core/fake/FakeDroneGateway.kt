@@ -50,12 +50,19 @@ class FakeDroneGateway(
         val downloadMs: Long = 1_500,
         /** 다운로드가 돌려줄 사진. 앱은 렌즈·좌표를 그린 JPEG을 넘긴다(10장 ⑤). */
         val image: (CaptureInfo) -> ByteArray = { "FAKE_JPEG:${it.mediaId}".toByteArray() },
+        /** 앱 재시작 복구 시연용: 값이 있으면 이 위치 상공에서 호버 중인 상태로 시작한다(실제 기체는 앱이 죽어도 떠 있음). */
+        val airborneAt: GeoPoint? = null,
+        val airborneAltitudeM: Double = 30.0,
     )
 
     private val proj = LocalProjection(homePoint)
     private val _telemetry = MutableStateFlow(
-        Telemetry(homePoint, 0.0, 0.0, 100.0, FlightMode.ON_GROUND, 5, true, homePoint),
+        config.airborneAt?.let { Telemetry(it, config.airborneAltitudeM, 0.0, 100.0, FlightMode.MANUAL, 5, true, homePoint) }
+            ?: Telemetry(homePoint, 0.0, 0.0, 100.0, FlightMode.ON_GROUND, 5, true, homePoint),
     )
+
+    /** 모의 SD 카드. 테스트에서 앱이 죽기 전에 찍힌 사진을 넣어 둔다. */
+    val sdCard = mutableListOf<CaptureInfo>()
     override val telemetry: StateFlow<Telemetry> = _telemetry.asStateFlow()
 
     private val _events = MutableSharedFlow<DroneEvent>(extraBufferCapacity = 64)
@@ -129,9 +136,14 @@ class FakeDroneGateway(
             return Result.failure(IllegalStateException("모의 촬영 실패"))
         }
         val t = _telemetry.value
-        return Result.success(
-            CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, gimbalPitchDeg, 0.0, System.currentTimeMillis()),
-        )
+        val info = CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, gimbalPitchDeg, 0.0, System.currentTimeMillis())
+        sdCard += info
+        return Result.success(info)
+    }
+
+    override suspend fun listMedia(sinceMs: Long): Result<List<CaptureInfo>> {
+        calls += "listMedia"
+        return Result.success(sdCard.filter { it.takenAtMs >= sinceMs })
     }
 
     override suspend fun download(capture: CaptureInfo, mode: DownloadMode): Result<ByteArray> {

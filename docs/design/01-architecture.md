@@ -147,7 +147,7 @@ erDiagram
 - `MISSION.homeLat/homeLon`: 계획에 쓴 이륙 지점. 소티를 시작할 때 실제 홈 포인트와 비교해 다시 계획할지 정한다(5.4). 계획 화면에서 제외한 전주와 도달 불가 전주는 `VISIT`에 넣지 않는다.
 - 계획을 저장하면 `MISSION.status`는 `PLANNED`, `SORTIE.status`와 `VISIT.status`는 `PENDING`으로 시작한다. 실행하면 `MISSION`은 `IN_PROGRESS` → `DONE`, `SORTIE`는 이륙 때 `IN_PROGRESS`(`startedAt`), 착륙 때 `DONE`(`endedAt`)이 된다. `VISIT.arrivedAt`은 `Arrived` 전이 시각이다. 이어하기에서 [남은 전주로 새 계획]을 저장하면 기존 미션은 `PARTIAL`(부분 완료)로 닫고, 남은 전주는 새 미션에서 비행한다(F-20).
 - `CAPTURE.mediaId`: 카메라 SD의 미디어 식별자. 비행 후 원본 다운로드와 재시작 복구(6.4 SD 대조)에 쓴다. `filePath`는 이미지를 받았을 때만 채운다.
-- 비행 화면은 `MISSION`에서 `PENDING`·`IN_PROGRESS` 방문만 읽어 실행한다. 중단한 미션을 다시 열면 남은 전주만 비행한다(앱 재시작 복구의 `Paused` 복귀는 6.4, 4단계 뒤).
+- 비행 화면은 `MISSION`에서 `PENDING`·`IN_PROGRESS` 방문만 읽어 실행한다. 중단한 미션을 다시 열면 남은 전주만 비행한다(시작했지만 끝나지 않은 소티가 있으면 앱 재시작 복구로 `Paused`에 복귀한다, 6.4).
 - `VISIT.status`: `PENDING` / `IN_PROGRESS` / `DONE` / `SKIPPED` / `FAILED`
 - `CAPTURE.source`: `AUTO`(도착 시 자동), `MANUAL`(수동 촬영 버튼), `PERIODIC`(주기 분석 프레임)
 - `MISSION.flightParams`에는 실행 시점의 파라미터를 그대로 저장한다(나중에 설정을 바꿔도 기록은 유지된다).

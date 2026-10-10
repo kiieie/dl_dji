@@ -8,8 +8,10 @@ import com.example.myfirstapp.core.executor.Command
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.executor.ExecutorUiState
 import com.example.myfirstapp.core.executor.InspectionExecutor
+import com.example.myfirstapp.core.executor.recoveredCaptures
 import com.example.myfirstapp.core.fake.FakeDetector
 import com.example.myfirstapp.core.fake.FakeDroneGateway
+import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.Telemetry
@@ -23,6 +25,7 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.RecorderSortie
 import com.example.myfirstapp.data.RoomRecorder
 import com.example.myfirstapp.data.fakePhotoSource
+import com.example.myfirstapp.data.toEntity
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.detect.TfliteYoloDetector
 import com.example.myfirstapp.sound.ToneNotifier
@@ -75,7 +78,8 @@ class FlightViewModel(
     private val projectId: Long,
     private val missionId: Long,
     private val appFilesDir: File?,
-    private val droneFactory: (CoroutineScope, GeoPoint, File?) -> DroneGateway = ::fakeDrone,
+    /** (scope, 이륙 지점, 앱 폴더, 복구 위치). 복구 위치는 모의 기체가 떠 있는 상태로 시작할 곳이고 실제 기체는 쓰지 않는다. */
+    private val droneFactory: (CoroutineScope, GeoPoint, File?, GeoPoint?) -> DroneGateway = ::fakeDrone,
 ) : ViewModel() {
     private val _state = MutableStateFlow(FlightUiState())
     val state: StateFlow<FlightUiState> = _state.asStateFlow()
@@ -97,11 +101,21 @@ class FlightViewModel(
         val params = flightParamsFromJson(mission.flightParams)
         val energy = EnergyModel(EnergyParams(), params).also { energy = it }
         val home = GeoPoint(mission.homeLat, mission.homeLon)
+        val dbSorties = dao.sorties(missionId)
+        // 시작했지만 끝나지 않은 소티가 있으면 앱이 비행 중에 죽은 것이다(6.4 복구)
+        val open = dbSorties.firstOrNull { it.startedAt != null && it.endedAt == null }
+        val lastTarget = dao.missionVisits(missionId).firstOrNull { it.sortieId == open?.id && it.status == "IN_PROGRESS" }
+        val drone = droneFactory(viewModelScope, home, appFilesDir, open?.let { lastTarget?.let { GeoPoint(it.lat, it.lon) } ?: home })
+            .also { drone = it }
+        if (open != null) recoverTarget(open.id, drone)
+
         val rows = dao.missionVisits(missionId).filter { it.status == "PENDING" || it.status == "IN_PROGRESS" }
-        if (rows.isEmpty()) return _state.update { it.copy(loading = false, error = "남은 전주가 없습니다(미션 완료)") }
-        val groups = rows.groupBy { it.sortieId }.values.toList()
-        sortieVisits = groups.map { g -> g.map { it.visitId } }
-        val sorties = groups.map { g ->
+        if (rows.isEmpty() && open == null) return _state.update { it.copy(loading = false, error = "남은 전주가 없습니다(미션 완료)") }
+        val bySortie = rows.groupBy { it.sortieId }
+        // 복구할 소티는 남은 전주가 없어도 넣는다(착륙·소티 종료를 그 소티에 기록해야 한다)
+        val groups = dbSorties.filter { it.id in bySortie || it.id == open?.id }.map { it.id to bySortie[it.id].orEmpty() }
+        sortieVisits = groups.map { (_, g) -> g.map { it.visitId } }
+        val sorties = groups.map { (_, g) ->
             val poles = g.map { Pole(it.poleId, GeoPoint(it.lat, it.lon), it.lineName, it.note) }
             val route = listOf(home) + poles.map { it.position } + home
             val dist = route.zipWithNext { a, b -> LocalProjection.distanceM(a, b) }.sum()
@@ -109,17 +123,18 @@ class FlightViewModel(
         }
         val recorder = RoomRecorder(
             dao, missionId,
-            groups.map { g -> RecorderSortie(g.first().sortieId, g.map { it.visitId to it.poleId }) },
+            groups.map { (id, g) -> RecorderSortie(id, g.map { it.visitId to it.poleId }) },
             File(appFilesDir, "projects/$projectId/missions/$missionId/images"),
             params.downloadMode,
         )
-        val drone = droneFactory(viewModelScope, home, appFilesDir).also { drone = it }
         val storage = StorageMonitor { (appFilesDir?.usableSpace ?: 0L) >= MIN_FREE_BYTES }
         // 앱 폴더 models/에 규격에 맞는 모델이 있으면 TFLite 탐지기, 없으면 모의 탐지기(9.1)
         model = withContext(Dispatchers.IO) { TfliteYoloDetector.loadLatest(File(appFilesDir, "models")) }
         val detector = model ?: FakeDetector()
-        val executor = InspectionExecutor(viewModelScope, drone, recorder, notifier, storage, energy, detector, sorties)
-            .also { executor = it }
+        val executor = InspectionExecutor(
+            viewModelScope, drone, recorder, notifier, storage, energy, detector, sorties,
+            recoverSortie = open?.let { o -> groups.indexOfFirst { it.first == o.id } },
+        ).also { executor = it }
         executor.start()
         _state.update {
             it.copy(
@@ -133,6 +148,20 @@ class FlightViewModel(
             _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need) }
             if (entered) refreshSortieSummary()
         }
+    }
+
+    /**
+     * 6.4 SD 대조: 죽을 때의 목표 전주에 이미 찍은 사진(DB 기록 또는 DB에 없는 SD 사진)이 있으면 연결하고 완료로 둔다.
+     * 사진이 없으면 미점검으로 되돌려 재개할 때 다시 간다. SD 사진의 이미지는 비행 후 원본 다운로드로 받는다.
+     */
+    private suspend fun recoverTarget(sortieId: Long, drone: DroneGateway) {
+        val v = dao.visits(sortieId).firstOrNull { it.status == "IN_PROGRESS" } ?: return
+        val db = dao.missionCaptures(missionId)
+        val sd = v.arrivedAt?.let { drone.listMedia(it).getOrNull() }.orEmpty()
+        val fresh = recoveredCaptures(v.arrivedAt, sd, db.map { it.mediaId }.toSet())
+        fresh.forEach { dao.insertCapture(it.toEntity(v.id, CaptureSource.AUTO)) }
+        val done = fresh.isNotEmpty() || db.any { it.visitId == v.id }
+        dao.setVisitStatus(v.id, if (done) "DONE" else "PENDING", null)
     }
 
     /** 소티 완료 화면의 검출·판독 수를 DB에서 다시 센다. 1차 판독 화면에서 돌아올 때도 부른다. */
@@ -181,5 +210,8 @@ class FlightViewModel(
     }
 }
 
-private fun fakeDrone(scope: CoroutineScope, home: GeoPoint, appFilesDir: File?): DroneGateway =
-    FakeDroneGateway(scope, home, FakeDroneGateway.Config(timeScale = FAKE_TIME_SCALE, image = fakePhotoSource(appFilesDir)))
+private fun fakeDrone(scope: CoroutineScope, home: GeoPoint, appFilesDir: File?, airborneAt: GeoPoint?): DroneGateway =
+    FakeDroneGateway(
+        scope, home,
+        FakeDroneGateway.Config(timeScale = FAKE_TIME_SCALE, image = fakePhotoSource(appFilesDir), airborneAt = airborneAt),
+    )

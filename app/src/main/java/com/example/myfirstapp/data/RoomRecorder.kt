@@ -48,13 +48,7 @@ class RoomRecorder(
     }
 
     override suspend fun saveCapture(sortieIndex: Int, order: Int, capture: CaptureInfo, source: CaptureSource): Long =
-        dao.insertCapture(
-            CaptureEntity(
-                visitId = visitId(sortieIndex, order), mediaId = capture.mediaId, lens = capture.lens.name, source = source.name,
-                lat = capture.position?.lat, lon = capture.position?.lon, altRel = capture.altitudeM,
-                gimbalPitch = capture.gimbalPitchDeg, heading = capture.headingDeg, takenAt = capture.takenAtMs,
-            ),
-        )
+        dao.insertCapture(capture.toEntity(visitId(sortieIndex, order), source))
 
     override suspend fun saveImage(captureId: Long, bytes: ByteArray) {
         val c = dao.capture(captureId) ?: return
@@ -72,3 +66,10 @@ class RoomRecorder(
         dao.insertDetections(detections.map { DetectionEntity(0, captureId, it.label, it.score, it.x, it.y, it.w, it.h, it.alert) })
     }
 }
+
+/** 촬영 기록 한 건. 이미지 파일은 받은 뒤 [ProjectDao.setCaptureFile]로 채운다. */
+fun CaptureInfo.toEntity(visitId: Long, source: CaptureSource) = CaptureEntity(
+    visitId = visitId, mediaId = mediaId, lens = lens.name, source = source.name,
+    lat = position?.lat, lon = position?.lon, altRel = altitudeM,
+    gimbalPitch = gimbalPitchDeg, heading = headingDeg, takenAt = takenAtMs,
+)

@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
@@ -50,6 +51,16 @@ class MainActivity : ComponentActivity() {
     private fun AppNavHost(dao: ProjectDao) {
         val nav = rememberNavController()
         val ids = listOf(navArgument("pid") { type = NavType.LongType }, navArgument("mid") { type = NavType.LongType })
+        // 앱 재시작 복구(6.4): 끝나지 않은 소티가 있으면 그 미션의 비행 화면을 바로 연다(뒤로 가면 미션 목록)
+        var recoveryChecked by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            if (recoveryChecked) return@LaunchedEffect
+            recoveryChecked = true
+            dao.openSortieMission()?.let {
+                nav.navigate("missions/${it.projectId}")
+                nav.navigate("flight/${it.projectId}/${it.missionId}")
+            }
+        }
         NavHost(nav, startDestination = "projects") {
             composable("projects") {
                 ProjectScreen(

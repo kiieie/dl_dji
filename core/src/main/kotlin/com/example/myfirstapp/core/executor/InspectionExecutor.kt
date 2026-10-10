@@ -74,6 +74,8 @@ class InspectionExecutor(
     private val detector: Detector?,
     private val sorties: List<SortiePlan>,
     private val config: ExecutorConfig = ExecutorConfig(),
+    /** 앱 재시작 복구(6.4): 비정상 종료 때 진행 중이던 소티 번호. 값이 있으면 시작하자마자 기체 상태로 복귀 상태를 정한다. */
+    private val recoverSortie: Int? = null,
 ) {
     private val params = energy.flight
 
@@ -93,6 +95,7 @@ class InspectionExecutor(
         data class Countdown(val gen: Int, val sec: Int) : Msg
         data class Rth(val token: Int, val sec: Int) : Msg
         data class ArrivalTimeout(val token: Int) : Msg
+        data class Recover(val sortieIndex: Int) : Msg
     }
 
     private sealed interface StepResult {
@@ -136,6 +139,7 @@ class InspectionExecutor(
     fun start() {
         scope.launch { drone.events.collect { inbox.send(Msg.Drone(it)) } }
         scope.launch { drone.telemetry.collect { inbox.send(Msg.Tele(it)) } }
+        recoverSortie?.let { inbox.trySend(Msg.Recover(it)) }
         scope.launch { for (m in inbox) handle(m) }
         publish()
     }
@@ -157,6 +161,7 @@ class InspectionExecutor(
                 if (m.sec > 0) rthCountdown = m.sec else startRth("RTH 권고 ${config.rthPromptSec}초 무응답")
             }
             is Msg.ArrivalTimeout -> if (m.token == arrivalToken) onArrivalTimeout()
+            is Msg.Recover -> recover(m.sortieIndex)
         }
         publish()
     }
@@ -288,6 +293,24 @@ class InspectionExecutor(
         sortieIndex = next
         target = null
         enter(PreflightCheck, "소티 ${next + 1} 시작")
+    }
+
+    /** 앱 재시작 복구(6.4): 기체가 떠 있으면 일시정지로 돌아가 운용자가 [재개]하게 하고, 내려와 있으면 소티를 닫는다. */
+    private suspend fun recover(index: Int) {
+        if (state != Idle) return
+        sortieIndex = index
+        val t = drone.telemetry.value
+        when {
+            !t.connected -> {
+                message = "앱이 다시 시작되었습니다. 기체 연결을 기다립니다."
+                enter(LinkLost, "앱 재시작 복구: 연결 없음")
+            }
+            t.isFlying -> {
+                message = "앱이 다시 시작되었습니다. 기체 위치를 확인하고 재개하세요."
+                enter(Paused, "앱 재시작 복구")
+            }
+            else -> enter(SortieDone, "앱 재시작 복구: 착륙 상태")
+        }
     }
 
     /** 다음 미점검 전주: 현재 목표가 아직 미점검이면 그 전주, 아니면 소티 순서상 첫 미점검 전주(6.4). */

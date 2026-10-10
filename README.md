@@ -34,6 +34,7 @@ DJI RC Pro Enterprise 조종기에 설치해 Mavic 3 Enterprise(M3E/M3T)로 배�
 | 2인 운용 | 소티 완료 화면: 조종사는 배터리·기체 점검, 보조자는 1차 판독 | 완료 |
 | 결과와 1차 판독 | 필터(검출·미판독·재촬영), 판정(검출 맞음·검출 없음·재촬영), 대상 칩, 메모, ZIP 내보내기(CSV + JSON + 사진) | 완료 |
 | 이어하기 | 남은 전주로 다음 소티. 날짜가 바뀌면 [이어서 비행] / [남은 전주로 새 계획]을 묻기 | 완료 |
+| 앱 재시작 복구 | 비행 중 앱이 죽으면 다시 켤 때 비행 화면을 바로 열고 기체 상태로 일시정지·소티 종료를 정함. 목표 전주의 사진은 DB·SD로 대조해 다시 찍지 않음 | 모의 기체로 완료 |
 | 실제 기체 연동 | DJI MSDK V5 웨이포인트, 사진 다운로드, LDM, UX SDK FPV | 기체 확보 뒤 |
 
 2차 판독(이상 여부 판단)은 내보낸 ZIP으로 다른 플랫폼에서 합니다. 앱은 객체 검출까지만 합니다.
@@ -236,9 +237,9 @@ adb push 1-sample.jpg /sdcard/Android/data/com.example.myfirstapp/files/fake_pho
 
 | 종류 | 명령 | 필요 조건 |
 |---|---|---|
-| 도메인 단위 테스트(45개) | `./gradlew :core:test` | 없음 |
+| 도메인 단위 테스트(49개) | `./gradlew :core:test` | 없음 |
 | Room 계측 테스트(6개) | `./gradlew connectedAndroidTest` | 기기·에뮬레이터. 끝나면 앱이 지워지므로 다시 `installDebug` |
-| 화면 스모크(9개) | `bash docs/evidence/<날짜-작업>/smoke.sh` | Apple Silicon Mac, 에뮬레이터 Pixel 8(2400×1080), 디버그 앱 설치, `python3` + Pillow |
+| 화면 스모크(10개) | `bash docs/evidence/<날짜-작업>/smoke.sh` | Apple Silicon Mac, 에뮬레이터 Pixel 8(2400×1080), 디버그 앱 설치, `python3` + Pillow |
 | Lint | `./gradlew lint` | 없음 |
 
 스모크 스크립트는 화면을 눌러 가며 스크린샷과 로그를 증빙 폴더에 남기고, 앱 DB를 꺼내 결과를 대조합니다. `adb` 위치가 다르면 `ADB=/경로/adb bash .../smoke.sh`처럼 지정합니다. 각 폴더의 `README.md`에 시험 조건과 확인 항목이 있습니다. 테스트 보고서(`reports/`)는 git에서 제외됩니다.

@@ -32,6 +32,9 @@ interface DroneGateway {
 
     suspend fun download(capture: CaptureInfo, mode: DownloadMode): Result<ByteArray>
 
+    /** 카메라 SD에서 [sinceMs] 이후 저장된 사진 목록. 앱 재시작 복구의 SD 대조(6.4)에 쓴다. */
+    suspend fun listMedia(sinceMs: Long): Result<List<CaptureInfo>>
+
     suspend fun returnHome(): Result<Unit>
 }
 

@@ -52,7 +52,7 @@
 | 미션 목록(①-1), 이어하기와 날짜 확인(F-20) | 완료 | `ui/mission/`, `:core` `needsResumeConfirm`. [남은 전주로 새 계획]은 기존 미션을 `PARTIAL`로 닫음(`docs/evidence/2026-09-29-missions`) |
 | 프로젝트·계획 화면 `ViewModel` 전환 | 완료 | `ui/ProjectViewModel.kt`, `ui/PlanViewModel.kt`. CSV 읽기·저장·삭제, 영역·경로 계산·계획 저장·지도 파일 복사를 화면 밖으로 옮김. 지도 그리기(MapLibre)만 화면에 남김. 기존 스모크 9개로 회귀 확인 |
 | DJI UX SDK FPV·계기 위젯(비행 화면) | 기체 확보 뒤 | 공식 샘플 `android-sdk-v5-uxsdk`(5.18.0) 모듈, `DefaultLayoutActivity` 참고. PoC와 함께 |
-| 앱 재시작 복구(DB·SD 대조) | 4단계 | `InspectionExecutor`에 초기 방문 상태 주입 필요 |
+| 앱 재시작 복구(DB·SD 대조, 모의 기체) | 완료 | 6.4 복구. `InspectionExecutor`의 `recovery`, `DroneGateway.listMedia`, `ui/flight/FlightViewModel`. 비행 중 앱을 강제 종료하고 다시 켜 `Paused` 복귀와 재개를 확인(`docs/evidence/2026-10-10-recovery`). 실제 기체의 SD 목록과 시각 차이는 PoC에서 |
 
 ### 13.1 개발 장비와 진행 순서
 
