@@ -1,5 +1,6 @@
 {
   "shape": "package",
   "offScript": "tokens-only: Kotlin/Compose 앱이라 변환기 대신 .design-sync/build.mjs가 ds-bundle/을 만든다",
-  "readmeHeader": ".design-sync/conventions.md"
+  "readmeHeader": ".design-sync/conventions.md",
+  "projectId": "a2b8e353-7953-4f77-a3b7-b74479a58839"
 }
