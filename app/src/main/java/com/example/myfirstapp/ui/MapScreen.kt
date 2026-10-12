@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.data.PoleEntity
 import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.route.RoutePlan
@@ -112,6 +113,7 @@ fun MapScreen(
     val vm: PlanViewModel = viewModel(
         factory = PlanViewModel.factory(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() }, context.contentResolver,
+            (context.applicationContext as InspectionApp).settings,
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
@@ -236,7 +238,7 @@ private fun ParamSteppers(p: FlightParams, onChange: (FlightParams) -> Unit) {
 
 /** [onStep]에는 −1 또는 +1이 넘어간다. 버튼 설명(contentDescription)은 스모크 스크립트가 찾는 이름이다. */
 @Composable
-private fun Stepper(label: String, value: String, modifier: Modifier, onStep: (Int) -> Unit) {
+internal fun Stepper(label: String, value: String, modifier: Modifier, onStep: (Int) -> Unit) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelSmall)

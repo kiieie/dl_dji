@@ -51,6 +51,7 @@
 | 비행 화면 `ViewModel` 전환, 소티 완료 화면(보조자 1차 판독 진입) | 완료 | `ui/flight/`. 기체는 `droneFactory`로 주입. Navigation Compose로 판독 화면에 다녀와도 실행기 유지(`docs/evidence/2026-09-29-sortie`) |
 | 미션 목록(①-1), 이어하기와 날짜 확인(F-20) | 완료 | `ui/mission/`, `:core` `needsResumeConfirm`. [남은 전주로 새 계획]은 기존 미션을 `PARTIAL`로 닫음(`docs/evidence/2026-09-29-missions`) |
 | 프로젝트·계획 화면 `ViewModel` 전환 | 완료 | `ui/ProjectViewModel.kt`, `ui/PlanViewModel.kt`. CSV 읽기·저장·삭제, 영역·경로 계산·계획 저장·지도 파일 복사를 화면 밖으로 옮김. 지도 그리기(MapLibre)만 화면에 남김. 기존 스모크 9개로 회귀 확인 |
+| ⑥ 설정 화면(비행 기본값 DataStore, 모델 관리 F-18, 지도 관리, 상태) | 완료 | 10장 ⑥ 설정. `ui/settings/`, `data/SettingsStore.kt`. 프리셋·에너지 보정값 편집은 MVP 이후(`docs/evidence/2026-10-12-settings`) |
 | DJI UX SDK FPV·계기 위젯(비행 화면) | 기체 확보 뒤 | 공식 샘플 `android-sdk-v5-uxsdk`(5.18.0) 모듈, `DefaultLayoutActivity` 참고. PoC와 함께 |
 | 앱 재시작 복구(DB·SD 대조, 모의 기체) | 완료 | 6.4 복구. `InspectionExecutor`의 `recovery`, `DroneGateway.listMedia`, `ui/flight/FlightViewModel`. 비행 중 앱을 강제 종료하고 다시 켜 `Paused` 복귀와 재개를 확인(`docs/evidence/2026-10-10-recovery`). 실제 기체의 SD 목록과 시각 차이는 PoC에서 |
 

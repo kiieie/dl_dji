@@ -34,6 +34,7 @@ DJI RC Pro Enterprise 조종기에 설치해 Mavic 3 Enterprise(M3E/M3T)로 배�
 | 2인 운용 | 소티 완료 화면: 조종사는 배터리·기체 점검, 보조자는 1차 판독 | 완료 |
 | 결과와 1차 판독 | 필터(검출·미판독·재촬영), 판정(검출 맞음·검출 없음·재촬영), 대상 칩, 메모, ZIP 내보내기(CSV + JSON + 사진) | 완료 |
 | 이어하기 | 남은 전주로 다음 소티. 날짜가 바뀌면 [이어서 비행] / [남은 전주로 새 계획]을 묻기 | 완료 |
+| 설정 | 비행 파라미터 기본값(DataStore), 탐지 모델 가져오기·고르기·삭제(규격 검사), 지도 파일 추가·삭제 | 완료 |
 | 앱 재시작 복구 | 비행 중 앱이 죽으면 다시 켤 때 비행 화면을 바로 열고 기체 상태로 일시정지·소티 종료를 정함. 목표 전주의 사진은 DB·SD로 대조해 다시 찍지 않음 | 모의 기체로 완료 |
 | 실제 기체 연동 | DJI MSDK V5 웨이포인트, 사진 다운로드, LDM, UX SDK FPV | 기체 확보 뒤 |
 
@@ -67,7 +68,7 @@ DJI RC Pro Enterprise 조종기에 설치해 Mavic 3 Enterprise(M3E/M3T)로 배�
 | 언어·빌드 | Kotlin 2.2.10, Java 17, Gradle 9.7(래퍼), AGP 9.4.1, 버전 카탈로그 `gradle/libs.versions.toml` |
 | UI | Jetpack Compose(BOM 2026.02.01), Material Design 3(다크 테마 하나, DJI 조종 앱 톤), Navigation Compose 2.9 |
 | 구조 | MVVM + Clean Architecture, `StateFlow` 단방향 데이터 흐름, 수동 DI |
-| 데이터 | Room 2.8.5(KSP) |
+| 데이터 | Room 2.8.5(KSP), DataStore 1.1.7(설정) |
 | 지도 | MapLibre Native Android 13.6.1(OpenGL) + MBTiles |
 | 드론 | DJI Mobile SDK V5 5.18.0 |
 | 탐지 | TensorFlow Lite 2.17(CPU 4스레드) |
@@ -219,10 +220,12 @@ adb push build/testdata/test-grid.mbtiles /sdcard/Download/
 
 ```bash
 bash tools/export_coco_model.sh        # build/models/coco-yolo11n-fp16/{model.tflite, labels.txt, model.json}
-adb push build/models/coco-yolo11n-fp16 /sdcard/Android/data/com.example.myfirstapp/files/models/
+adb push build/models/coco-yolo11n-fp16 /sdcard/Download/models-in/
 ```
 
-- 모델 폴더 규격(9.1): `model.tflite` + `labels.txt` + `model.json`. 앱은 `models/` 아래 규격에 맞는 폴더 중 이름순으로 마지막 것을 씁니다.
+앱에서 [설정] → [모델 폴더 가져오기]로 `Download/models-in/coco-yolo11n-fp16` 폴더를 고릅니다. 앱이 규격을 검사한 뒤 앱 폴더 `models/`에 복사합니다. 개발 중에는 `adb push`로 앱 폴더 `files/models/`에 바로 넣어도 됩니다.
+
+- 모델 폴더 규격(9.1): `model.tflite` + `labels.txt` + `model.json`. 앱은 ⑥ 설정에서 고른 모델을 쓰고, 고르지 않았으면 `models/` 아래 규격에 맞는 폴더 중 이름순으로 마지막 것을 씁니다.
 - 이 모델은 AGPL-3.0입니다. 저장소에 커밋하거나 배포 앱에 넣지 마세요(`*.tflite`는 git 제외).
 
 ### 모의 기체 사진(선택)
@@ -239,12 +242,12 @@ adb push 1-sample.jpg /sdcard/Android/data/com.example.myfirstapp/files/fake_pho
 |---|---|---|
 | 도메인 단위 테스트(49개) | `./gradlew :core:test` | 없음 |
 | Room 계측 테스트(6개) | `./gradlew connectedAndroidTest` | 기기·에뮬레이터. 끝나면 앱이 지워지므로 다시 `installDebug` |
-| 화면 스모크(10개) | `bash docs/evidence/<날짜-작업>/smoke.sh` | Apple Silicon Mac, 에뮬레이터 Pixel 8(2400×1080), 디버그 앱 설치, `python3` + Pillow |
+| 화면 스모크(11개) | `bash docs/evidence/<날짜-작업>/smoke.sh` | Apple Silicon Mac, 에뮬레이터 Pixel 8(2400×1080), 디버그 앱 설치, `python3` + Pillow |
 | Lint | `./gradlew lint` | 없음 |
 
 스모크 스크립트는 화면을 눌러 가며 스크린샷과 로그를 증빙 폴더에 남기고, 앱 DB를 꺼내 결과를 대조합니다. `adb` 위치가 다르면 `ADB=/경로/adb bash .../smoke.sh`처럼 지정합니다. 각 폴더의 `README.md`에 시험 조건과 확인 항목이 있습니다. 테스트 보고서(`reports/`)는 git에서 제외됩니다.
 
-각 스크립트는 앱 데이터를 지우고 필요한 데이터를 스스로 준비하므로 하나씩 돌려도 됩니다(`result`는 안에서 `flight`를 먼저 돌림). 전체 순서: `import-screen`, `map`, `plan`, `plan-save`, `flight`, `result`, `detect`(모델 필요), `sortie`, `missions`.
+각 스크립트는 앱 데이터를 지우고 필요한 데이터를 스스로 준비하므로 하나씩 돌려도 됩니다(`result`는 안에서 `flight`를 먼저 돌림). 전체 순서: `import-screen`, `map`, `plan`, `plan-save`, `flight`, `result`, `detect`(모델 필요), `sortie`, `missions`, `recovery`, `settings`(모델 필요).
 
 ## 코드 규칙
 

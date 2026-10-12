@@ -118,15 +118,17 @@ class TfliteYoloDetector private constructor(
         }
 
         /**
-         * `models/<version>/` 중 규격 검사를 통과한 폴더에서 이름이 가장 뒤인 것을 쓴다(9.1).
-         * 없으면 null이다. 거부한 폴더는 로그에 이유를 남긴다.
+         * `models/<폴더>/` 중 규격 검사를 통과한 모델을 고른다(9.1). ⑥ 설정에서 고른 폴더 [preferred]가 먼저이고,
+         * 없거나 규격이 맞지 않으면 이름이 가장 뒤인 폴더다. 없으면 null이다. 거부한 폴더는 로그에 이유를 남긴다.
          */
-        fun loadLatest(root: File): TfliteYoloDetector? =
-            root.listFiles { f -> f.isDirectory }.orEmpty().sortedByDescending { it.name }.firstNotNullOfOrNull { dir ->
-                runCatching { load(dir) }
-                    .onSuccess { Log.i(TAG, "model=${it.modelVersion} dir=${dir.name}") }
-                    .onFailure { Log.w(TAG, "모델 거부 ${dir.name}: ${it.message}") }
-                    .getOrNull()
-            }
+        fun loadPreferred(root: File, preferred: String?): TfliteYoloDetector? =
+            root.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }.orEmpty()
+                .sortedWith(compareByDescending<File> { it.name == preferred }.thenByDescending { it.name })
+                .firstNotNullOfOrNull { dir ->
+                    runCatching { load(dir) }
+                        .onSuccess { Log.i(TAG, "model=${it.modelVersion} dir=${dir.name}") }
+                        .onFailure { Log.w(TAG, "모델 거부 ${dir.name}: ${it.message}") }
+                        .getOrNull()
+                }
     }
 }

@@ -2,7 +2,6 @@ package com.example.myfirstapp.ui
 
 import android.content.ContentResolver
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,7 +18,10 @@ import com.example.myfirstapp.core.route.UnreachablePole
 import com.example.myfirstapp.data.MissionEntity
 import com.example.myfirstapp.data.PoleEntity
 import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.SortieDraft
+import com.example.myfirstapp.data.copyMbtiles
+import com.example.myfirstapp.data.listMbtiles
 import com.example.myfirstapp.data.toJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,12 +73,15 @@ class PlanViewModel(
     private val replanFrom: Long?,
     private val mapsDir: File,
     private val resolver: ContentResolver,
+    private val settings: SettingsStore,
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlanUiState(mapFiles = listMbtiles(mapsDir)))
     val state: StateFlow<PlanUiState> = _state.asStateFlow()
 
     init {
         viewModelScope.launch { _state.update { it.copy(projectName = dao.projectName(projectId).orEmpty()) } }
+        // 새 계획의 파라미터 초기값은 ⑥ 설정의 비행 기본값이다
+        viewModelScope.launch { settings.flightDefaults.first().let { p -> _state.update { it.copy(params = p) } } }
         viewModelScope.launch {
             dao.observePoles(projectId).collect { list -> _state.update { it.copy(poles = list) } }
         }
@@ -181,46 +186,14 @@ class PlanViewModel(
     fun onMapFilePicked(uri: Uri) {
         _state.update { it.copy(message = "지도 파일을 복사하는 중입니다") }
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { copyMbtiles(uri) } }
+            runCatching { withContext(Dispatchers.IO) { copyMbtiles(resolver, uri, mapsDir) } }
                 .onSuccess { name -> _state.update { it.copy(mapFiles = listMbtiles(mapsDir), message = "지도를 추가했습니다: $name") } }
                 .onFailure { e -> _state.update { it.copy(message = "지도를 추가하지 못했습니다: ${e.message}") } }
         }
     }
 
-    /** SAF로 고른 MBTiles를 앱 전용 폴더(4.3 `maps/`)에 복사한다. SQLite 파일인지 머리글로 확인한다. */
-    private fun copyMbtiles(uri: Uri): String {
-        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-            if (it.moveToFirst() && !it.isNull(0)) it.getString(0) else null
-        } ?: "map.mbtiles"
-        require(name.endsWith(".mbtiles", ignoreCase = true)) { ".mbtiles 파일만 추가할 수 있습니다" }
-        // 파일 이름은 스타일 JSON에 들어가므로 글자·숫자·`.`·`-`·`_`만 남긴다.
-        val target = File(mapsDir, name.replace(Regex("[^\\p{L}\\p{N}._-]"), "_"))
-        val part = File(mapsDir, target.name + ".part")
-        resolver.openInputStream(uri)?.use { input -> part.outputStream().use { input.copyTo(it) } } ?: error("파일을 열 수 없습니다")
-        val header = part.inputStream().use { String(it.readNBytesCompat(15), Charsets.US_ASCII) }
-        if (header != "SQLite format 3") {
-            part.delete()
-            error("MBTiles(SQLite) 형식이 아닙니다")
-        }
-        check(part.renameTo(target)) { "파일 이름을 바꾸지 못했습니다" }
-        return target.name
-    }
-
     companion object {
-        fun factory(dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, resolver: ContentResolver) =
-            viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, resolver) } }
+        fun factory(dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, resolver: ContentResolver, settings: SettingsStore) =
+            viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, resolver, settings) } }
     }
-}
-
-private fun listMbtiles(dir: File) = dir.listFiles { f -> f.extension == "mbtiles" }.orEmpty().sortedBy { it.name }
-
-private fun java.io.InputStream.readNBytesCompat(n: Int): ByteArray {
-    val buf = ByteArray(n)
-    var read = 0
-    while (read < n) {
-        val r = read(buf, read, n - read)
-        if (r < 0) break
-        read += r
-    }
-    return buf.copyOf(read)
 }

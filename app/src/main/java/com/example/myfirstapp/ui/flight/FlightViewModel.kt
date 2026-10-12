@@ -24,6 +24,7 @@ import com.example.myfirstapp.core.route.SortiePlan
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.RecorderSortie
 import com.example.myfirstapp.data.RoomRecorder
+import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.fakePhotoSource
 import com.example.myfirstapp.data.toEntity
 import com.example.myfirstapp.data.flightParamsFromJson
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,6 +80,7 @@ class FlightViewModel(
     private val projectId: Long,
     private val missionId: Long,
     private val appFilesDir: File?,
+    private val settings: SettingsStore,
     /** (scope, 이륙 지점, 앱 폴더, 복구 위치). 복구 위치는 모의 기체가 떠 있는 상태로 시작할 곳이고 실제 기체는 쓰지 않는다. */
     private val droneFactory: (CoroutineScope, GeoPoint, File?, GeoPoint?) -> DroneGateway = ::fakeDrone,
 ) : ViewModel() {
@@ -128,8 +131,9 @@ class FlightViewModel(
             params.downloadMode,
         )
         val storage = StorageMonitor { (appFilesDir?.usableSpace ?: 0L) >= MIN_FREE_BYTES }
-        // 앱 폴더 models/에 규격에 맞는 모델이 있으면 TFLite 탐지기, 없으면 모의 탐지기(9.1)
-        model = withContext(Dispatchers.IO) { TfliteYoloDetector.loadLatest(File(appFilesDir, "models")) }
+        // 앱 폴더 models/에 규격에 맞는 모델이 있으면 TFLite 탐지기(⑥ 설정에서 고른 모델 우선), 없으면 모의 탐지기(9.1)
+        val preferred = settings.modelDir.first()
+        model = withContext(Dispatchers.IO) { TfliteYoloDetector.loadPreferred(File(appFilesDir, "models"), preferred) }
         val detector = model ?: FakeDetector()
         val executor = InspectionExecutor(
             viewModelScope, drone, recorder, notifier, storage, energy, detector, sorties,
@@ -205,8 +209,8 @@ class FlightViewModel(
     }
 
     companion object {
-        fun factory(dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?) =
-            viewModelFactory { initializer { FlightViewModel(dao, projectId, missionId, appFilesDir) } }
+        fun factory(dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore) =
+            viewModelFactory { initializer { FlightViewModel(dao, projectId, missionId, appFilesDir, settings) } }
     }
 }
 

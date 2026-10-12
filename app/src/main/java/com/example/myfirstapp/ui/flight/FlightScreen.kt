@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.route.Enu
@@ -80,7 +81,9 @@ fun FlightScreen(
     onReview: () -> Unit,
 ) {
     val context = LocalContext.current
-    val vm: FlightViewModel = viewModel(factory = FlightViewModel.factory(dao, projectId, missionId, context.getExternalFilesDir(null)))
+    val vm: FlightViewModel = viewModel(factory = FlightViewModel.factory(
+            dao, projectId, missionId, context.getExternalFilesDir(null), (context.applicationContext as InspectionApp).settings,
+        ))
     val s by vm.state.collectAsStateWithLifecycle()
     // 1차 판독 화면에서 돌아오면 판독 수를 다시 센다
     LaunchedEffect(Unit) { vm.refreshSortieSummary() }

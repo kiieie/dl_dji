@@ -21,6 +21,7 @@ import com.example.myfirstapp.ui.flight.FlightScreen
 import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
+import com.example.myfirstapp.ui.settings.SettingsScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
@@ -67,6 +68,7 @@ class MainActivity : ComponentActivity() {
                     dao,
                     onOpenProject = { nav.navigate("missions/${it.id}") },
                     onOpenVerification = { nav.navigate("verify") },
+                    onOpenSettings = { nav.navigate("settings") },
                 )
             }
             composable("missions/{pid}", listOf(navArgument("pid") { type = NavType.LongType })) { e ->
@@ -110,6 +112,7 @@ class MainActivity : ComponentActivity() {
                     onBack = { nav.popBackStack() },
                 )
             }
+            composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }
             composable("verify") { VerificationPanel() }
         }
     }

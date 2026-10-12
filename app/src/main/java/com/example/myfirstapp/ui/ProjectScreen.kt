@@ -43,6 +43,7 @@ fun ProjectScreen(
     dao: ProjectDao,
     onOpenProject: (ProjectSummary) -> Unit,
     onOpenVerification: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val resolver = LocalContext.current.contentResolver
@@ -55,6 +56,7 @@ fun ProjectScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("프로젝트", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
                 TextButton(onClick = onOpenVerification) { Text("연동 검증") }
+                OutlinedButton(onClick = onOpenSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("설정") }
             }
             if (s.projects.isEmpty()) Text("프로젝트가 없습니다. 오른쪽에서 전주 CSV를 가져오세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
