@@ -2,13 +2,13 @@
 
 이 파일은 Claude Code가 이 저장소에서 작업할 때 참고하는 안내서입니다.
 
-## 현재 단계: 구현 — 기체 없이 가능한 ⑤ 결과 화면까지 완료 (M3E 기체 없음)
+## 현재 단계: 구현 — 기체 없이 가능한 기능 완료, RC Pro 실기기 PoC 진행 중
 
 - 설계서 v1.0이 **승인**되었습니다(2026-09-29, 현재 v1.3). 구현은 `docs/design/07-test-roadmap.md` 13장의 단계 순서를 따릅니다.
-- **M3E 기체가 아직 없습니다.** 2~3단계(기반, 계획)를 `FakeDroneGateway`로 진행하고, 기체를 확보하면 1단계 PoC를 먼저 수행합니다. 기체가 필요한 항목(6.1 방식 B, 6.4 하드웨어 버튼 재개, LDM 오프라인 등록 등)은 PoC 전까지 가정으로만 둡니다.
+- **RC Pro Enterprise 실기기를 쓰고 있고 M3E 기체도 확보할 수 있습니다**(2026-10-28). RC Pro에서 DJI SDK 등록, PoC ⑤(TFLite 약 0.4초/장)·⑦(adb) 완료, ⑥ 하드웨어 버튼은 기체 없이 감지까지 확인했습니다(`docs/evidence/2026-10-28-rcpro`). 다음은 기체를 연결해 PoC ④ LDM, ⑥ 미션 중 일시정지·C1 재개(프로펠러 제거, 시뮬레이터), ①~③입니다. 기체가 필요한 항목(6.1 방식 B 등)은 PoC 전까지 가정으로 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
-- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 전력 설비 탐지 모델은 아직 없고 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)로 검증합니다. 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 프로젝트·계획 화면 `ViewModel` 전환(완료) ⑤ 앱 재시작 복구(6.4, 모의 기체, 완료) ⑥ 설정 화면(비행 기본값, 모델·지도 관리, 완료) ⑦ 기체 확보 뒤 DJI UX SDK FPV. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. VWorld 타일 내려받기는 약관 확인 전까지 보류합니다.
+- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 전력 설비 탐지 모델은 아직 없고 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)로 검증합니다. 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 프로젝트·계획 화면 `ViewModel` 전환(완료) ⑤ 앱 재시작 복구(6.4, 모의 기체, 완료) ⑥ 설정 화면(비행 기본값, 모델·지도 관리, 완료) ⑦ 기체 확보 뒤 DJI UX SDK FPV. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. VWorld 타일 내려받기는 약관 확인 전까지 보류하고, 개발 단계 배경 지도는 Google 위성 온라인으로 보기로 했습니다(7.4 임시 결정, API 키 받은 뒤 구현).
 
 ## 프로젝트 개요
 
@@ -57,7 +57,7 @@
 
 ## 자주 쓰는 명령
 
-터미널에는 Java가 없으므로 Android Studio의 JBR을 씁니다: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`
+터미널에는 Java가 없으므로 Android Studio의 JBR을 씁니다: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`(macOS), `C:\Program Files\Android\Android Studio\jbr`(Windows, `gradlew.bat`). Windows Git Bash에서 `adb push`·`adb shell`에 `/sdcard/...` 경로를 쓸 때는 `MSYS_NO_PATHCONV=1`을 붙입니다.
 
 ```bash
 ./gradlew :core:test              # 도메인 단위 테스트 (기체·에뮬레이터 불필요)
@@ -143,7 +143,7 @@ docs/
 ## 알려진 이슈 (현재 검증 코드)
 
 - 연동 검증 화면(`MainActivity`의 `VerificationPanel`)은 PoC용이라 `ViewModel` 없이 Compose 상태를 씁니다. 지도 위 전주·경로 색은 데이터 시각화 색으로 직접 씁니다(10.1).
-- DJI SDK 초기화가 `Application`(`InspectionApp`)이 아니라 Activity(검증 화면)에서 이루어지고, LDM이 적용되어 있지 않습니다.
+- DJI SDK 초기화·등록(`init` → `INITIALIZE_COMPLETE` → `registerApp`)이 `Application`(`InspectionApp`)이 아니라 Activity(검증 화면)에서 이루어지고, LDM이 적용되어 있지 않습니다. `Helper.install`은 `InspectionApp`에 있습니다. 검증 화면에는 PoC ⑥용 RC 버튼 감시(`listenRcButtons`, 로그 태그 `RcKey`)가 있습니다.
 - `SDKManagerCallback` 콜백에서 Compose 상태를 직접 갱신합니다(스레드 안전성 확인 필요).
 - `:app`의 테스트는 Room 계측 테스트 6개(`ProjectDaoTest`, 에뮬레이터 필요)와 템플릿 예제뿐입니다(`:core`는 단위 테스트 49개).
 - TFLite·DJI 의존성이 `libs.*`가 아니라 문자열 좌표로 선언되어 있습니다(코드 규칙 위반, 정리 필요).

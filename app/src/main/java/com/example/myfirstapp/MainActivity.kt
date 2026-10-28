@@ -1,6 +1,8 @@
 package com.example.myfirstapp
 
 import android.os.Bundle
+import android.os.SystemClock
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -23,7 +25,10 @@ import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.settings.SettingsScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
+import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.key.RemoteControllerKey
 import dji.v5.common.error.IDJIError
+import dji.v5.manager.KeyManager
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.SDKManager
 import dji.v5.manager.interfaces.SDKManagerCallback
@@ -122,6 +127,7 @@ class MainActivity : ComponentActivity() {
     private fun VerificationPanel() {
         var djiStatus by remember { mutableStateOf("DJI SDK: 초기화되지 않음") }
         var yoloStatus by remember { mutableStateOf("YOLO TFLite: 초기화되지 않음") }
+        var rcStatus by remember { mutableStateOf("RC 버튼: SDK 등록 뒤 감시") }
 
         Column(
             modifier = Modifier.padding(24.dp),
@@ -134,6 +140,8 @@ class MainActivity : ComponentActivity() {
             Text(text = djiStatus, style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(10.dp))
             Text(text = yoloStatus, style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = rcStatus, style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(40.dp))
 
             // 검증 시작 버튼들
@@ -142,6 +150,7 @@ class MainActivity : ComponentActivity() {
                     djiStatus = "DJI 라이브러리 검증 중..."
                     testDjiInitialization { success, message ->
                         djiStatus = if (success) "✅ DJI SDK 검증 완료: $message" else "❌ DJI SDK 실패: $message"
+                        if (success) listenRcButtons { rcStatus = it }
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -162,6 +171,24 @@ class MainActivity : ComponentActivity() {
                 Text("YOLO (TFLite) 엔진 검증")
             }
         }
+    }
+
+    /** PoC ⑥: RC Pro 하드웨어 버튼 감지 지연·재개 매핑 확인. 눌림 변화를 로그(RcKey)와 화면에 남긴다. */
+    private fun listenRcButtons(onEvent: (String) -> Unit) {
+        val keys = listOf(
+            "일시정지" to RemoteControllerKey.KeyPauseButtonDown,
+            "C1" to RemoteControllerKey.KeyCustomButton1Down,
+            "C2" to RemoteControllerKey.KeyCustomButton2Down,
+            "RTH" to RemoteControllerKey.KeyGoHomeButtonDown,
+        )
+        for ((name, info) in keys) {
+            KeyManager.getInstance().listen(KeyTools.createKey(info), this) { _, down ->
+                val msg = "RC 버튼: $name ${if (down == true) "누름" else "뗌"}"
+                Log.i("RcKey", "$msg t=${SystemClock.uptimeMillis()}")
+                runOnUiThread { onEvent(msg) }
+            }
+        }
+        onEvent("RC 버튼: 감시 중(일시정지, C1, C2, RTH)")
     }
 
     // 1. DJI 네이티브 바이너리가 M1 및 스마트폰 환경에서 크래시 없이 로드되는지 확인
