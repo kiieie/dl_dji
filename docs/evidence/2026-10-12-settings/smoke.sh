@@ -8,7 +8,7 @@ set -euo pipefail
 ADB=${ADB:-~/Library/Android/sdk/platform-tools/adb}
 DIR=$(cd "$(dirname "$0")" && pwd)
 DATA=$(mktemp -d)
-PKG=com.example.myfirstapp
+PKG=kr.co.dl_dji
 APPFILES=/sdcard/Android/data/$PKG/files
 MODEL=build/models/coco-yolo11n-fp16
 [ -f "$MODEL/model.tflite" ] || { echo "모델 없음: tools/export_coco_model.sh를 먼저 실행하세요" >&2; exit 1; }
@@ -88,7 +88,7 @@ done
 $ADB shell settings put system accelerometer_rotation 0
 $ADB shell settings put system user_rotation 1
 start_app() {
-  $ADB shell am start -W -n $PKG/.MainActivity >/dev/null
+  $ADB shell am start -W -n $PKG/com.example.myfirstapp.MainActivity >/dev/null
   sleep 3
   dump | grep -q "Android App Compatibility" && tap "OK" || true
 }

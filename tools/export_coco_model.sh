@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 개발용 범용 탐지 모델(COCO yolo11n)을 9.1 규격 폴더로 만든다.
 #   결과: build/models/coco-yolo11n-fp16/{model.tflite, labels.txt, model.json}
-#   기기에 넣기: adb push build/models/coco-yolo11n-fp16 /sdcard/Android/data/com.example.myfirstapp/files/models/
+#   기기에 넣기: adb push build/models/coco-yolo11n-fp16 /sdcard/Android/data/kr.co.dl_dji/files/models/
 # Ultralytics 가중치는 AGPL-3.0이라 저장소와 배포 앱에 넣지 않는다(14장 미정 4).
 # onnx2tf로 변환한 모델은 상자를 입력 픽셀 단위로 내보낸다("boxes": "pixel"). yolo_ref.py가 출력 값으로 확인한다.
 # macOS 기본 python3(3.9)에서 동작을 확인했다. onnx2tf 1.20은 3.9에서 설치되는 마지막 버전이다.

@@ -183,7 +183,10 @@ class MainActivity : ComponentActivity() {
 
                 override fun onProductChanged(productId: Int) {}
 
-                override fun onInitProcess(event: DJISDKInitEvent, totalProcess: Int) {}
+                override fun onInitProcess(event: DJISDKInitEvent, totalProcess: Int) {
+                    // 초기화가 끝나야 등록을 시작한다(공식 샘플 순서)
+                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) SDKManager.getInstance().registerApp()
+                }
 
                 override fun onDatabaseDownloadProgress(current: Long, total: Long) {}
             })

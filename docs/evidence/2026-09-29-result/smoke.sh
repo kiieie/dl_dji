@@ -7,7 +7,7 @@ set -euo pipefail
 ADB=${ADB:-~/Library/Android/sdk/platform-tools/adb}
 DIR=$(cd "$(dirname "$0")" && pwd)
 DATA=$(mktemp -d)
-PKG=com.example.myfirstapp
+PKG=kr.co.dl_dji
 FILES=/sdcard/Android/data/$PKG/files/projects/1/missions/1
 
 dump() { $ADB exec-out uiautomator dump /dev/tty; }

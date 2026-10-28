@@ -19,13 +19,13 @@ tap() {
 shot() { $ADB exec-out screencap -p >"$DIR/$1.png"; echo "저장: $1.png"; }
 has() { $ADB exec-out uiautomator dump /dev/tty | grep -q "$1" && echo "확인: $1" || { echo "실패: $1 없음" >&2; exit 1; }; }
 
-$ADB shell pm clear com.example.myfirstapp >/dev/null
+$ADB shell pm clear kr.co.dl_dji >/dev/null
 $ADB push "$DIR/poles.csv" /sdcard/Download/poles.csv >/dev/null
 $ADB shell touch /sdcard/Download/poles.csv  # 수정 시각을 새로 해야 미디어 색인이 다시 잡는다
 $ADB shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Download/poles.csv >/dev/null
 $ADB shell settings put system accelerometer_rotation 0
 $ADB shell settings put system user_rotation 1
-$ADB shell am start -W -n com.example.myfirstapp/.MainActivity >/dev/null
+$ADB shell am start -W -n kr.co.dl_dji/com.example.myfirstapp.MainActivity >/dev/null
 sleep 3
 # 에뮬레이터의 16 KB 페이지 경고 창(DJI 네이티브 라이브러리 때문)이 뜨면 닫는다.
 $ADB exec-out uiautomator dump /dev/tty | grep -q "Android App Compatibility" && tap "OK"

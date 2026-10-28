@@ -8,7 +8,7 @@ set -euo pipefail
 ADB=${ADB:-~/Library/Android/sdk/platform-tools/adb}
 DIR=$(cd "$(dirname "$0")" && pwd)
 DATA=$(mktemp -d)
-PKG=com.example.myfirstapp
+PKG=kr.co.dl_dji
 APPFILES=/sdcard/Android/data/$PKG/files
 MODEL=build/models/coco-yolo11n-fp16
 VENV=build/yolo-export/venv/bin/python
@@ -61,7 +61,7 @@ for f in poles-1000.csv test-grid.mbtiles; do
 done
 $ADB shell settings put system accelerometer_rotation 0
 $ADB shell settings put system user_rotation 1
-$ADB shell am start -W -n $PKG/.MainActivity >/dev/null
+$ADB shell am start -W -n $PKG/com.example.myfirstapp.MainActivity >/dev/null
 sleep 3
 dump | grep -q "Android App Compatibility" && tap "OK" || true
 # 앱이 만든 앱 폴더에 모델과 사진을 넣는다(⑥ 설정의 모델 관리 전까지 adb로 넣는다, 9.1)

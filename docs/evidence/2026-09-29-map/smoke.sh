@@ -19,14 +19,14 @@ tap() {
 shot() { $ADB exec-out screencap -p >"$DIR/$1.png"; echo "저장: $1.png"; }
 has() { $ADB exec-out uiautomator dump /dev/tty | grep -q "$1" && echo "확인: $1" || { echo "실패: $1 없음" >&2; exit 1; }; }
 launch() {
-  $ADB shell am start -W -n com.example.myfirstapp/.MainActivity >/dev/null
+  $ADB shell am start -W -n kr.co.dl_dji/com.example.myfirstapp.MainActivity >/dev/null
   sleep 3
   # 에뮬레이터의 16 KB 페이지 경고 창(DJI 네이티브 라이브러리 때문)이 뜨면 닫는다.
   $ADB exec-out uiautomator dump /dev/tty | grep -q "Android App Compatibility" && tap "OK" || true
 }
 
 python3 tools/make_test_data.py "$DATA" 1000
-$ADB shell pm clear com.example.myfirstapp >/dev/null
+$ADB shell pm clear kr.co.dl_dji >/dev/null
 for f in poles-1000.csv test-grid.mbtiles; do
   $ADB push "$DATA/$f" "/sdcard/Download/$f" >/dev/null
   $ADB shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file:///sdcard/Download/$f" >/dev/null
@@ -44,7 +44,7 @@ has "지도를 추가했습니다: test-grid.mbtiles"; shot 2-map-with-base
 
 # 네트워크를 끄고 앱을 다시 시작해도 지도(MBTiles)와 전주가 보여야 한다.
 $ADB shell svc wifi disable; $ADB shell svc data disable
-$ADB shell am force-stop com.example.myfirstapp
+$ADB shell am force-stop kr.co.dl_dji
 launch
 tap "poles-1000"; sleep 2; tap "+ 새 계획"; sleep 3  # 프로젝트 → 미션 목록 → 계획 화면
 has "전주 1000개 · 지도 1개"; shot 5-offline-restart

@@ -162,10 +162,10 @@ mkdir -p secrets
 | 파일 | 내용 | 쓰는 곳 |
 |---|---|---|
 | `secrets/dji.properties` | `DJI_API_KEY=<DJI 개발자 사이트에서 받은 앱 키>` | `app/build.gradle.kts`가 읽어 매니페스트 `com.dji.sdk.API_KEY`에 넣음 |
-| `secrets/license_pf_Inspection.txt` | DJI LDM 오프라인 라이선스 원문 | 기체 PoC에서 LDM 등록에 사용(예정) |
+| `secrets/license_kr.co.dl_dji.txt` | DJI LDM 오프라인 라이선스 원문 | 기체 PoC에서 LDM 등록에 사용(예정) |
 | `secrets/vworld.properties` | `VWORLD_API_KEY=<VWorld 오픈API 인증키>` | VWorld 타일 내려받기(약관 확인 전까지 보류, 현재 코드에서 쓰지 않음) |
 
-`dji.properties`가 없어도 빌드는 됩니다. 이 경우 Gradle이 `secrets/dji.properties 없음` 경고를 내고, 앱에서 DJI SDK 등록만 실패합니다(모의 기체 기능은 정상). DJI 앱 키는 패키지명 `com.example.myfirstapp`에 묶여 있으므로 패키지명을 바꾸면 키를 새로 받아야 합니다.
+`dji.properties`가 없어도 빌드는 됩니다. 이 경우 Gradle이 `secrets/dji.properties 없음` 경고를 내고, 앱에서 DJI SDK 등록만 실패합니다(모의 기체 기능은 정상). DJI 앱 키는 패키지명(`applicationId`) `kr.co.dl_dji`에 묶여 있으므로 패키지명을 바꾸면 키를 새로 받아야 합니다.
 
 ### 4. 빌드와 설치
 
@@ -200,7 +200,7 @@ Windows에서는 `./gradlew` 대신 `gradlew.bat`을 씁니다.
 
 ## 앱에 데이터 넣기
 
-앱 전용 폴더는 `/sdcard/Android/data/com.example.myfirstapp/files/`입니다. 아래 예시는 `adb`가 PATH에 있다고 가정합니다(macOS 기본 위치 `~/Library/Android/sdk/platform-tools/adb`).
+앱 전용 폴더는 `/sdcard/Android/data/kr.co.dl_dji/files/`입니다. 아래 예시는 `adb`가 PATH에 있다고 가정합니다(macOS 기본 위치 `~/Library/Android/sdk/platform-tools/adb`).
 
 ### 시험용 전주 CSV와 지도
 
@@ -233,7 +233,7 @@ adb push build/models/coco-yolo11n-fp16 /sdcard/Download/models-in/
 앱 폴더 `fake_photos/`에 JPEG을 넣으면 모의 기체가 이름순으로 돌려 가며 "촬영"합니다. 없으면 그려 낸 사진을 씁니다.
 
 ```bash
-adb push 1-sample.jpg /sdcard/Android/data/com.example.myfirstapp/files/fake_photos/
+adb push 1-sample.jpg /sdcard/Android/data/kr.co.dl_dji/files/fake_photos/
 ```
 
 ## 시험

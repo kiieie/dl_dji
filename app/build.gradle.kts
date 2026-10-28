@@ -16,7 +16,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.myfirstapp"
+        applicationId = "kr.co.dl_dji"
         minSdk = 24
         targetSdk = 35
         versionCode = 1

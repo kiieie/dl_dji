@@ -6,7 +6,7 @@ set -euo pipefail
 ADB=${ADB:-~/Library/Android/sdk/platform-tools/adb}
 DIR=$(cd "$(dirname "$0")" && pwd)
 DATA=$(mktemp -d)
-PKG=com.example.myfirstapp
+PKG=kr.co.dl_dji
 
 dump() { $ADB exec-out uiautomator dump /dev/tty; }
 tapk() {
@@ -36,7 +36,7 @@ for f in poles-1000.csv test-grid.mbtiles; do
 done
 $ADB shell settings put system accelerometer_rotation 0
 $ADB shell settings put system user_rotation 1
-$ADB shell am start -W -n $PKG/.MainActivity >/dev/null
+$ADB shell am start -W -n $PKG/com.example.myfirstapp.MainActivity >/dev/null
 sleep 3
 dump | grep -q "Android App Compatibility" && tap "OK" || true
 
@@ -67,7 +67,7 @@ for f in inspection.db inspection.db-wal inspection.db-shm; do
 done
 
 # 3) 다시 켜면 열린 소티를 감지해 비행 화면을 바로 열고 일시정지로 복귀(모의 기체는 목표 전주 상공에 떠 있음)
-$ADB shell am start -W -n $PKG/.MainActivity >/dev/null
+$ADB shell am start -W -n $PKG/com.example.myfirstapp.MainActivity >/dev/null
 sleep 3
 dump | grep -q "Android App Compatibility" && tap "OK" || true
 wait_for "일시정지됨 — 수동 조종 가능" 20

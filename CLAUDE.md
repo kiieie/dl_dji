@@ -121,7 +121,7 @@ docs/
 - **네이티브 라이브러리 충돌 방지**: `packaging`의 `pickFirsts`(`libc++_shared.so`, `libcrypto.so`)와 `useLegacyPackaging = true`는 DJI SDK 연동에 필요하므로 지우지 마세요.
 - **TensorFlow 중복 제외**: DJI SDK와 TFLite 보조 라이브러리에서 `org.tensorflow` 그룹을 `exclude`하여 버전 충돌을 막고 있습니다. 의존성을 추가할 때 이 패턴을 유지하세요.
 - **Release 빌드 난독화 비활성화**: `optimization { enable = false }`. 활성화할 경우 DJI/TFLite 클래스에 대한 keep 규칙을 `keepRules/rules.keep`에 먼저 추가해야 합니다.
-- **DJI API 키**: `secrets/dji.properties`(git 제외)의 `DJI_API_KEY`를 `app/build.gradle.kts`가 읽어 매니페스트 자리표시자 `${DJI_API_KEY}`에 넣습니다. 파일이 없으면 빈 키로 빌드되고 SDK 등록만 실패합니다. 키는 `applicationId`(`com.example.myfirstapp`)에 묶여 있으므로 패키지명을 바꾸면 키도 새로 발급해야 합니다.
+- **DJI API 키**: `secrets/dji.properties`(git 제외)의 `DJI_API_KEY`를 `app/build.gradle.kts`가 읽어 매니페스트 자리표시자 `${DJI_API_KEY}`에 넣습니다. 파일이 없으면 빈 키로 빌드되고 SDK 등록만 실패합니다. 키는 `applicationId`(`kr.co.dl_dji`)에 묶여 있으므로(코드 패키지 `namespace`는 `com.example.myfirstapp` 그대로) 패키지명을 바꾸면 키도 새로 발급해야 합니다.
 
 ## 코드 작성 규칙 (구현 단계부터 적용)
 
