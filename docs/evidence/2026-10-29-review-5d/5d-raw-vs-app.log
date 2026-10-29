@@ -1,0 +1,10 @@
+[    1570.180539] EV_ABS       ABS_HAT0Y            ffffffff            
+[    1570.408419] EV_ABS       ABS_HAT0Y            00000000            
+[    1571.436420] EV_ABS       ABS_HAT0Y            00000001            
+[    1571.646419] EV_ABS       ABS_HAT0Y            00000000            
+[    1572.502410] EV_ABS       ABS_HAT0X            ffffffff            
+[    1572.752416] EV_ABS       ABS_HAT0X            00000000            
+[    1573.310412] EV_ABS       ABS_HAT0X            00000001            
+[    1573.530416] EV_ABS       ABS_HAT0X            00000000            
+[    1574.916415] EV_KEY       BTN_THUMBL           DOWN                
+[    1575.186657] EV_KEY       BTN_THUMBL           UP                  

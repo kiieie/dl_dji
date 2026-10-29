@@ -8,7 +8,7 @@
 - **RC Pro Enterprise 실기기를 쓰고 있고 M3E 기체도 확보할 수 있습니다**(2026-10-28). RC Pro에서 DJI SDK 등록, PoC ⑤(TFLite 약 0.4초/장)·⑦(adb) 완료, ⑥ 하드웨어 버튼은 기체 없이 감지까지 확인했습니다(`docs/evidence/2026-10-28-rcpro`). 다음은 기체를 연결해 PoC ④ LDM, ⑥ 미션 중 일시정지·C1 재개(프로펠러 제거, 시뮬레이터), ①~③입니다. 기체가 필요한 항목(6.1 방식 B 등)은 PoC 전까지 가정으로 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
-- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 전력 설비 탐지 모델은 아직 없고 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)로 검증합니다. 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 프로젝트·계획 화면 `ViewModel` 전환(완료) ⑤ 앱 재시작 복구(6.4, 모의 기체, 완료) ⑥ 설정 화면(비행 기본값, 모델·지도 관리, 완료) ⑦ 비행 화면 DJI 배치(FPV 전체·상단 상태바·위성 미니맵, 반투명 버튼)와 RC 버튼 매핑(일시정지, C1 재개, C2 짐벌은 기체 뒤)은 2026-10-29 구현(실기기 누름·미니맵 확인 남음), FPV 영상은 기체 확보 뒤 DJI UX SDK로. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. VWorld 타일 내려받기는 약관 확인 전까지 보류하고, 개발 단계 배경 지도는 Cesium ion의 Bing 위성영상을 온라인으로 MapLibre 아래에 깝니다(7.4 임시 결정, 토큰은 `secrets/cesium.properties`의 `CESIUM_ION_TOKEN`, 없으면 배경 없이 동작).
+- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 전력 설비 탐지 모델은 아직 없고 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)로 검증합니다. 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 프로젝트·계획 화면 `ViewModel` 전환(완료) ⑤ 앱 재시작 복구(6.4, 모의 기체, 완료) ⑥ 설정 화면(비행 기본값, 모델·지도 관리, 완료) ⑦ 비행 화면 DJI 배치(FPV 전체·상단 상태바·위성 미니맵, 반투명 버튼)와 RC 버튼 매핑(일시정지, C1 재개, C2 짐벌은 기체 뒤)은 2026-10-29 완료(RC Pro에서 C1 재개·일시정지 버튼·위성 미니맵 확인), FPV 영상은 기체 확보 뒤 DJI UX SDK로. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. VWorld 타일 내려받기는 약관 확인 전까지 보류하고, 개발 단계 배경 지도는 Cesium ion의 Bing 위성영상을 온라인으로 MapLibre 아래에 깝니다(7.4 임시 결정, 토큰은 `secrets/cesium.properties`의 `CESIUM_ION_TOKEN`, 없으면 배경 없이 동작).
 
 ## 프로젝트 개요
 
@@ -82,7 +82,7 @@ app/src/main/
 │   ├── ui/mission/              # ①-1 미션 목록과 이어하기(MissionListViewModel + MissionListScreen)
 │   ├── ui/MapScreen.kt          # ③ 계획, 로직은 PlanViewModel(MapLibre, MBTiles, 전주 개별 점, 영역 그리기, 파라미터, 전주 제외, 경로 미리보기, 계획 저장)
 │   ├── ui/flight/               # ④ 비행과 소티 완료 화면(FlightViewModel + FlightScreen + FlightMap 미니맵, 모의 기체)
-│   ├── drone/DjiRcButtons.kt    # RC Pro 버튼(일시정지, C1, C2, RTH)을 DJI KeyManager로 받기
+│   ├── drone/DjiRcButtons.kt    # RC Pro 버튼(일시정지, C1, C2, RTH, 5D)을 DJI KeyManager로 받기
 │   ├── ui/settings/             # ⑥ 설정(SettingsViewModel + SettingsScreen): 비행 기본값, 모델·지도 관리
 │   ├── data/SettingsStore.kt    # 설정 값(DataStore): 비행 기본값 JSON, 고른 모델
 │   ├── data/AppFiles.kt         # 앱 폴더의 지도(maps/)·모델(models/) 파일 관리
@@ -100,6 +100,7 @@ core/src/                        # 순수 Kotlin(JVM) 도메인 모듈
 │   ├── model/  port/  csv/      # 도메인 모델, 포트 인터페이스, CSV 파서
 │   ├── route/                   # 투영, 다각형, TSP, 소티 분할, 에너지 모델
 │   ├── executor/                # InspectionExecutor 상태머신, 비행 전 점검 판정
+│   ├── input/                   # FiveDGate (5D 버튼 겹침 걸러 내기)
 │   ├── detect/                  # YoloDecoder (YOLO 출력 해석, NMS)
 │   └── fake/                    # FakeDroneGateway (모의 기체), FakeDetector (모의 탐지기)
 └── test/                        # JUnit + kotlinx-coroutines-test
@@ -146,5 +147,5 @@ docs/
 
 - 연동 검증 화면(`MainActivity`의 `VerificationPanel`)은 PoC용이라 `ViewModel` 없이 Compose 상태를 씁니다. 지도 위 전주·경로 색은 데이터 시각화 색으로 직접 씁니다(10.1).
 - DJI SDK 초기화·등록(`init` → `INITIALIZE_COMPLETE` → `registerApp`)은 `InspectionApp`이 앱 시작 때 합니다(2026-10-29). LDM은 아직 적용되어 있지 않습니다. RC 버튼은 `drone/DjiRcButtons.kt`(포트 `core/port/RcButtons.kt`)가 SDK 등록 뒤 받아 비행 화면에 매핑합니다(일시정지, C1 재개, RTH는 모의만). 검증 화면은 SDK 상태와 버튼 누름(로그 태그 `RcKey`)만 보여 줍니다.
-- `:app`의 테스트는 Room 계측 테스트 6개(`ProjectDaoTest`, 에뮬레이터 필요)와 템플릿 예제뿐입니다(`:core`는 단위 테스트 49개).
+- `:app`의 테스트는 Room 계측 테스트 6개(`ProjectDaoTest`, 에뮬레이터 필요)와 템플릿 예제뿐입니다(`:core`는 단위 테스트 55개).
 - TFLite·DJI 의존성이 `libs.*`가 아니라 문자열 좌표로 선언되어 있습니다(코드 규칙 위반, 정리 필요).

@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -117,11 +118,12 @@ class FlightViewModel(
 
     /** 일시정지 버튼: 실제 기체는 펌웨어가 멈추고 어댑터가 알리므로 모의 기체만 흉내 낸다. C1: 화면 [재개]와 같다. */
     private fun onRcButton(b: RcButton) {
+        Log.i("RcKey", "$b state=${_state.value.exec.state}")
         when (b) {
             RcButton.PAUSE -> rcPause()
             RcButton.C1 -> resume()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
-            RcButton.C2 -> Unit
+            else -> Unit // C2(짐벌)는 기체 뒤, 5D는 비행 명령에 쓰지 않는다(10장)
         }
     }
 

@@ -2,6 +2,7 @@ package com.example.myfirstapp
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.AppDatabase
 import com.example.myfirstapp.data.SettingsStore
@@ -38,6 +39,11 @@ class InspectionApp : Application() {
     @OptIn(ExperimentalCoroutinesApi::class)
     val rcButtons: Flow<RcButton> = djiRegistered.filter { it }.take(1).flatMapLatest { djiRcButtonPresses() }
 
+    private fun setDjiStatus(text: String) {
+        Log.i("DjiSdk", text)
+        _djiStatus.value = text
+    }
+
     override fun onCreate() {
         super.onCreate()
         initDjiSdk()
@@ -48,12 +54,12 @@ class InspectionApp : Application() {
         try {
             SDKManager.getInstance().init(this, object : SDKManagerCallback {
                 override fun onRegisterSuccess() {
-                    _djiStatus.value = "✅ DJI SDK 등록 성공"
+                    setDjiStatus("✅ DJI SDK 등록 성공")
                     djiRegistered.value = true
                 }
 
                 override fun onRegisterFailure(error: IDJIError) {
-                    _djiStatus.value = "❌ DJI SDK 등록 실패: ${error.description()}"
+                    setDjiStatus("❌ DJI SDK 등록 실패: ${error.description()}")
                 }
 
                 override fun onProductDisconnect(productId: Int) {}
@@ -68,7 +74,7 @@ class InspectionApp : Application() {
             })
         } catch (e: Throwable) {
             // x86_64 에뮬레이터 등 DJI 네이티브 라이브러리가 없는 환경. 모의 기체로는 계속 쓸 수 있다.
-            _djiStatus.value = "❌ DJI SDK 초기화 실패: ${e.localizedMessage ?: e.javaClass.simpleName}"
+            setDjiStatus("❌ DJI SDK 초기화 실패: ${e.localizedMessage ?: e.javaClass.simpleName}")
         }
     }
 }

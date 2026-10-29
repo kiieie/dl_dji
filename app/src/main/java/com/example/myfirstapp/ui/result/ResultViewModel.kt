@@ -6,8 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.myfirstapp.core.input.FiveDGate
 import com.example.myfirstapp.core.model.ReviewVerdict
 import com.example.myfirstapp.core.model.TargetLabels
+import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.CaptureEntity
 import com.example.myfirstapp.data.DetectionEntity
 import com.example.myfirstapp.data.ExportResult
@@ -17,9 +19,12 @@ import com.example.myfirstapp.data.ReviewEntity
 import com.example.myfirstapp.data.exportMission
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -84,6 +89,8 @@ class ResultViewModel(
     private val openOutput: (Uri) -> OutputStream?,
     private val initialFilter: ResultFilter? = null,
     private val now: () -> Long = System::currentTimeMillis,
+    /** RC Pro 5D 버튼(10장): 위·아래 전주, 왼쪽·오른쪽 판정, 가운데 저장 후 다음. */
+    private val rcButtons: Flow<RcButton> = emptyFlow(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(ResultUiState(missionId = missionId))
     val state: StateFlow<ResultUiState> = _state.asStateFlow()
@@ -95,6 +102,7 @@ class ResultViewModel(
     private var exported: ExportResult? = null
 
     init {
+        viewModelScope.launch { rcButtons.collect(::on5d) }
         viewModelScope.launch {
             val mission = dao.mission(missionId) ?: return@launch _state.update { it.copy(loading = false, message = "미션을 찾을 수 없습니다") }
             captures = dao.missionCaptures(missionId).groupBy { it.visitId }
@@ -132,7 +140,48 @@ class ResultViewModel(
         s.copy(selected = row, photos = photos, draft = draft)
     }
 
+    /** 5D 입력 정리: 가운데와 방향이 겹치면 둘 다 버린다(`FiveDGate`, 실측값은 현장에서 손에 맞게 고친다). */
+    private val gate = FiveDGate()
+
+    private fun on5d(b: RcButton) {
+        Log.i("RcKey", "result $b")
+        apply5d(gate.press(b, now()))
+        viewModelScope.launch {
+            delay(gate.settleMs)
+            apply5d(gate.tick(now()))
+        }
+    }
+
+    private fun apply5d(r: FiveDGate.Result) {
+        if (r.conflict) _state.update { it.copy(message = "5D 입력이 겹쳐 무시했습니다. 다시 누르세요") }
+        r.actions.forEach { b ->
+            when (b) {
+                RcButton.FIVE_D_UP -> moveSelection(-1)
+                RcButton.FIVE_D_DOWN -> moveSelection(1)
+                RcButton.FIVE_D_LEFT -> moveVerdict(-1)
+                RcButton.FIVE_D_RIGHT -> moveVerdict(1)
+                RcButton.FIVE_D_CENTER -> saveReviewAndNext()
+                else -> Unit
+            }
+        }
+    }
+
     fun setVerdict(v: ReviewVerdict) = _state.update { it.copy(draft = it.draft.copy(verdict = v)) }
+
+    /** 5D 버튼 위·아래(10장): 지금 보이는 목록에서 이전·다음 전주를 고른다. 끝에서는 멈춘다. */
+    fun moveSelection(delta: Int) {
+        val s = _state.value
+        if (s.shown.isEmpty()) return
+        val i = s.shown.indexOfFirst { it.visitId == s.selected?.visitId }
+        select(s.shown[if (i < 0) 0 else (i + delta).coerceIn(0, s.shown.lastIndex)].visitId)
+    }
+
+    /** 5D 버튼 왼쪽·오른쪽: 판정을 옆으로 옮긴다. 고른 판정이 없으면 첫 판정부터. */
+    fun moveVerdict(delta: Int) = _state.update {
+        val all = ReviewVerdict.entries
+        val i = it.draft.verdict?.let(all::indexOf)
+        it.copy(draft = it.draft.copy(verdict = if (i == null) all.first() else all[(i + delta).coerceIn(0, all.lastIndex)]))
+    }
 
     fun toggleTag(label: String) = _state.update {
         val tags = it.draft.tags
@@ -184,7 +233,8 @@ class ResultViewModel(
 
     companion object {
         fun factory(
-            dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File, initialFilter: ResultFilter?, openOutput: (Uri) -> OutputStream?,
-        ) = viewModelFactory { initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput, initialFilter) } }
+            dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File, initialFilter: ResultFilter?,
+            rcButtons: Flow<RcButton>, openOutput: (Uri) -> OutputStream?,
+        ) = viewModelFactory { initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput, initialFilter, rcButtons = rcButtons) } }
     }
 }
