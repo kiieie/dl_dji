@@ -16,6 +16,7 @@ import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.port.DroneGateway
+import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.core.port.StorageMonitor
 import com.example.myfirstapp.core.route.EnergyModel
 import com.example.myfirstapp.core.route.EnergyParams
@@ -26,16 +27,20 @@ import com.example.myfirstapp.data.RecorderSortie
 import com.example.myfirstapp.data.RoomRecorder
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.fakePhotoSource
+import com.example.myfirstapp.data.listMbtiles
+import com.example.myfirstapp.data.onlineSatelliteTiles
 import com.example.myfirstapp.data.toEntity
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.detect.TfliteYoloDetector
 import com.example.myfirstapp.sound.ToneNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -61,6 +66,9 @@ data class FlightUiState(
     val returnNeedPct: Int = 0,
     val home: GeoPoint? = null,
     val poles: List<Pole> = emptyList(),
+    /** 지도 배경: 앱 폴더의 MBTiles와 온라인 위성 타일(7.4 임시). 계획 화면과 같다. */
+    val mapFiles: List<File> = emptyList(),
+    val onlineTiles: List<String> = emptyList(),
     /** 모의 기체면 true: 모의 RC 조작 줄을 보여 준다. */
     val simulated: Boolean = false,
     val modelVersion: String? = null,
@@ -83,6 +91,8 @@ class FlightViewModel(
     private val settings: SettingsStore,
     /** (scope, 이륙 지점, 앱 폴더, 복구 위치). 복구 위치는 모의 기체가 떠 있는 상태로 시작할 곳이고 실제 기체는 쓰지 않는다. */
     private val droneFactory: (CoroutineScope, GeoPoint, File?, GeoPoint?) -> DroneGateway = ::fakeDrone,
+    /** RC 하드웨어 버튼 누름. 화면 버튼과 같은 동작에 매핑한다(10장). */
+    private val rcButtons: Flow<RcButton> = emptyFlow(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(FlightUiState())
     val state: StateFlow<FlightUiState> = _state.asStateFlow()
@@ -97,6 +107,22 @@ class FlightViewModel(
 
     init {
         viewModelScope.launch { load() }
+        viewModelScope.launch { rcButtons.collect(::onRcButton) }
+        viewModelScope.launch {
+            val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
+            val tiles = onlineSatelliteTiles()
+            _state.update { it.copy(mapFiles = files, onlineTiles = tiles) }
+        }
+    }
+
+    /** 일시정지 버튼: 실제 기체는 펌웨어가 멈추고 어댑터가 알리므로 모의 기체만 흉내 낸다. C1: 화면 [재개]와 같다. */
+    private fun onRcButton(b: RcButton) {
+        when (b) {
+            RcButton.PAUSE -> rcPause()
+            RcButton.C1 -> resume()
+            RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
+            RcButton.C2 -> Unit
+        }
     }
 
     private suspend fun load() {
@@ -209,8 +235,8 @@ class FlightViewModel(
     }
 
     companion object {
-        fun factory(dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore) =
-            viewModelFactory { initializer { FlightViewModel(dao, projectId, missionId, appFilesDir, settings) } }
+        fun factory(dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore, rcButtons: Flow<RcButton>) =
+            viewModelFactory { initializer { FlightViewModel(dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons) } }
     }
 }
 

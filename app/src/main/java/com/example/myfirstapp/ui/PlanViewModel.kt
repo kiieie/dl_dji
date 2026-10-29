@@ -22,6 +22,7 @@ import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.SortieDraft
 import com.example.myfirstapp.data.copyMbtiles
 import com.example.myfirstapp.data.listMbtiles
+import com.example.myfirstapp.data.onlineSatelliteTiles
 import com.example.myfirstapp.data.toJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +42,8 @@ data class PlanUiState(
     /** 아직 읽지 않았으면 null. */
     val poles: List<PoleEntity>? = null,
     val mapFiles: List<File> = emptyList(),
+    /** 온라인 위성 배경(Cesium ion의 Bing) 타일 주소. 토큰이 없거나 받지 못하면 빈 목록(7.4 임시 결정). */
+    val onlineTiles: List<String> = emptyList(),
     val selected: String? = null,
     val message: String? = null,
     val tool: Tool = Tool.NONE,
@@ -86,6 +89,7 @@ class PlanViewModel(
             dao.observePoles(projectId).collect { list -> _state.update { it.copy(poles = list) } }
         }
         replanFrom?.let { viewModelScope.launch { seedReplan(it) } }
+        viewModelScope.launch { onlineSatelliteTiles().let { urls -> _state.update { it.copy(onlineTiles = urls) } } }
     }
 
     /** 남은 전주를 감싸는 사각형을 영역으로 두고, 그 안의 다른 전주는 제외한다(F-06 제외와 같은 방식). */

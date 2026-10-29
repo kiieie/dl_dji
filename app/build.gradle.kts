@@ -11,6 +11,11 @@ val djiApiKey: String = rootProject.file("secrets/dji.properties").takeIf { it.e
     ?.let { f -> Properties().apply { f.inputStream().use(::load) }.getProperty("DJI_API_KEY") }
     ?: "".also { logger.warn("secrets/dji.properties 없음: DJI_API_KEY 없이 빌드합니다") }
 
+// Cesium ion 토큰(7.4 임시 결정, 온라인 위성 배경). secrets/cesium.properties(git 제외)가 없으면 온라인 배경 없이 빌드한다.
+val cesiumIonToken: String = rootProject.file("secrets/cesium.properties").takeIf { it.exists() }
+    ?.let { f -> Properties().apply { f.inputStream().use(::load) }.getProperty("CESIUM_ION_TOKEN") }
+    .orEmpty()
+
 android {
     namespace = "com.example.myfirstapp"
     compileSdk = 35
@@ -24,6 +29,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["DJI_API_KEY"] = djiApiKey
+        buildConfigField("String", "CESIUM_ION_TOKEN", "\"$cesiumIonToken\"")
 
         // M1 Mac 및 DJI SDK 기기 구동을 위한 아키텍처 고정
         ndk {
@@ -48,6 +54,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // DJI SDK 내부 네이티브 라이브러리(.so) 파일 충돌 방지

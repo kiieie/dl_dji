@@ -52,13 +52,15 @@
 | 미션 목록(①-1), 이어하기와 날짜 확인(F-20) | 완료 | `ui/mission/`, `:core` `needsResumeConfirm`. [남은 전주로 새 계획]은 기존 미션을 `PARTIAL`로 닫음(`docs/evidence/2026-09-29-missions`) |
 | 프로젝트·계획 화면 `ViewModel` 전환 | 완료 | `ui/ProjectViewModel.kt`, `ui/PlanViewModel.kt`. CSV 읽기·저장·삭제, 영역·경로 계산·계획 저장·지도 파일 복사를 화면 밖으로 옮김. 지도 그리기(MapLibre)만 화면에 남김. 기존 스모크 9개로 회귀 확인 |
 | ⑥ 설정 화면(비행 기본값 DataStore, 모델 관리 F-18, 지도 관리, 상태) | 완료 | 10장 ⑥ 설정. `ui/settings/`, `data/SettingsStore.kt`. 프리셋·에너지 보정값 편집은 MVP 이후(`docs/evidence/2026-10-12-settings`) |
-| DJI UX SDK FPV·계기 위젯(비행 화면) | 기체 확보 뒤 | 공식 샘플 `android-sdk-v5-uxsdk`(5.18.0) 모듈, `DefaultLayoutActivity` 참고. PoC와 함께 |
+| 비행 화면 DJI 배치(FPV 전체, 위쪽 상태바, 오른쪽 아래 미니맵) | 완료(10-29) | 공식 샘플 UX SDK 기본 화면을 RC Pro에서 캡처해 참고(`docs/evidence/reports/2026-10-29-dji-sample`, git 제외). FPV 자리는 검은 화면, 미니맵은 위성 배경 지도(`ui/flight/FlightMap.kt`), 버튼 반투명(`docs/evidence/2026-10-29-flight-layout`) |
+| RC Pro 버튼 매핑(비행 화면) | 구현, 실기기 누름 확인 남음 | 일시정지 → 일시정지, C1 → 재개, RTH → RTH(모의만), C2 → 짐벌(기체 뒤). SDK 초기화·등록을 `InspectionApp`으로 옮김. 포트 `core/port/RcButtons.kt`, 구현 `drone/DjiRcButtons.kt` |
+| DJI UX SDK FPV·계기 위젯(비행 화면) | 기체 확보 뒤 | 위 배치의 FPV 자리에 `android-sdk-v5-uxsdk`(5.18.0) FPV 위젯을 넣는다. PoC와 함께 |
 | RC Pro 실기기 설치·DJI SDK 등록 | 완료 | 2026-10-28. 앱 ID를 DJI 앱 키에 맞춰 `kr.co.dl_dji`로 변경(`namespace`는 그대로), `Helper.install`·`registerApp` 추가 후 등록 성공. 모의 비행 전체 흐름 확인(`docs/evidence/2026-10-28-rcpro`) |
 | PoC ⑦ APK 설치·adb | 완료 | RC Pro(Android 10, Snapdragon 865)에 USB adb로 설치·디버깅 가능. 시스템 파일 선택 창은 adb 탭에 반응하지 않으나 손가락으로는 정상 |
 | PoC ⑤ TFLite 시간(RC Pro) | 완료 | COCO yolo11n fp16, CPU 4스레드, M3E 원본 사진(7MB): 전처리 약 185ms, 추론 약 205ms, 후처리 약 4ms, 합계 약 0.4초(목표 1초). C++ 전환 불필요(9.4). GPU delegate 미적용 |
 | PoC ⑥ 하드웨어 버튼 | 일부 완료 | 기체 없이 SDK `KeyPauseButtonDown`·`KeyCustomButton1Down`/`2Down`·`KeyGoHomeButtonDown` 눌림·뗌 감지 확인(Android 키 이벤트로는 오지 않음). C1/C2로 재개 매핑 가능. 미션 중 일시정지 시 이벤트·기체 제동은 기체 연결 뒤 시뮬레이터에서 확인 |
 | PoC ④ LDM | 기체 확보 뒤 | 라이선스 `license_kr.co.dl_dji.txt` 확보(7.2). 다음 작업 |
-| 배경 지도 Google 위성(온라인, 임시) | 결정만 | 7.4 임시 결정. API 키 받은 뒤 구현 |
+| 배경 지도 Cesium ion 위성(온라인, 임시) | 완료(10-29) | 7.4 임시 결정(Google 대체). ion 자산 2(Bing Aerial)를 MapLibre 래스터로. RC Pro에서 확인, `docs/evidence/2026-10-29-cesium` |
 | 앱 재시작 복구(DB·SD 대조, 모의 기체) | 완료 | 6.4 복구. `InspectionExecutor`의 `recovery`, `DroneGateway.listMedia`, `ui/flight/FlightViewModel`. 비행 중 앱을 강제 종료하고 다시 켜 `Paused` 복귀와 재개를 확인(`docs/evidence/2026-10-10-recovery`). 실제 기체의 SD 목록과 시각 차이는 PoC에서 |
 
 ### 13.1 개발 장비와 진행 순서

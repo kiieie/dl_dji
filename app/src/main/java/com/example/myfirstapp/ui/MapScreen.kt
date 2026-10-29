@@ -125,6 +125,7 @@ fun MapScreen(
             PoleMap(
                 poles = it,
                 mapFiles = s.mapFiles,
+                onlineTiles = s.onlineTiles,
                 overlay = Overlay(s.vertices, s.home, s.plan, s.excludedPoints),
                 focus = s.focus,
                 onPoleClick = vm::selectPole,
@@ -146,7 +147,7 @@ fun MapScreen(
                     Text("전주 ${s.poles?.size ?: 0}개 · 지도 ${s.mapFiles.size}개", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 // 패널 높이를 아끼려고 지도 파일 이름은 뺐다. 지도가 없을 때만 알린다.
-                if (s.mapFiles.isEmpty()) {
+                if (s.mapFiles.isEmpty() && s.onlineTiles.isEmpty()) {
                     Text("오프라인 지도(.mbtiles)가 없습니다. 배경 없이 전주만 표시합니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 s.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
@@ -298,6 +299,7 @@ private data class Overlay(val vertices: List<GeoPoint>, val home: GeoPoint?, va
 private fun PoleMap(
     poles: List<PoleEntity>,
     mapFiles: List<File>,
+    onlineTiles: List<String>,
     overlay: Overlay,
     focus: List<GeoPoint>,
     onPoleClick: (String?) -> Unit,
@@ -307,33 +309,9 @@ private fun PoleMap(
     val density = context.resources.displayMetrics.density
     val onClick by rememberUpdatedState(onPoleClick)
     val onTap by rememberUpdatedState(onMapTap)
-    val mapView = remember {
-        MapLibre.getInstance(context)
-        // Compose 안에서는 SurfaceView보다 TextureView가 겹침·캡처 문제가 적다.
-        MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true)).apply { onCreate(null) }
-    }
+    val mapView = rememberMapView()
     var fitted by remember { mutableStateOf(false) }
     var styleGen by remember { mutableStateOf(0) }
-
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
-                Lifecycle.Event.ON_STOP -> mapView.onStop()
-                else -> Unit
-            }
-        }
-        lifecycle.addObserver(observer)
-        onDispose {
-            lifecycle.removeObserver(observer)
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
-            mapView.onDestroy()
-        }
-    }
 
     LaunchedEffect(mapView) {
         mapView.getMapAsync { map ->
@@ -351,9 +329,9 @@ private fun PoleMap(
         }
     }
 
-    LaunchedEffect(poles, mapFiles) {
+    LaunchedEffect(poles, mapFiles, onlineTiles) {
         mapView.getMapAsync { map ->
-            map.setStyle(Style.Builder().fromJson(styleJson(mapFiles))) { style ->
+            map.setStyle(Style.Builder().fromJson(styleJson(mapFiles, onlineTiles))) { style ->
                 val features = poles.map {
                     Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply { addStringProperty("poleId", it.poleId) }
                 }
@@ -448,7 +426,38 @@ private fun PoleMap(
     AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 }
 
-private fun GeoPoint.toPoint(): Point = Point.fromLngLat(lon, lat)
+/** 화면 수명에 맞춰 돌리는 MapLibre 지도 뷰(계획·비행 화면 공용). */
+@Composable
+internal fun rememberMapView(): MapView {
+    val context = LocalContext.current
+    val mapView = remember {
+        MapLibre.getInstance(context)
+        // Compose 안에서는 SurfaceView보다 TextureView가 겹침·캡처 문제가 적다.
+        MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true)).apply { onCreate(null) }
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> mapView.onStart()
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_STOP -> mapView.onStop()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) mapView.onPause()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) mapView.onStop()
+            mapView.onDestroy()
+        }
+    }
+    return mapView
+}
+
+internal fun GeoPoint.toPoint(): Point = Point.fromLngLat(lon, lat)
 
 /** 그리는 중인 영역: 꼭짓점 3개 이상이면 다각형, 2개면 선, 그리고 꼭짓점 점들. */
 private fun drawFeatures(vertices: List<GeoPoint>): FeatureCollection {
@@ -475,9 +484,15 @@ private fun routeFeatures(plan: RoutePlan?): FeatureCollection = FeatureCollecti
     },
 )
 
-private fun styleJson(mapFiles: List<File>): String {
-    val sources = mapFiles.mapIndexed { i, f -> """"base$i":{"type":"raster","url":"mbtiles://${f.absolutePath}","tileSize":256}""" }
+/** 온라인 위성(7.4 임시)을 맨 아래에, 그 위에 MBTiles를 겹친다. */
+internal fun styleJson(mapFiles: List<File>, onlineTiles: List<String>): String {
+    val online = onlineTiles.takeIf { it.isNotEmpty() }?.let { urls ->
+        val tiles = urls.joinToString(",") { "\"$it\"" }
+        """"online":{"type":"raster","tiles":[$tiles],"tileSize":256,"maxzoom":19,"attribution":"© Microsoft Bing, Cesium ion"}"""
+    }
+    val sources = listOfNotNull(online) + mapFiles.mapIndexed { i, f -> """"base$i":{"type":"raster","url":"mbtiles://${f.absolutePath}","tileSize":256}""" }
     val layers = listOf("""{"id":"background","type":"background","paint":{"background-color":"#E6EAE7"}}""") +
+        listOfNotNull(online?.let { """{"id":"online","type":"raster","source":"online"}""" }) +
         mapFiles.indices.map { """{"id":"base$it","type":"raster","source":"base$it"}""" }
     return """{"version":8,"sources":{${sources.joinToString(",")}},"layers":[${layers.joinToString(",")}]}"""
 }

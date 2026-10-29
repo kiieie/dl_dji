@@ -25,13 +25,6 @@ import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.settings.SettingsScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
-import dji.sdk.keyvalue.key.KeyTools
-import dji.sdk.keyvalue.key.RemoteControllerKey
-import dji.v5.common.error.IDJIError
-import dji.v5.manager.KeyManager
-import dji.v5.common.register.DJISDKInitEvent
-import dji.v5.manager.SDKManager
-import dji.v5.manager.interfaces.SDKManagerCallback
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
 
@@ -125,9 +118,18 @@ class MainActivity : ComponentActivity() {
     /** DJI SDK와 TFLite 로드 확인용 검증 화면(PoC 전까지 유지). */
     @Composable
     private fun VerificationPanel() {
-        var djiStatus by remember { mutableStateOf("DJI SDK: 초기화되지 않음") }
+        val app = application as InspectionApp
+        // SDK 초기화·등록은 InspectionApp이 앱 시작 때 한다. 여기서는 상태만 보여 준다.
+        val djiStatus by app.djiStatus.collectAsState()
         var yoloStatus by remember { mutableStateOf("YOLO TFLite: 초기화되지 않음") }
         var rcStatus by remember { mutableStateOf("RC 버튼: SDK 등록 뒤 감시") }
+        LaunchedEffect(Unit) {
+            rcStatus = "RC 버튼: 감시 중(일시정지, C1, C2, RTH)"
+            app.rcButtons.collect { b ->
+                rcStatus = "RC 버튼: $b 누름"
+                Log.i("RcKey", "$b t=${SystemClock.uptimeMillis()}")
+            }
+        }
 
         Column(
             modifier = Modifier.padding(24.dp),
@@ -144,22 +146,6 @@ class MainActivity : ComponentActivity() {
             Text(text = rcStatus, style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(40.dp))
 
-            // 검증 시작 버튼들
-            Button(
-                onClick = {
-                    djiStatus = "DJI 라이브러리 검증 중..."
-                    testDjiInitialization { success, message ->
-                        djiStatus = if (success) "✅ DJI SDK 검증 완료: $message" else "❌ DJI SDK 실패: $message"
-                        if (success) listenRcButtons { rcStatus = it }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("DJI SDK V5 라이브러리 검증")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
             Button(
                 onClick = {
                     yoloStatus = "YOLO Interpreter 테스트 중..."
@@ -170,59 +156,6 @@ class MainActivity : ComponentActivity() {
             ) {
                 Text("YOLO (TFLite) 엔진 검증")
             }
-        }
-    }
-
-    /** PoC ⑥: RC Pro 하드웨어 버튼 감지 지연·재개 매핑 확인. 눌림 변화를 로그(RcKey)와 화면에 남긴다. */
-    private fun listenRcButtons(onEvent: (String) -> Unit) {
-        val keys = listOf(
-            "일시정지" to RemoteControllerKey.KeyPauseButtonDown,
-            "C1" to RemoteControllerKey.KeyCustomButton1Down,
-            "C2" to RemoteControllerKey.KeyCustomButton2Down,
-            "RTH" to RemoteControllerKey.KeyGoHomeButtonDown,
-        )
-        for ((name, info) in keys) {
-            KeyManager.getInstance().listen(KeyTools.createKey(info), this) { _, down ->
-                val msg = "RC 버튼: $name ${if (down == true) "누름" else "뗌"}"
-                Log.i("RcKey", "$msg t=${SystemClock.uptimeMillis()}")
-                runOnUiThread { onEvent(msg) }
-            }
-        }
-        onEvent("RC 버튼: 감시 중(일시정지, C1, C2, RTH)")
-    }
-
-    // 1. DJI 네이티브 바이너리가 M1 및 스마트폰 환경에서 크래시 없이 로드되는지 확인
-    // 변경된 오버라이딩 메소드 이름 적용 (onInitProcess -> V5 규격 맞춤)
-    private fun testDjiInitialization(onResult: (Boolean, String) -> Unit) {
-        try {
-            SDKManager.getInstance().init(applicationContext, object : SDKManagerCallback {
-                override fun onRegisterSuccess() {
-                    onResult(true, "등록 성공")
-                }
-
-                override fun onRegisterFailure(error: IDJIError) {
-                    onResult(false, "등록 실패: ${error.description()}")
-                }
-
-                override fun onProductDisconnect(productId: Int) {}
-
-                override fun onProductConnect(productId: Int) {}
-
-                override fun onProductChanged(productId: Int) {}
-
-                override fun onInitProcess(event: DJISDKInitEvent, totalProcess: Int) {
-                    // 초기화가 끝나야 등록을 시작한다(공식 샘플 순서)
-                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) SDKManager.getInstance().registerApp()
-                }
-
-                override fun onDatabaseDownloadProgress(current: Long, total: Long) {}
-            })
-        } catch (e: NoClassDefFoundError) {
-            onResult(false, "에뮬레이터(x86_64) 미지원: DJI SDK는 ARM64 실기기 환경이 필요합니다.")
-        } catch (e: ClassNotFoundException) {
-            onResult(false, "에뮬레이터(x86_64) 미지원: DJI SDK는 ARM64 실기기 환경이 필요합니다.")
-        } catch (e: Throwable) {
-            onResult(false, e.localizedMessage ?: e.javaClass.simpleName ?: "알 수 없는 에러")
         }
     }
 
