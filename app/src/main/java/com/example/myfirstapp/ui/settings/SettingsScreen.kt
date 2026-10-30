@@ -41,6 +41,7 @@ import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.Lens
+import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.ui.Stepper
 
 /** ⑥ 설정(10장). 왼쪽은 비행 기본값, 오른쪽은 탐지 모델·오프라인 지도·상태. 로직은 [SettingsViewModel]에 있다. */
@@ -141,7 +142,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 /** F-09 비행 파라미터. 범위 검사는 [FlightParams.validate]가 한다(6.3). */
 @Composable
 private fun FlightDefaults(p: FlightParams, onChange: (FlightParams) -> Unit) {
-    val rows: List<List<Triple<String, String, (Int) -> FlightParams>>> = listOf(
+    val rows: List<List<Triple<String, String, (Int) -> FlightParams>>> = listOf<List<Triple<String, String, (Int) -> FlightParams>>>(
         listOf(
             Triple("이동 고도", "${p.transitAltitudeM.toInt()}m") { d -> p.copy(transitAltitudeM = p.transitAltitudeM + d * 5) },
             Triple("점검 고도", "${p.inspectAltitudeM.toInt()}m") { d -> p.copy(inspectAltitudeM = p.inspectAltitudeM + d * 5) },
@@ -158,7 +159,34 @@ private fun FlightDefaults(p: FlightParams, onChange: (FlightParams) -> Unit) {
             Triple("짐벌 피치", "${p.gimbalPitchDeg.toInt()}°") { d -> p.copy(gimbalPitchDeg = p.gimbalPitchDeg + d * 5) },
             Triple("대기 시간", "${p.waitSec}초") { d -> p.copy(waitSec = (p.waitSec + d).coerceAtLeast(0)) },
         ),
-    )
+        listOf(
+            Triple("가시권 반경", "${p.vlosRadiusM.toInt()}m") { d -> p.copy(vlosRadiusM = (p.vlosRadiusM + d * 100).coerceAtLeast(100.0)) },
+        ),
+    ) + if (p.shotMode == ShotMode.DIAGONAL4) {
+        // 4방향 사선(5.6): 고도는 전선보다 10m 이상 높아야 저장된다
+        listOf<List<Triple<String, String, (Int) -> FlightParams>>>(
+            listOf(
+                Triple("사선 고도", "${p.diagonalAltitudeM.toInt()}m") { d -> p.copy(diagonalAltitudeM = p.diagonalAltitudeM + d) },
+                Triple("전주까지 거리", "${p.diagonalDistanceM.toInt()}m") { d -> p.copy(diagonalDistanceM = p.diagonalDistanceM + d) },
+            ),
+            listOf(
+                Triple("조준 높이", "${"%.1f".format(p.aimHeightM)}m") { d -> p.copy(aimHeightM = p.aimHeightM + d * 0.5) },
+            ),
+        )
+    } else {
+        emptyList()
+    }
+    Text("촬영 방식", style = MaterialTheme.typography.labelLarge)
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        ShotMode.entries.forEachIndexed { i, mode ->
+            SegmentedButton(
+                selected = p.shotMode == mode,
+                onClick = { onChange(p.copy(shotMode = mode)) },
+                shape = SegmentedButtonDefaults.itemShape(i, ShotMode.entries.size),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(if (mode == ShotMode.OVERHEAD) "전주 위" else "4방향 사선") }
+        }
+    }
     rows.forEach { row ->
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             row.forEach { (label, value, step) -> Stepper(label, value, Modifier.weight(1f)) { onChange(step(it)) } }

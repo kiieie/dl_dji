@@ -16,6 +16,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.drone.DjiPoc
@@ -188,8 +189,17 @@ class MainActivity : ComponentActivity() {
                 OutlinedButton(onClick = { poc("시뮬레이터 끄기") { DjiPoc.simulator(false) } }) { Text("시뮬레이터 끄기") }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            // PoC ①: 현장 KMZ(adb로 files/poc/M1_137L-A.kmz에 넣음) 업로드·시작
-            val kmz = File(getExternalFilesDir(null), "poc/M1_137L-A.kmz")
+            // PoC ①: 올릴 KMZ. 처음은 현장 KMZ(adb로 files/poc/M1_137L-A.kmz에 넣음), [계획 KMZ]를 누르면 앱이 만든 파일
+            val pocDir = File(getExternalFilesDir(null), "poc")
+            var kmz by remember { mutableStateOf(File(pocDir, "M1_137L-A.kmz")) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ShotMode.entries.forEach { mode ->
+                    OutlinedButton(onClick = {
+                        poc("계획 KMZ") { DjiPoc.planKmz(app.database.projectDao(), pocDir, mode).let { (f, text) -> kmz = f; text } }
+                    }) { Text(if (mode == ShotMode.OVERHEAD) "계획 KMZ(전주 위)" else "계획 KMZ(4방향)") }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { poc("업로드") { DjiPoc.upload(kmz) } }) { Text("미션 업로드(①)") }
                 OutlinedButton(onClick = { poc("시작") { DjiPoc.start(kmz) } }) { Text("미션 시작") }

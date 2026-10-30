@@ -49,6 +49,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.data.PoleEntity
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.InspectionApp
+import com.example.myfirstapp.drone.djiCurrentLocation
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.route.RoutePlan
@@ -113,7 +114,7 @@ fun MapScreen(
     val vm: PlanViewModel = viewModel(
         factory = PlanViewModel.factory(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() }, context.contentResolver,
-            (context.applicationContext as InspectionApp).settings,
+            (context.applicationContext as InspectionApp).settings, ::djiCurrentLocation,
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
@@ -148,7 +149,7 @@ fun MapScreen(
                 }
                 // 패널 높이를 아끼려고 지도 파일 이름은 뺐다. 지도가 없을 때만 알린다.
                 if (s.mapFiles.isEmpty() && s.onlineTiles.isEmpty()) {
-                    Text("오프라인 지도(.mbtiles)가 없습니다. 배경 없이 전주만 표시합니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("오프라인 지도(.mbtiles)가 없고 온라인 위성 배경도 받지 못했습니다(인터넷 연결 확인). 배경 없이 전주만 표시합니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 s.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
 

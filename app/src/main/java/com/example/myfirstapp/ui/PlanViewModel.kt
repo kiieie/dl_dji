@@ -77,6 +77,8 @@ class PlanViewModel(
     private val mapsDir: File,
     private val resolver: ContentResolver,
     private val settings: SettingsStore,
+    /** 지금 위치(기체 GPS → 조종기 GPS). 새 계획의 이륙 지점과 지도 초기 위치가 된다. */
+    private val currentLocation: suspend () -> GeoPoint? = { null },
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlanUiState(mapFiles = listMbtiles(mapsDir)))
     val state: StateFlow<PlanUiState> = _state.asStateFlow()
@@ -89,7 +91,18 @@ class PlanViewModel(
             dao.observePoles(projectId).collect { list -> _state.update { it.copy(poles = list) } }
         }
         replanFrom?.let { viewModelScope.launch { seedReplan(it) } }
+        viewModelScope.launch { currentLocation()?.let(::seedHome) }
         viewModelScope.launch { onlineSatelliteTiles().let { urls -> _state.update { it.copy(onlineTiles = urls) } } }
+    }
+
+    /** 이륙 지점이 아직 없으면 지금 위치로 두고, 그 둘레 약 500m로 지도를 옮긴다. */
+    private fun seedHome(p: GeoPoint) = _state.update {
+        if (it.home != null) return@update it
+        val d = 0.005
+        it.copy(
+            home = p,
+            focus = if (it.focus.isEmpty()) listOf(GeoPoint(p.lat - d, p.lon - d), GeoPoint(p.lat + d, p.lon + d)) else it.focus,
+        )
     }
 
     /** 남은 전주를 감싸는 사각형을 영역으로 두고, 그 안의 다른 전주는 제외한다(F-06 제외와 같은 방식). */
@@ -117,7 +130,7 @@ class PlanViewModel(
     fun onMapTap(p: GeoPoint) = _state.update {
         when (it.tool) {
             Tool.NONE -> it
-            Tool.AREA -> it.copy(vertices = it.vertices + p, plan = null)
+            Tool.AREA -> it.copy(vertices = Polygon.untangle(it.vertices + p), plan = null)
             Tool.HOME -> it.copy(home = p, tool = Tool.NONE, plan = null)
         }
     }
@@ -197,7 +210,9 @@ class PlanViewModel(
     }
 
     companion object {
-        fun factory(dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, resolver: ContentResolver, settings: SettingsStore) =
-            viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, resolver, settings) } }
+        fun factory(
+            dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, resolver: ContentResolver, settings: SettingsStore,
+            currentLocation: suspend () -> GeoPoint?,
+        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, resolver, settings, currentLocation) } }
     }
 }

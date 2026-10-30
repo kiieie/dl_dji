@@ -1,6 +1,7 @@
 package com.example.myfirstapp.core.route
 
 import com.example.myfirstapp.core.model.GeoPoint
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 
@@ -60,6 +61,29 @@ class Polygon(val vertices: List<GeoPoint>) {
     }
 
     companion object {
+        /**
+         * 누른 순서 때문에 변이 서로 꼬이면(예: 사각형 모서리를 대각선 순서로 누름) 중심 둘레 각도 순으로 다시 놓는다.
+         * 꼬이지 않은 다각형은 오목해도 그대로 둔다.
+         */
+        fun untangle(vertices: List<GeoPoint>): List<GeoPoint> {
+            if (vertices.size < 4 || !selfIntersects(vertices)) return vertices
+            val lat = vertices.sumOf { it.lat } / vertices.size
+            val lon = vertices.sumOf { it.lon } / vertices.size
+            return vertices.sortedBy { atan2(it.lat - lat, it.lon - lon) }
+        }
+
+        private fun selfIntersects(v: List<GeoPoint>): Boolean {
+            val n = v.size
+            fun cross(o: GeoPoint, a: GeoPoint, b: GeoPoint) = (a.lon - o.lon) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lon - o.lon)
+            fun crosses(a: GeoPoint, b: GeoPoint, c: GeoPoint, d: GeoPoint) =
+                cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0
+            for (i in 0 until n) for (j in i + 2 until n) {
+                if (i == 0 && j == n - 1) continue // 이웃한 변
+                if (crosses(v[i], v[(i + 1) % n], v[j], v[(j + 1) % n])) return true
+            }
+            return false
+        }
+
         /** 두 대각 꼭짓점으로 사각형을 만든다. */
         fun rectangle(a: GeoPoint, b: GeoPoint) = Polygon(
             listOf(a, GeoPoint(a.lat, b.lon), b, GeoPoint(b.lat, a.lon)),

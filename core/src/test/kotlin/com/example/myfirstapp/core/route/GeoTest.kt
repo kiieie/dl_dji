@@ -41,4 +41,14 @@ class GeoTest {
         assertTrue(u.contains(GeoPoint(2.0, 0.5)))
         assertFalse(u.contains(GeoPoint(2.0, 1.5)))
     }
+
+    @Test
+    fun `꼬인 사각형은 각도 순으로 펴고, 꼬이지 않은 오목 다각형은 그대로 둔다`() {
+        val a = GeoPoint(0.0, 0.0); val b = GeoPoint(0.0, 1.0); val c = GeoPoint(1.0, 1.0); val d = GeoPoint(1.0, 0.0)
+        val fixed = Polygon.untangle(listOf(a, c, b, d)) // 대각선 순서로 누름
+        assertTrue(Polygon(fixed).contains(GeoPoint(0.5, 0.5)))
+        assertEquals(setOf(a, b, c, d), fixed.toSet())
+        val concave = listOf(a, b, GeoPoint(0.5, 0.5), c, d)
+        assertEquals(concave, Polygon.untangle(concave))
+    }
 }

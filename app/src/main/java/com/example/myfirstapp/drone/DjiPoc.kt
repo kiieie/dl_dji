@@ -23,6 +23,13 @@ import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.manager.datacenter.media.MediaFileDownloadListener
 import dji.v5.manager.datacenter.media.MediaFileListDataSource
 import dji.v5.manager.datacenter.media.PullMediaFileListParam
+import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.ShotMode
+import com.example.myfirstapp.core.route.Viewpoints
+import com.example.myfirstapp.core.route.WpmlWriter
+import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.data.flightParamsFromJson
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
@@ -191,4 +198,22 @@ object DjiPoc {
     suspend fun pause() = done { missions.pauseMission(it) }.let { log("일시정지 성공") }
     suspend fun resume() = done { missions.resumeMission(it) }.let { log("재개 성공") }
     suspend fun stop(kmz: File) = done { missions.stopMission(kmz.nameWithoutExtension, it) }.let { log("정지 성공") }
+
+    /**
+     * 가장 최근 미션의 첫 소티를 앱이 직접 KMZ로 만든다(5.6, 6.2). [mode]로 촬영 방식을 바꿔 볼 수 있다.
+     * 만든 파일 경로와 요약을 돌려준다.
+     */
+    suspend fun planKmz(dao: ProjectDao, dir: File, mode: ShotMode): Pair<File, String> {
+        val mission = dao.latestMission() ?: error("저장한 미션이 없습니다")
+        val rows = dao.missionVisits(mission.id)
+        val seq = rows.minOf { it.seq }
+        val poles = rows.filter { it.seq == seq }.map { Pole(it.poleId, GeoPoint(it.lat, it.lon), it.lineName) }
+        val params = flightParamsFromJson(mission.flightParams).copy(shotMode = mode)
+        params.validate().firstOrNull()?.let { error(it) }
+        val points = Viewpoints.expand(poles, params, GeoPoint(mission.homeLat, mission.homeLon))
+        dir.mkdirs()
+        val kmz = File(dir, "plan_${mission.id}_$seq.kmz")
+        kmz.outputStream().use { WpmlWriter.write(points, params, it) }
+        return kmz to log("KMZ 생성 미션 #${mission.id} 소티 $seq: 전주 ${poles.size}개 → 촬영 지점 ${points.size}개($mode), ${kmz.length() / 1024}KB")
+    }
 }

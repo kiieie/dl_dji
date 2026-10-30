@@ -2,6 +2,9 @@ package com.example.myfirstapp.core.model
 
 enum class DownloadMode { PREVIEW, ORIGINAL }
 
+/** 촬영 방식(5.6). [OVERHEAD]는 전주 상공 1곳, [DIAGONAL4]는 전주 대각선 4곳에서 머리를 향해 찍는다. */
+enum class ShotMode { OVERHEAD, DIAGONAL4 }
+
 /**
  * 비행 파라미터(6.3). 기본값은 설계서의 기본값을 따른다.
  * 실행 시점의 값이 미션에 그대로 저장된다(4.2).
@@ -17,8 +20,13 @@ data class FlightParams(
     val zoomRatio: Double = 7.0,
     val waitSec: Int = 5,
     val batteryReservePct: Double = 30.0,
-    val vlosRadiusM: Double = 500.0,
-    val downloadMode: DownloadMode = DownloadMode.PREVIEW,
+    val vlosRadiusM: Double = 2000.0,
+    val downloadMode: DownloadMode = DownloadMode.ORIGINAL,
+    val shotMode: ShotMode = ShotMode.OVERHEAD,
+    /** 4방향 사선(5.6): 비행 고도(이륙 지점 기준), 전주까지 수평거리, 조준 높이(지상 기준). */
+    val diagonalAltitudeM: Double = 27.0,
+    val diagonalDistanceM: Double = 10.0,
+    val aimHeightM: Double = 17.5,
 ) {
     /** RTH 고도 = 이동 고도 + 10m, 법정 상한 150m을 넘지 않는다(6.3). */
     val rthAltitudeM: Double get() = minOf(transitAltitudeM + RTH_MARGIN_M, MAX_ALTITUDE_M)
@@ -35,11 +43,20 @@ data class FlightParams(
         if (waitSec < 0) add("대기 시간은 0초 이상이어야 합니다.")
         if (batteryReservePct < MIN_RESERVE_PCT) add("배터리 예비율은 20% 이상이어야 합니다.")
         if (vlosRadiusM <= 0.0) add("가시권 반경은 0m보다 커야 합니다.")
+        if (shotMode == ShotMode.DIAGONAL4) {
+            if (diagonalAltitudeM < WIRE_HEIGHT_M + WIRE_CLEARANCE_M) add("4방향 사선 고도는 전선(약 17m)보다 10m 이상 높아야 합니다(27m 이상).")
+            if (diagonalAltitudeM + RTH_MARGIN_M > MAX_ALTITUDE_M) add("4방향 사선 고도가 너무 높습니다.")
+            if (diagonalDistanceM !in 3.0..50.0) add("전주까지 수평거리는 3~50m여야 합니다.")
+            if (aimHeightM !in 0.0..diagonalAltitudeM) add("조준 높이는 0m 이상, 비행 고도 이하여야 합니다.")
+        }
     }
 
     companion object {
         const val MAX_ALTITUDE_M = 150.0
         const val RTH_MARGIN_M = 10.0
         const val MIN_RESERVE_PCT = 20.0
+        /** 배전 전선 높이(전주 16m + 가공 1m)와 사선 촬영 때 지킬 최소 간격(5.6). */
+        const val WIRE_HEIGHT_M = 17.0
+        const val WIRE_CLEARANCE_M = 10.0
     }
 }

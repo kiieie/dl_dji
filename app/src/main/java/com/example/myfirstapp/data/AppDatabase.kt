@@ -16,6 +16,7 @@ import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
+import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.model.Pole
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
@@ -105,6 +106,7 @@ fun FlightParams.toJson(): String = JSONObject()
     .put("offsetDistanceM", offsetDistanceM).put("offsetBearingDeg", offsetBearingDeg).put("gimbalPitchDeg", gimbalPitchDeg)
     .put("lenses", JSONArray(lenses.map { it.name })).put("zoomRatio", zoomRatio).put("waitSec", waitSec)
     .put("batteryReservePct", batteryReservePct).put("vlosRadiusM", vlosRadiusM).put("downloadMode", downloadMode.name)
+    .put("shotMode", shotMode.name).put("diagonalAltitudeM", diagonalAltitudeM).put("diagonalDistanceM", diagonalDistanceM).put("aimHeightM", aimHeightM)
     .toString()
 
 @Entity(
@@ -209,6 +211,10 @@ fun flightParamsFromJson(json: String): FlightParams {
         batteryReservePct = o.optDouble("batteryReservePct", d.batteryReservePct),
         vlosRadiusM = o.optDouble("vlosRadiusM", d.vlosRadiusM),
         downloadMode = o.optString("downloadMode").let { m -> DownloadMode.entries.firstOrNull { it.name == m } } ?: d.downloadMode,
+        shotMode = o.optString("shotMode").let { m -> ShotMode.entries.firstOrNull { it.name == m } } ?: d.shotMode,
+        diagonalAltitudeM = o.optDouble("diagonalAltitudeM", d.diagonalAltitudeM),
+        diagonalDistanceM = o.optDouble("diagonalDistanceM", d.diagonalDistanceM),
+        aimHeightM = o.optDouble("aimHeightM", d.aimHeightM),
     )
 }
 
@@ -293,6 +299,10 @@ interface ProjectDao {
 
     @Query("SELECT * FROM mission WHERE id = :missionId")
     suspend fun mission(missionId: Long): MissionEntity?
+
+    /** 가장 최근에 저장한 미션(기체 PoC용). */
+    @Query("SELECT * FROM mission ORDER BY createdAt DESC LIMIT 1")
+    suspend fun latestMission(): MissionEntity?
 
     @Query(
         "SELECT s.id AS sortieId, s.seq, v.id AS visitId, v.status, p.poleId, p.lat, p.lon, p.lineName, p.note " +
