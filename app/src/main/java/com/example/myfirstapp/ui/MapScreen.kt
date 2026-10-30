@@ -364,7 +364,7 @@ private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boole
             pole.equipment?.takeIf { it.isNotBlank() }?.let {
                 Text(it, fontSize = 11.sp, color = Caution, maxLines = 1, modifier = Modifier.border(1.dp, Caution, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp))
             }
-            IconButton(onClick = { vm.selectPole(null) }, modifier = Modifier.size(28.dp)) { Text("✕", fontSize = 12.sp, color = TextSoft) }
+            IconButton(onClick = { vm.selectPole(null) }, modifier = Modifier.size(36.dp).semantics { contentDescription = "닫기" }) { Text("✕", fontSize = 12.sp, color = TextSoft) }
         }
         // 설비 엑셀 속성(4.5): 전산화번호 · 규격 · 설치년월 · 지선주
         val attrs = listOfNotNull(

@@ -32,6 +32,8 @@ data class MissionListUiState(
     val confirm: MissionSummary? = null,
     /** 삭제 확인을 기다리는 미션. */
     val deleting: MissionSummary? = null,
+    /** ⋯ 메뉴가 열린 미션. */
+    val menuFor: Long? = null,
 ) {
     val selected get() = missions.firstOrNull { it.id == selectedId } ?: missions.firstOrNull()
 }
@@ -73,6 +75,7 @@ class MissionListViewModel(
     }
 
     fun select(m: MissionSummary) = _state.update { it.copy(selectedId = m.id) }
+    fun setMenu(m: MissionSummary?) = _state.update { it.copy(menuFor = m?.id) }
 
     /** 줄의 주 동작 실행(버튼 또는 5D 가운데). */
     fun run(m: MissionSummary) {
@@ -87,7 +90,7 @@ class MissionListViewModel(
     /** 5D 입력 정리(결과 화면과 같은 [FiveDGate]). */
     private val gate = FiveDGate()
 
-    /** RC 5D(10.4.4): ↕ 줄 고르기, ● 주 동작. 대화상자가 떠 있으면 받지 않는다(← 뒤로는 MainActivity 몫). */
+    /** RC 5D(10.4.4): ↕ 줄 고르기, ● 주 동작. 대화상자·⋯ 메뉴가 떠 있으면 받지 않는다(← 뒤로는 MainActivity 몫). */
     fun on5d(b: RcButton) {
         if (!b.name.startsWith("FIVE_D_")) return
         apply5d(gate.press(b, now()))
@@ -99,7 +102,7 @@ class MissionListViewModel(
 
     private fun apply5d(r: FiveDGate.Result) = r.actions.forEach { b ->
         val s = _state.value
-        if (s.confirm != null || s.deleting != null) return@forEach
+        if (s.confirm != null || s.deleting != null || s.menuFor != null) return@forEach
         val i = s.missions.indexOf(s.selected)
         when (b) {
             RcButton.FIVE_D_UP -> s.missions.getOrNull(i - 1)?.let(::select)

@@ -76,6 +76,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -417,10 +418,9 @@ private fun MemoDialog(s: ResultUiState, vm: ResultViewModel, onClose: () -> Uni
     )
 }
 
-/** 사진 위에 탐지 상자(0~1 비율 좌표)를 그린다. 사진은 비율을 지켜 가운데 그리므로 상자도 그 영역에 맞춘다. */
 /**
- * 사진과 검출 상자. 두 손가락으로 확대·이동, 두 번 탭하면 2.5배 ↔ 전체. 상자를 누르면 그 객체를 고르고 그 상자로 확대한다.
- * 상자 밖을 한 번 누르면 [onTapEmpty](패널 숨기기).
+ * 사진과 검출 상자(0~1 비율 좌표, 사진은 비율을 지켜 가운데). 두 손가락으로 확대·이동, 두 번 탭하면 2.5배 ↔ 전체.
+ * 상자를 누르면 그 객체를 고르고 그 상자로 확대한다. 고른 상자를 다시 누르면 풀고 전체 보기로. 상자 밖을 한 번 누르면 [onTapEmpty](패널 숨기기).
  */
 @Composable
 private fun Photo(p: PhotoUi, selected: Int?, onSelect: (Int?) -> Unit, onTapEmpty: () -> Unit, modifier: Modifier) {
@@ -432,6 +432,10 @@ private fun Photo(p: PhotoUi, selected: Int?, onSelect: (Int?) -> Unit, onTapEmp
     var scale by remember(p.capture.id) { mutableFloatStateOf(1f) }
     var pan by remember(p.capture.id) { mutableStateOf(Offset.Zero) }
     var viewSize by remember { mutableStateOf(Size.Zero) }
+    // 탭 처리는 사진이 바뀔 때만 다시 만드므로 고른 상자·콜백은 최신 값을 읽는다
+    val sel by rememberUpdatedState(selected)
+    val select by rememberUpdatedState(onSelect)
+    val tapEmpty by rememberUpdatedState(onTapEmpty)
     /** 사진이 화면에 맞춰 들어간 영역(확대 전 좌표). */
     fun imageRect(): Rect {
         val b = bitmap ?: return Rect(Offset.Zero, viewSize)
@@ -467,7 +471,11 @@ private fun Photo(p: PhotoUi, selected: Int?, onSelect: (Int?) -> Unit, onTapEmp
                         // 화면 좌표 → 확대 전 좌표(가운데 기준 확대 + 이동)
                         val c = viewSize.center + (at - viewSize.center - pan) / scale
                         val hit = p.boxes.indices.lastOrNull { boxRect(p.boxes[it]).contains(c) }
-                        if (hit != null) onSelect(if (hit == selected) null else hit) else onTapEmpty()
+                        when (hit) {
+                            null -> tapEmpty()
+                            sel -> { select(null); scale = 1f; pan = Offset.Zero }
+                            else -> select(hit)
+                        }
                     },
                 )
             },

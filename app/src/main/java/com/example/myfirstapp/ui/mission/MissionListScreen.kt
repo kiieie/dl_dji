@@ -33,14 +33,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -88,6 +88,8 @@ fun MissionListScreen(
     onFlight: (missionId: Long) -> Unit,
     onReplan: (missionId: Long) -> Unit,
     onResult: (missionId: Long) -> Unit,
+    /** 바깥 대화상자(가져오기·프로젝트 삭제)가 떠 있으면 false: 5D를 받지 않는다. */
+    enabled5d: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -108,7 +110,7 @@ fun MissionListScreen(
     }
     // 5D는 이 표가 화면에 있을 때만, 고른 프로젝트의 ViewModel 하나에만 넘긴다
     val rc = (context.applicationContext as InspectionApp).rcButtons
-    LaunchedEffect(vm) { rc.collect(vm::on5d) }
+    LaunchedEffect(vm, enabled5d) { if (enabled5d) rc.collect(vm::on5d) }
     MissionListContent(s, vm, onResult, modifier)
 }
 
@@ -146,6 +148,7 @@ private fun MissionListContent(s: MissionListUiState, vm: MissionListViewModel, 
                     items(s.missions, key = { it.id }) { m ->
                         MissionRow(
                             m, m.id == selected?.id,
+                            menuOpen = s.menuFor == m.id, onMenu = { open -> vm.setMenu(m.takeIf { open }) },
                             onSelect = { vm.select(m) }, onRun = { vm.run(m) }, onResult = { onResult(m.id) }, onDelete = { vm.askDelete(m) },
                         )
                     }
@@ -208,7 +211,10 @@ internal fun FiveDHints(modifier: Modifier) {
 
 /** 미션 한 줄(40dp). 고른 줄은 #2A2A2A 바탕과 왼쪽 3dp 파랑 막대(10.4.1). */
 @Composable
-private fun MissionRow(m: MissionSummary, selected: Boolean, onSelect: () -> Unit, onRun: () -> Unit, onResult: () -> Unit, onDelete: () -> Unit) {
+private fun MissionRow(
+    m: MissionSummary, selected: Boolean, menuOpen: Boolean, onMenu: (Boolean) -> Unit,
+    onSelect: () -> Unit, onRun: () -> Unit, onResult: () -> Unit, onDelete: () -> Unit,
+) {
     val action = m.primaryAction()
     val photos = remember(m.flightParams, m.poleCount) { m.poleCount * perPole(flightParamsFromJson(m.flightParams)) }
     val text = if (selected) Color.White else TextSoft
@@ -244,21 +250,20 @@ private fun MissionRow(m: MissionSummary, selected: Boolean, onSelect: () -> Uni
                         colors = if (selected) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
                     ) { Text(action.label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
                 }
-                MoreMenu(showResult = m.doneCount > 0 && action != MissionAction.RESULT, onResult, onDelete)
+                MoreMenu(showResult = m.doneCount > 0 && action != MissionAction.RESULT, menuOpen, onMenu, onResult, onDelete)
             }
         }
     }
 }
 
-/** ⋯ 메뉴: 결과(주 버튼이 결과가 아닐 때), 삭제. */
+/** ⋯ 메뉴: 결과(주 버튼이 결과가 아닐 때), 삭제. 열림 상태는 ViewModel이 들고 있어 열린 동안 5D를 받지 않는다. */
 @Composable
-private fun MoreMenu(showResult: Boolean, onResult: () -> Unit, onDelete: () -> Unit) {
-    var open by remember { mutableStateOf(false) }
+private fun MoreMenu(showResult: Boolean, open: Boolean, onOpen: (Boolean) -> Unit, onResult: () -> Unit, onDelete: () -> Unit) {
     Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.size(28.dp, 30.dp)) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
-        DropdownMenu(open, onDismissRequest = { open = false }) {
-            if (showResult) DropdownMenuItem(text = { Text("결과") }, onClick = { open = false; onResult() })
-            DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { open = false; onDelete() })
+        IconButton(onClick = { onOpen(true) }, modifier = Modifier.size(36.dp).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
+        DropdownMenu(open, onDismissRequest = { onOpen(false) }) {
+            if (showResult) DropdownMenuItem(text = { Text("결과") }, onClick = { onOpen(false); onResult() })
+            DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { onOpen(false); onDelete() })
         }
     }
 }

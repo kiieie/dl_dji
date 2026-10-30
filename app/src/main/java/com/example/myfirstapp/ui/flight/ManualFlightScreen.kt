@@ -46,7 +46,7 @@ import com.example.myfirstapp.ui.theme.TextSoft
  * 오른쪽 한 열(렌즈·셔터 언제든), 왼쪽 짐벌, [RTH 길게], 착륙 확인. 왼쪽 위 [미션 이어서 비행]을 누르면 최근 미션 비행 화면으로 간다.
  */
 @Composable
-fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -> Unit, onOpenMission: (LatestMission) -> Unit) {
+fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -> Unit, onOpenMission: (LatestMission) -> Unit, onAlbum: () -> Unit = {}) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
     val vm: ManualFlightViewModel = viewModel(factory = ManualFlightViewModel.factory(dao, context.getExternalFilesDir(null), app.rcButtons))
@@ -92,7 +92,7 @@ fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -
             shutterEnabled = s.connected && !s.shooting, onShutter = vm::shutter,
             cameraEnabled = s.connected, onVideoMode = vm::setVideoMode, onZoom = vm::zoom,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = TOP_BAR_HEIGHT + 37.dp, end = 6.dp),
-            shotsLabel = "${s.shots}장",
+            onAlbum = onAlbum, shotsLabel = "${s.shots}장",
         )
 
         val t = f.telemetry

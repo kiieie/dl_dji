@@ -79,7 +79,6 @@ fun ProjectScreen(
     val vm: ProjectViewModel = viewModel(factory = ProjectViewModel.factory(dao, resolver))
     val s by vm.state.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::onCsvPicked) }
-    var importing by rememberSaveable { mutableStateOf(false) }
     var selectedId by rememberSaveable { mutableStateOf(initialProjectId) }
     // 새로 가져온 프로젝트(전에 없던 id가 맨 위)면 그것을 고른다. 처음 읽을 때, 다른 화면에서 돌아올 때, 맨 위를 지울 때는 고른 것을 둔다
     var knownIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
@@ -98,7 +97,7 @@ fun ProjectScreen(
             }
             Text("비행경로", Modifier.align(Alignment.Center), fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                HeaderButton(R.drawable.ic_import, "전주 파일") { importing = true }
+                HeaderButton(R.drawable.ic_import, "전주 파일", onClick = vm::openImport)
                 HeaderButton(R.drawable.ic_add, "새 계획", enabled = selected != null) { selected?.let { onNewPlan(it.id) } }
             }
         }
@@ -132,6 +131,7 @@ fun ProjectScreen(
                         onFlight = { onFlight(selected.id, it) },
                         onReplan = { onReplan(selected.id, it) },
                         onResult = { onResult(selected.id, it) },
+                        enabled5d = !s.importing && s.deleting == null,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -139,16 +139,7 @@ fun ProjectScreen(
         }
     }
 
-    if (importing || s.result != null) {
-        ImportDialog(
-            s, vm,
-            onPick = { picker.launch(arrayOf("*/*")) },
-            onClose = {
-                importing = false
-                vm.cancelImport()
-            },
-        )
-    }
+    if (s.importing) ImportDialog(s, vm, onPick = { picker.launch(arrayOf("*/*")) }, onClose = vm::cancelImport)
 
     s.deleting?.let { project ->
         FullscreenAlertDialog(

@@ -94,6 +94,8 @@ fun FlightScreen(
     onExit: () -> Unit,
     onShowResult: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    /** 앨범: 비행 화면은 스택에 남아 실행기가 이어진다. */
+    onAlbum: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
@@ -113,7 +115,7 @@ fun FlightScreen(
                 OutlinedButton(onClick = onExit) { Text("나가기") }
             }
         }
-        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings)
+        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings, onAlbum)
     }
 }
 
@@ -132,6 +134,7 @@ private fun FlightContent(
     onExit: () -> Unit,
     onShowResult: () -> Unit,
     onOpenSettings: () -> Unit,
+    onAlbum: () -> Unit,
 ) {
     val ui = s.exec
     // 10.4.3 자동 비행 배치: FPV 전체, 위 상단 바, 가운데 위 줌 상자, 왼쪽 위 미션 진행 카드, 오른쪽 한 열(렌즈·촬영·앨범),
@@ -160,7 +163,7 @@ private fun FlightContent(
             shutterEnabled = ui.state == ExecState.Paused || s.recordingSinceMs != null, onShutter = vm::shutter,
             cameraEnabled = ui.state == ExecState.Paused, onVideoMode = vm::setVideoMode, onZoom = vm::zoom,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = TOP_BAR_HEIGHT + 37.dp, end = 6.dp),
-            onAlbum = if (s.canExit) onShowResult else null,
+            onAlbum = onAlbum,
         )
 
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {

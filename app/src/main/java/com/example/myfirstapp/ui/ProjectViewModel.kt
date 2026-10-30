@@ -22,6 +22,8 @@ import kotlinx.coroutines.withContext
 
 data class ProjectUiState(
     val projects: List<ProjectSummary> = emptyList(),
+    /** 가져오기 창이 떠 있음. 저장하거나 닫으면 내린다. */
+    val importing: Boolean = false,
     /** 고른 CSV를 파싱한 결과. 저장하거나 취소하면 비운다. */
     val result: CsvImportResult? = null,
     val projectName: String = "",
@@ -49,7 +51,8 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
     }
 
     fun setProjectName(name: String) = _state.update { it.copy(projectName = name) }
-    fun cancelImport() = _state.update { it.copy(result = null) }
+    fun openImport() = _state.update { it.copy(importing = true) }
+    fun cancelImport() = _state.update { it.copy(importing = false, result = null, message = null) }
 
     fun save() {
         OpLog.log("project", "import", mapOf("name" to _state.value.projectName))
@@ -59,7 +62,7 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
         val name = s.projectName.trim()
         viewModelScope.launch {
             runCatching { dao.importProject(name, poles) }
-                .onSuccess { _state.update { it.copy(message = "저장했습니다: $name (전주 ${poles.size}개)", result = null) } }
+                .onSuccess { cancelImport() }
                 .onFailure { e -> _state.update { it.copy(message = "저장하지 못했습니다: ${e.message}") } }
         }
     }

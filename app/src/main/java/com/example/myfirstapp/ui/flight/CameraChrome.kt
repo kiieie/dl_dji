@@ -5,7 +5,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +38,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -210,9 +216,10 @@ internal fun CameraColumn(
     cameraEnabled: Boolean, onVideoMode: (Boolean) -> Unit, onZoom: (Boolean) -> Unit,
     modifier: Modifier, onAlbum: (() -> Unit)? = null, shotsLabel: String? = null,
 ) {
-    Column(modifier.width(44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Segments(listOf(Lens.WIDE to "W", Lens.ZOOM to "Z"), s.lens, enabled = true, height = 28.dp, fontSize = 11, onPick = onLens) { if (it == Lens.WIDE) "광각" else "망원" }
-        Segments(listOf(false to "사진", true to "영상"), s.videoMode, enabled = cameraEnabled && s.recordingSinceMs == null, height = 22.dp, fontSize = 10, onPick = onVideoMode) { if (it) "영상 모드" else "사진 모드" }
+    // 장갑 터치(10.4.2): 렌즈·줌 32dp, 사진/영상 28dp, 앨범 32dp. RTH와 겹치지 않게 사이는 4dp
+    Column(modifier.width(44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Segments(listOf(Lens.WIDE to "W", Lens.ZOOM to "Z"), s.lens, enabled = true, height = 32.dp, fontSize = 11, onPick = onLens) { if (it == Lens.WIDE) "광각" else "망원" }
+        Segments(listOf(false to "사진", true to "영상"), s.videoMode, enabled = cameraEnabled && s.recordingSinceMs == null, height = 28.dp, fontSize = 10, onPick = onVideoMode) { if (it) "영상 모드" else "사진 모드" }
         val since = s.recordingSinceMs
         val ring = if (shutterEnabled) Color.White else Color(0xFF555555)
         Box(
@@ -233,16 +240,17 @@ internal fun CameraColumn(
         } else shotsLabel?.let { Text(it, style = numberStyle(12.sp), color = Color.White) }
         if (onAlbum != null) {
             Box(
-                Modifier.size(32.dp, 26.dp).clip(RoundedCornerShape(3.dp)).background(CardBg).clickable(onClickLabel = "앨범", onClick = onAlbum),
+                Modifier.size(32.dp).clip(RoundedCornerShape(3.dp)).background(CardBg).clickable(onClickLabel = "앨범", onClick = onAlbum)
+                    .semantics { contentDescription = "앨범" },
                 contentAlignment = Alignment.Center,
-            ) { Icon(painterResource(R.drawable.ic_play), contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White) }
+            ) { Icon(painterResource(R.drawable.ic_album), contentDescription = null, modifier = Modifier.size(15.dp), tint = Color.White) }
         }
         Column(Modifier.width(40.dp).background(CardBg, RoundedCornerShape(4.dp)), horizontalAlignment = Alignment.CenterHorizontally) {
             val c = if (cameraEnabled) Color.White else Color(0xFF555555)
             listOf(true to "+", false to "−").forEach { (up, t) ->
                 if (!up) Text(if (s.lens == Lens.WIDE) "1.0X" else "%.1fX".format(s.zoomRatio), style = numberStyle(11.sp), color = Tertiary)
                 Box(
-                    Modifier.fillMaxWidth().height(26.dp).clickable(enabled = cameraEnabled, onClickLabel = if (up) "줌 확대" else "줌 축소") { onZoom(up) },
+                    Modifier.fillMaxWidth().height(30.dp).clickable(enabled = cameraEnabled, onClickLabel = if (up) "줌 확대" else "줌 축소") { onZoom(up) },
                     contentAlignment = Alignment.Center,
                 ) { Text(t, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = c) }
             }
@@ -265,13 +273,31 @@ private fun <T> Segments(items: List<Pair<T, String>>, selected: T, enabled: Boo
     }
 }
 
-/** 오른쪽 아래 RTH(노랑 테두리, 1초 이상 길게 눌러야 동작, 10장). */
+/** RTH를 누르고 있어야 하는 시간(10장). 시스템 길게 누르기(약 0.5초)보다 길다. */
+internal const val RTH_HOLD_MS = 1_000L
+
+/** 오른쪽 아래 RTH(노랑 테두리, [RTH_HOLD_MS] 이상 눌러야 동작, 10장). 손을 떼기 전에 동작하고, 그 뒤 뗄 때까지는 다시 안 걸린다. */
 @Composable
 internal fun RthButton(onLongPress: () -> Unit, modifier: Modifier = Modifier) {
+    val action by rememberUpdatedState(onLongPress)
     Row(
         modifier.height(36.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xE0121212)).border(1.dp, Caution, RoundedCornerShape(4.dp))
-            .semantics { contentDescription = "RTH 길게 누르기" }
-            .pointerInput(Unit) { detectTapGestures(onLongPress = { onLongPress() }) }
+            .semantics {
+                role = Role.Button
+                contentDescription = "RTH, 1초 길게 누르기"
+                onLongClick("RTH") { action(); true }
+            }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown()
+                    var released = false
+                    withTimeoutOrNull(RTH_HOLD_MS) { waitForUpOrCancellation(); released = true }
+                    if (!released) {
+                        action()
+                        waitForUpOrCancellation()
+                    }
+                }
+            }
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {

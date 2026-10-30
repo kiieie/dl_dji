@@ -147,6 +147,7 @@ class MainActivity : ComponentActivity() {
                     onExit = { nav.popBackStack() },
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onOpenMission = { m -> openFlight(m.projectId, m.missionId) },
+                    onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                 )
             }
             // 비행경로(마스터-디테일). pid가 있으면 그 프로젝트를 고른 채 연다
@@ -178,6 +179,7 @@ class MainActivity : ComponentActivity() {
                     // 미션이 끝나면 비행 화면을 스택에서 빼고 결과로 간다(뒤로 가면 계획 화면)
                     onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}") { inclusive = true } } },
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
+                    onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                 )
             }
             composable("result/{pid}/{mid}", ids) { e ->
