@@ -68,6 +68,7 @@ import com.example.myfirstapp.core.model.poleDisplayName
 import com.example.myfirstapp.core.route.RoutePlan
 import com.example.myfirstapp.core.route.UnreachablePole
 import org.maplibre.android.MapLibre
+import org.maplibre.android.offline.OfflineManager
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
@@ -619,12 +620,20 @@ private fun fitCamera(points: List<GeoPoint>, density: Float) =
         (80 * density).toInt(), (140 * density).toInt(), (64 * density).toInt(), (88 * density).toInt(),
     )
 
+private const val MAP_CACHE_BYTES = 1_000_000_000L
+private var ambientCacheSized = false
+
 /** 화면 수명에 맞춰 돌리는 MapLibre 지도 뷰(계획·비행 화면 공용). */
 @Composable
 internal fun rememberMapView(): MapView {
     val context = LocalContext.current
     val mapView = remember {
         MapLibre.getInstance(context)
+        // 본 위성 타일을 넉넉히 남겨 현장(인터넷 없음)에서도 보이게 한다(기본 50MB)
+        if (!ambientCacheSized) {
+            ambientCacheSized = true
+            OfflineManager.getInstance(context).setMaximumAmbientCacheSize(MAP_CACHE_BYTES, null)
+        }
         // Compose 안에서는 SurfaceView보다 TextureView가 겹침·캡처 문제가 적다.
         MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true)
             // 로고·출처는 오른쪽 아래(왼쪽 아래 [수행]·지도 전환 버튼과 겹치지 않게)

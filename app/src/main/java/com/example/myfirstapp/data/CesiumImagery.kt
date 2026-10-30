@@ -6,6 +6,7 @@ import com.example.myfirstapp.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -28,12 +29,19 @@ suspend fun cesiumBingTileUrls(token: String): List<String> = withContext(Dispat
     (0 until subs.length()).map { template.replace("{subdomain}", subs.getString(it)) }
 }
 
-/** 토큰이 있으면 위성 타일 주소를, 토큰이 없거나 받지 못하면(인터넷 없는 현장 등) 빈 목록을 준다. 계획·비행 화면 공용. */
+/** 마지막으로 받은 타일 주소(앱이 시작할 때 정한다). 인터넷이 없으면 이 주소로 MapLibre 캐시의 타일을 보여 준다. */
+var savedSatelliteTilesFile: File? = null
+
+/**
+ * 토큰이 있으면 위성 타일 주소를 준다. 받지 못하면(인터넷 없는 현장 등) 마지막으로 받은 주소를 주어,
+ * 전에 본 곳은 MapLibre 캐시로 보이게 한다. 둘 다 없으면 빈 목록. 계획·비행 화면 공용.
+ */
 suspend fun onlineSatelliteTiles(): List<String> {
     if (BuildConfig.CESIUM_ION_TOKEN.isBlank()) return emptyList()
     return runCatching { cesiumBingTileUrls(BuildConfig.CESIUM_ION_TOKEN) }
+        .onSuccess { urls -> runCatching { savedSatelliteTilesFile?.writeText(urls.joinToString("\n")) } }
         .onFailure { Log.w("CesiumImagery", "온라인 위성 배경 실패: $it") } // UnknownHostException은 Log가 스택을 지우므로 메시지로 남긴다
-        .getOrDefault(emptyList())
+        .getOrElse { runCatching { savedSatelliteTilesFile?.takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() } }.getOrNull().orEmpty() }
 }
 
 /** 받을 때까지 10초마다 다시 시도한다(화면을 연 뒤에 인터넷이 붙는 경우). 토큰이 없으면 바로 빈 목록. 화면을 닫으면 취소된다. */

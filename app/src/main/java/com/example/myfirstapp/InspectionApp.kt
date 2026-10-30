@@ -12,6 +12,8 @@ import android.util.Log
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.AppDatabase
 import com.example.myfirstapp.data.SettingsStore
+import com.example.myfirstapp.data.savedSatelliteTilesFile
+import java.io.File
 import com.example.myfirstapp.drone.djiRcButtonPresses
 import dji.v5.common.error.IDJIError
 import dji.v5.common.callback.CommonCallbacks
@@ -61,6 +63,7 @@ class InspectionApp : Application() {
     override fun onCreate() {
         super.onCreate()
         OpLog.init(this)
+        savedSatelliteTilesFile = File(filesDir, "satellite-tiles.txt")
         OpLog.log("app", "start")
         initDjiSdk()
         appScope.launch { rcButtons.collect { OpLog.log("rc", it.name) } }
