@@ -39,7 +39,7 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
     val reviews = dao.latestReviews(missionId).associateBy { it.visitId }
 
     val csv = buildString {
-        append('﻿')
+        append('\uFEFF') // UTF-8 BOM(소스에 문자 그대로 두면 lint ByteOrderMark 오류)
         append("소티,순서,전주번호,위도,경도,선로명,선로번호,전주규격,설치기기,상태,건너뛴 이유,도착 시각,사진 수,검출 수,검출 대상,1차 판정,판정 대상,메모\r\n")
         rows.forEach { r ->
             val labels = capturesByVisit[r.visitId].orEmpty().flatMap { c -> detections[c.id].orEmpty().filter { it.alert }.map { it.label } }.distinct()
