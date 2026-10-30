@@ -27,7 +27,12 @@ data class FlightParams(
     val diagonalAltitudeM: Double = 27.0,
     val diagonalDistanceM: Double = 10.0,
     val aimHeightM: Double = 17.5,
+    /** 방식 A(5.6): 다른 전주의 촬영 지점 사이(또는 이륙·복귀 구간)가 이보다 길면 이동 고도로 올라갔다 내려온다. 저장하지 않는 조정값. */
+    val transitLegThresholdM: Double = 60.0,
 ) {
+    /** 촬영 고도: 4방향 사선은 사선 고도, 전주 위는 점검 고도(5.6). */
+    val shotAltitudeM: Double get() = if (shotMode == ShotMode.DIAGONAL4) diagonalAltitudeM else inspectAltitudeM
+
     /** RTH 고도 = 이동 고도 + 10m, 법정 상한 150m을 넘지 않는다(6.3). */
     val rthAltitudeM: Double get() = minOf(transitAltitudeM + RTH_MARGIN_M, MAX_ALTITUDE_M)
 

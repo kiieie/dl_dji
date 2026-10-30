@@ -537,7 +537,7 @@ class InspectionExecutor(
     }
 
     /**
-     * RC 셔터 사진(6.4): 기체 위치에서 가장 가까운 이번 미션 전주에 수동 사진으로 기록하고 처리 줄(다운로드 → 탐지)에 넣는다.
+     * RC 셔터 사진(6.4): 기체 위치에서 [SHUTTER_POLE_LINK_M] 안의 가장 가까운 이번 미션 전주에(없으면 기록하지 않고 SD에만 남김) 수동 사진으로 기록하고 처리 줄(다운로드 → 탐지)에 넣는다.
      * ponytail: 전주 상태는 바꾸지 않는다(아직 안 간 전주를 완료로 만들어 건너뛰지 않게). 사진 수만 늘어 지나간 전주 마무리에 반영된다.
      * ponytail: 가까운 전주는 이번 실행이 읽은 방문(남은 전주)에서 고른다. 앞선 비행에서 끝낸 전주 옆에서 찍으면 남은 전주 중 가장 가까운 곳에 붙는다.
      */
@@ -547,7 +547,7 @@ class InspectionExecutor(
             message = "셔터 사진을 SD에서 찾지 못했습니다(사진은 SD 카드에 있음)."
             return
         }
-        val visit = m.telemetry.position?.let { p -> nearestWithin(p, visits) { it.pole.position } }
+        val visit = m.telemetry.position?.let { p -> nearestWithin(p, visits, SHUTTER_POLE_LINK_M) { it.pole.position } }
         if (visit == null) {
             message = "셔터 사진을 연결할 전주가 없습니다(사진은 SD 카드에 있음)."
             return

@@ -79,6 +79,9 @@ fun recoveredCaptures(arrivedAtMs: Long?, sdMedia: List<CaptureInfo>, dbMediaIds
 /** RC 셔터 사진을 찾을 때 누른 시각보다 이만큼 앞선 SD 사진까지 본다(SD 시각은 초 단위로 잘리고 기체·조종기 시계가 조금 다르다). */
 const val SHUTTER_SKEW_MS = 3_000L
 
+/** 셔터 사진(미션 중 RC 셔터, 수동 비행 셔터)을 전주에 붙이는 최대 거리(6.4, 2026-10-30 사용자 결정 50m → 20m). */
+const val SHUTTER_POLE_LINK_M = 20.0
+
 /** RC 셔터를 누른 뒤 사진이 SD 목록에 오를 때까지 기다리는 시간. */
 const val SHUTTER_SETTLE_MS = 2_000L
 

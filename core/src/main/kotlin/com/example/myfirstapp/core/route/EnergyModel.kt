@@ -52,13 +52,25 @@ class EnergyModel(val params: EnergyParams, val flight: FlightParams) {
     /** 이륙 지점 왕복 [homeLegsM], 전주 사이 구간 [chainM], 전주 [visits]개의 경로 길이. */
     fun pathM(homeLegsM: Double, chainM: Double, visits: Int): Double = homeLegsM + chainM + visits * aroundPoleM
 
-    /** 경로 길이 [distanceM]([pathM]), 방문 [visits]개인 소티의 예상 소모량. */
-    fun sortieCost(distanceM: Double, visits: Int): Double = move(distanceM) + visits * perVisit + takeoffLanding
+    /**
+     * 방식 A 이동 고도 구간(5.6)의 오르내림 시간: 긴 전주 사이 구간 [longJumps]개는 2(이동 − 촬영 고도)씩,
+     * 이륙 뒤 첫 전주로 내려가기와 마지막 전주 뒤 다시 오르기도 늘 있다고 보고 한 번 더 센다.
+     */
+    fun transitClimbSec(longJumps: Int): Double =
+        (longJumps + 1) * 2 * maxOf(0.0, flight.transitAltitudeM - flight.shotAltitudeM) / params.verticalSpeedMps
 
-    fun sortieDurationSec(distanceM: Double, visits: Int): Double =
+    /** 경로 길이 [distanceM]([pathM]), 방문 [visits]개, 이동 고도로 넘는 전주 사이 구간 [longJumps]개인 소티의 예상 소모량. */
+    fun sortieCost(distanceM: Double, visits: Int, longJumps: Int = 0): Double =
+        move(distanceM) + visits * perVisit + takeoffLanding + transitClimbSec(longJumps) * params.hoverPctPerSec
+
+    fun sortieDurationSec(distanceM: Double, visits: Int, longJumps: Int = 0): Double =
         distanceM / flight.speedMps +
             visits * shots * params.shotSec +
-            2 * flight.transitAltitudeM / params.verticalSpeedMps
+            2 * flight.transitAltitudeM / params.verticalSpeedMps +
+            transitClimbSec(longJumps)
+
+    /** 전주 사이 구간 [legsM] 중 이동 고도로 넘는 것의 수(5.6). ponytail: 전주 중심 거리로 센다. 사선 지점 간격(d)만큼 어긋날 수 있다. */
+    fun longJumps(legsM: List<Double>): Int = legsM.count { it > flight.transitLegThresholdM }
 
     /**
      * 구간 출발 전 검증(5.5 실시간 검증):

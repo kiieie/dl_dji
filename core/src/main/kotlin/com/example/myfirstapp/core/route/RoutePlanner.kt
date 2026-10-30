@@ -56,10 +56,15 @@ class RoutePlanner(
         for (i in 1..n) {
             if (v[i - 1].isInfinite()) continue
             var inner = 0.0
+            var jumps = 0
             for (j in i..n) {
-                if (j > i) inner += enu[j - 2].distanceTo(enu[j - 1])
+                if (j > i) {
+                    val d = enu[j - 2].distanceTo(enu[j - 1])
+                    inner += d
+                    if (d > energy.flight.transitLegThresholdM) jumps++
+                }
                 val dist = energy.pathM(enu[i - 1].distanceTo(origin) + enu[j - 1].distanceTo(origin), inner, j - i + 1)
-                val cost = energy.sortieCost(dist, j - i + 1)
+                val cost = energy.sortieCost(dist, j - i + 1, jumps)
                 if (cost > budget) break // 전주를 더할수록 비용이 줄지 않으므로(삼각 부등식) 중단
                 if (v[i - 1] + cost < v[j]) {
                     v[j] = v[i - 1] + cost
@@ -74,12 +79,13 @@ class RoutePlanner(
             val i = from[j]
             val (seq, dist) = reoptimize((i - 1 until j).toList(), enu, origin)
             val count = j - i + 1
+            val jumps = energy.longJumps(seq.zipWithNext { a, b -> enu[a].distanceTo(enu[b]) })
             sorties.addFirst(
                 SortiePlan(
                     poles = seq.map { ordered[it] },
                     estDistanceM = dist,
-                    estBatteryPct = energy.sortieCost(dist, count),
-                    estDurationSec = energy.sortieDurationSec(dist, count),
+                    estBatteryPct = energy.sortieCost(dist, count, jumps),
+                    estDurationSec = energy.sortieDurationSec(dist, count, jumps),
                 ),
             )
             j = i - 1

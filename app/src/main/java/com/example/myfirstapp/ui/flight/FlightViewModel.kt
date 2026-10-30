@@ -177,7 +177,8 @@ class FlightViewModel(
             val poles = g.map { it.toPole().copy(lineBearingDeg = bearings[it.poleId]) }
             val route = listOf(home) + poles.map { it.position } + home
             val dist = route.zipWithNext { a, b -> LocalProjection.distanceM(a, b) }.sum()
-            SortiePlan(poles, dist, energy.sortieCost(dist, poles.size), energy.sortieDurationSec(dist, poles.size))
+            val jumps = energy.longJumps(poles.zipWithNext { a, b -> LocalProjection.distanceM(a.position, b.position) })
+            SortiePlan(poles, dist, energy.sortieCost(dist, poles.size, jumps), energy.sortieDurationSec(dist, poles.size, jumps))
         }
         plans = sorties
         val recorder = RoomRecorder(

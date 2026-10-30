@@ -531,6 +531,19 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `RC 셔터 - 전주에서 20m 넘게 떨어져 찍으면 전주에 붙이지 않는다`() = runTest {
+        val h = harness(config = sortieMode)
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("A").captureCount == 1 }
+        // A(100,0)와 B(100,100) 사이, 어느 전주에서도 20m 넘게 떨어진 곳
+        h.awaitUntil { h.drone.telemetry.value.position?.let { p -> threePoles.all { LocalProjection.distanceM(p, it.position) > SHUTTER_POLE_LINK_M + 5 } } == true }
+        h.drone.pressRcShutter()
+        h.send(Command.HardwareShutter(System.currentTimeMillis()))
+        h.awaitUntil { h.executor.uiState.value.message?.contains("연결할 전주가 없습니다") == true }
+        assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
+    }
+
+    @Test
     fun `RC 셔터 - 땅에서는 무시하고, SD에 새 사진이 없으면 기록하지 않는다`() = runTest {
         val h = harness(config = sortieMode)
         h.send(Command.HardwareShutter(System.currentTimeMillis()))

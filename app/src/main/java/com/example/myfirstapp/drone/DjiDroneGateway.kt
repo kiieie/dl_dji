@@ -88,6 +88,9 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     private var missionName: String? = null
     private var waypoint = -1
+
+    /** 올린 KMZ의 웨이포인트(이동 고도 지점 포함, 5.6). 기체가 알리는 KMZ 번호를 촬영 지점 번호로 바꾼다. */
+    private var kmzWaypoints: List<WpmlWriter.Waypoint> = emptyList()
     private var manualShot = false
     /** RC 셔터를 누른 직후 새로 생긴 사진은 지점 사진이 아니다(실행기가 SD에서 찾아 수동 사진으로 붙인다, 6.4 RC 셔터). */
     private var rcShotUntil = 0L
@@ -116,7 +119,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         override fun onWaylineExecutingInfoUpdate(info: WaylineExecutingInfo) {
             if (missionName != null && info.currentWaypointIndex != waypoint) {
                 waypoint = info.currentWaypointIndex
-                _events.tryEmit(DroneEvent.WaypointReached(waypoint))
+                // 이동 고도 지점은 알리지 않는다. 실행기는 촬영 지점 번호만 안다
+                kmzWaypoints.getOrNull(waypoint)?.shot?.let { _events.tryEmit(DroneEvent.WaypointReached(it)) }
             }
         }
 
@@ -169,7 +173,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             // ponytail: 셔터를 누른 3초 안에 지점 사진이 먼저 생기면 그 사진을 셔터 사진으로 본다(둘 다 기록되고 자동·수동 표시만 바뀜). 정확히 가르려면 PoC에서 셔터 사진의 SD 번호를 확인한다
             val rcShot = System.currentTimeMillis() < rcShotUntil
             if (rcShot) rcShotUntil = 0
-            if (!manualShot && !rcShot && inMission) _events.tryEmit(DroneEvent.PhotoTaken(waypoint, capture))
+            val shot = WpmlWriter.shotIndex(kmzWaypoints, waypoint)
+            if (!manualShot && !rcShot && inMission && shot != null) _events.tryEmit(DroneEvent.PhotoTaken(shot, capture))
         }
         keys.listen(KeyTools.createKey(RemoteControllerKey.KeyShutterButtonDown), holder) { _, down ->
             if (down == true) rcShotUntil = System.currentTimeMillis() + SHUTTER_SKEW_MS
@@ -260,7 +265,9 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         kmzDir.mkdirs()
         val name = "sortie_${System.currentTimeMillis()}"
         val kmz = File(kmzDir, "$name.kmz")
-        kmz.outputStream().use { WpmlWriter.write(points, params, it) }
+        // 시작 위치: 떠 있으면 지금 자리, 땅이면 이륙 지점. 복귀는 홈 지점(5.6 이동 고도 구간)
+        val t = _telemetry.value
+        val wps = kmz.outputStream().use { WpmlWriter.write(points, params, it, start = t.position ?: t.home, home = t.home ?: t.position) }
         suspendCancellableCoroutine { c ->
             missions.pushKMZFileToAircraft(kmz.path, object : CommonCallbacks.CompletionCallbackWithProgress<Double> {
                 override fun onProgressUpdate(progress: Double) {}
@@ -269,9 +276,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             })
         }
         waypoint = -1
+        kmzWaypoints = wps
         missionName = name
         djiDone { missions.startMission(name, it) }
-        Log.i(TAG, "소티 미션 시작 $name 지점 ${points.size}개")
+        Log.i(TAG, "소티 미션 시작 $name 촬영 지점 ${points.size}개, 웨이포인트 ${wps.size}개")
         Unit
     }.onFailure { missionName = null; Log.w(TAG, "소티 미션 실패: ${it.message}"); OpLog.log("error", "startSortie", mapOf("message" to it.message)) }
 
