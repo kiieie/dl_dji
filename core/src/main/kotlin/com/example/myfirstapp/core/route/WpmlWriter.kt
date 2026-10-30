@@ -15,7 +15,7 @@ import java.util.zip.ZipOutputStream
  *
  * - 모든 촬영 지점에서 멈춘 뒤 돈다(`toPointAndStopWithDiscontinuityCurvature`). 사진이 흔들리지 않고, 현장 업로드 오류 1546(시작·끝 회전)도 생기지 않는다.
  * - 지점마다 도착하면 짐벌 피치를 맞추고 광각으로 1장 찍는다. 파일 이름 끝(`fileSuffix`)에 전주번호와 지점 번호를 붙여 SD 사진과 전주를 잇는다.
- * - 고도는 이륙 지점 기준이다. 다른 전주로 가는 구간·이륙 뒤 첫 구간·복귀 구간이 [FlightParams.transitLegThresholdM]보다 길면
+ * - 고도는 지형 추적이면 지면 기준, 아니면 이륙 지점 기준이다([heightMode]). 다른 전주로 가는 구간·이륙 뒤 첫 구간·복귀 구간이 [FlightParams.transitLegThresholdM]보다 길면
  *   이동 고도로 올라갔다 내려온다(5.6). 그 밖의 구간은 촬영 고도로 곧게 난다.
  */
 object WpmlWriter {
@@ -103,6 +103,12 @@ object WpmlWriter {
     private fun f(v: Double) = String.format(Locale.ROOT, "%.8f", v)
     private fun n(v: Double) = String.format(Locale.ROOT, "%.1f", v)
 
+    /**
+     * 고도 모드(5.6): 실시간 지형 추적(DJI `REAL_TIME_SURFACE_FOLLOW`, M3E/M3T)은 WPML 값 `realTimeFollowSurface`로
+     * template `heightMode`와 waylines `executeHeightMode`에 같은 값을 쓴다. 끄면 이륙 지점 기준.
+     */
+    private fun heightMode(p: FlightParams) = if (p.terrainFollow) "realTimeFollowSurface" else "relativeToStartPoint"
+
     /** WPML 기수는 -180~180. */
     private fun heading(deg: Double) = n(if (deg > 180.0) deg - 360.0 else deg)
 
@@ -146,7 +152,7 @@ object WpmlWriter {
         append("""
   <Folder>
     <wpml:templateType>waypoint</wpml:templateType><wpml:templateId>0</wpml:templateId>
-    <wpml:waylineCoordinateSysParam><wpml:coordinateMode>WGS84</wpml:coordinateMode><wpml:heightMode>relativeToStartPoint</wpml:heightMode></wpml:waylineCoordinateSysParam>
+    <wpml:waylineCoordinateSysParam><wpml:coordinateMode>WGS84</wpml:coordinateMode><wpml:heightMode>${heightMode(p)}</wpml:heightMode></wpml:waylineCoordinateSysParam>
     <wpml:autoFlightSpeed>${n(p.speedMps)}</wpml:autoFlightSpeed><wpml:globalHeight>${n(points.first().altitudeM)}</wpml:globalHeight><wpml:caliFlightEnable>0</wpml:caliFlightEnable>
     <wpml:gimbalPitchMode>usePointSetting</wpml:gimbalPitchMode>
     <wpml:globalWaypointHeadingParam><wpml:waypointHeadingMode>followWayline</wpml:waypointHeadingMode><wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle><wpml:waypointPoiPoint>0.000000,0.000000,0.000000</wpml:waypointPoiPoint><wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode></wpml:globalWaypointHeadingParam>
@@ -171,7 +177,7 @@ ${shotActions(i, v, shots)}
         append(missionConfig(points, p))
         append("""
   <Folder>
-    <wpml:templateId>0</wpml:templateId><wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode><wpml:waylineId>0</wpml:waylineId>
+    <wpml:templateId>0</wpml:templateId><wpml:executeHeightMode>${heightMode(p)}</wpml:executeHeightMode><wpml:waylineId>0</wpml:waylineId>
     <wpml:autoFlightSpeed>${n(p.speedMps)}</wpml:autoFlightSpeed>""")
         points.forEachIndexed { i, v ->
             append("""

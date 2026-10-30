@@ -76,7 +76,7 @@ class ProjectDaoTest {
 
     @Test
     fun 비행_파라미터는_JSON으로_저장했다가_그대로_읽는다() {
-        val p = FlightParams(transitAltitudeM = 70.0, speedMps = 11.0, lenses = listOf(Lens.ZOOM), waitSec = 3, downloadMode = DownloadMode.ORIGINAL)
+        val p = FlightParams(transitAltitudeM = 70.0, speedMps = 11.0, lenses = listOf(Lens.ZOOM), waitSec = 3, downloadMode = DownloadMode.ORIGINAL, terrainFollow = false)
         assertEquals(p, flightParamsFromJson(p.toJson()))
         assertEquals(FlightParams(), flightParamsFromJson("{}"))
     }

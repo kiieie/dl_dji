@@ -118,6 +118,7 @@ fun FlightParams.toJson(): String = JSONObject()
     .put("lenses", JSONArray(lenses.map { it.name })).put("zoomRatio", zoomRatio).put("waitSec", waitSec)
     .put("batteryReservePct", batteryReservePct).put("vlosRadiusM", vlosRadiusM).put("downloadMode", downloadMode.name)
     .put("shotMode", shotMode.name).put("diagonalAltitudeM", diagonalAltitudeM).put("diagonalDistanceM", diagonalDistanceM).put("aimHeightM", aimHeightM)
+    .put("terrainFollow", terrainFollow)
     .toString()
 
 @Entity(
@@ -253,6 +254,7 @@ fun flightParamsFromJson(json: String): FlightParams {
         diagonalAltitudeM = o.optDouble("diagonalAltitudeM", d.diagonalAltitudeM),
         diagonalDistanceM = o.optDouble("diagonalDistanceM", d.diagonalDistanceM),
         aimHeightM = o.optDouble("aimHeightM", d.aimHeightM),
+        terrainFollow = o.optBoolean("terrainFollow", d.terrainFollow),
     )
 }
 
