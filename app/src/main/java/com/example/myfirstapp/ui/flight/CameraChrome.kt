@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import com.example.myfirstapp.R
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.model.Lens
+import com.example.myfirstapp.core.model.ObstacleLevel
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.Error
 import com.example.myfirstapp.ui.theme.TextSoft
@@ -81,10 +82,14 @@ internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> 
     val lost = state == ExecState.LinkLost || t?.connected == false
     val weakGnss = t != null && t.connected && t.gpsLevel < 3
     val warn = s.exec.rthCountdownSec != null || weakGnss
+    // 충돌 경고(13번): 위험은 빨강 바탕, 주의는 주황 점
+    val obstacle = s.obstacles.text
     val (status, alarm) = when {
         lost -> "연결 끊김" to true
+        obstacle != null && s.obstacles.level == ObstacleLevel.DANGER -> obstacle to true
         s.exec.rthCountdownSec != null -> "배터리 부족 · ${s.exec.rthCountdownSec}초 뒤 RTH" to true
         weakGnss -> "GNSS 약함 · 주의해서 비행" to true
+        obstacle != null -> obstacle to false
         t == null -> "기체 없음" to false
         state == ExecState.Paused -> "일시정지 · 수동 비행" to false
         state == ExecState.ReturningHome -> "복귀 중" to false
@@ -93,6 +98,7 @@ internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> 
     val dot = when {
         warn || lost -> Color.White
         t == null -> Color(0xFF8A8A8A)
+        obstacle != null -> Warning
         state == ExecState.Paused || state == ExecState.ReturningHome -> Warning
         else -> Tertiary
     }

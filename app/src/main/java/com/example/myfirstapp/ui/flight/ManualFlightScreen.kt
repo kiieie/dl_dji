@@ -98,7 +98,7 @@ fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -
         val t = f.telemetry
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (t?.landingConfirmNeeded == true) LandingConfirmButton(vm::confirmLanding)
-            t?.let { NavDisplay(it, f.home) }
+            t?.let { NavDisplay(it, f.home, f.obstacles) }
         }
         if (t != null && t.isFlying) RthButton(vm::returnHome, Modifier.align(Alignment.BottomEnd).padding(8.dp))
     }

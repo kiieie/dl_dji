@@ -444,6 +444,23 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         else -> null
     }
 
+    /**
+     * 충돌 경고(13번): `PerceptionManager` 장애물 데이터. 거리는 mm, 수평은 기수부터 시계 방향 [ObstacleData.getHorizontalAngleInterval]°마다.
+     * 모으는 동안만 구독한다. 다른 작업과 겹치지 않게 import 없이 전체 이름으로 쓴다.
+     */
+    override val obstacles: Flow<com.example.myfirstapp.core.model.Obstacles?> = kotlinx.coroutines.flow.callbackFlow {
+        val pm = PerceptionManager.getInstance()
+        val l = dji.v5.manager.aircraft.perception.listener.ObstacleDataListener { d ->
+            fun m(mm: Int?) = mm?.takeIf { it > 0 }?.div(1000.0)
+            trySend(com.example.myfirstapp.core.model.Obstacles.fromHorizontal(
+                d.horizontalObstacleDistance.orEmpty().map { m(it) ?: 0.0 }, d.horizontalAngleInterval,
+                m(d.upwardObstacleDistance), m(d.downwardObstacleDistance),
+            ))
+        }
+        pm.addObstacleDataListener(l)
+        try { kotlinx.coroutines.awaitCancellation() } finally { pm.removeObstacleDataListener(l) }
+    }
+
     companion object {
         const val TAG = "DjiDrone"
     }
