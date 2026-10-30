@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.data.OpLog
 import android.util.Log
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
@@ -95,7 +96,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     private var mediaEnabled = false
 
     private val stateListener = WaypointMissionExecuteStateListener { s ->
-        Log.i(TAG, "미션 상태 $s")
+        Log.i(TAG, "미션 상태 $s"); OpLog.log("mission", s.name)
         when (s) {
             WaypointMissionExecuteState.INTERRUPTED -> _events.tryEmit(DroneEvent.PausedByRc)
             WaypointMissionExecuteState.FINISHED -> if (missionName != null) {
@@ -262,7 +263,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         djiDone { missions.startMission(name, it) }
         Log.i(TAG, "소티 미션 시작 $name 지점 ${points.size}개")
         Unit
-    }.onFailure { missionName = null; Log.w(TAG, "소티 미션 실패: ${it.message}") }
+    }.onFailure { missionName = null; Log.w(TAG, "소티 미션 실패: ${it.message}"); OpLog.log("error", "startSortie", mapOf("message" to it.message)) }
 
     override suspend fun pauseMission(): Result<Unit> = runCatching { djiDone { missions.pauseMission(it) } }
 
@@ -318,7 +319,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
                 out.toByteArray()
             }
         }
-    }.onFailure { Log.w(TAG, "다운로드 실패 #${capture.mediaId}: ${it.message}") }
+    }.onFailure { Log.w(TAG, "다운로드 실패 #${capture.mediaId}: ${it.message}"); OpLog.log("error", "download", mapOf("media" to capture.mediaId, "message" to it.message)) }
 
     override suspend fun listMedia(sinceMs: Long): Result<List<CaptureInfo>> = runCatching {
         mediaLock.withLock {

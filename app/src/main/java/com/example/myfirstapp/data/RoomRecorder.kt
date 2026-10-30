@@ -31,6 +31,7 @@ class RoomRecorder(
 
     override suspend fun recordTransition(sortieIndex: Int, from: String, to: String, reason: String, poleId: String?) {
         val now = System.currentTimeMillis()
+        OpLog.log("exec", to, mapOf("from" to from, "reason" to reason, "pole" to poleId, "sortie" to sortieIndex, "mission" to missionId))
         val sortie = sorties.getOrNull(sortieIndex) ?: return
         val visitId = poleId?.let { id -> sortie.visits.firstOrNull { it.second == id }?.first }
         dao.insertEvent(FlightEventEntity(0, sortie.sortieId, from, to, reason, visitId, now))
@@ -48,7 +49,9 @@ class RoomRecorder(
     }
 
     override suspend fun saveCapture(sortieIndex: Int, order: Int, capture: CaptureInfo, source: CaptureSource): Long =
-        dao.insertCapture(capture.toEntity(visitId(sortieIndex, order), source))
+        dao.insertCapture(capture.toEntity(visitId(sortieIndex, order), source)).also {
+            OpLog.log("photo", source.name, mapOf("capture" to it, "media" to capture.mediaId, "viewpoint" to capture.viewpoint, "pole" to poleIdOfVisit[visitId(sortieIndex, order)]))
+        }
 
     override suspend fun saveImage(captureId: Long, bytes: ByteArray) {
         val c = dao.capture(captureId) ?: return
@@ -62,6 +65,7 @@ class RoomRecorder(
     }
 
     override suspend fun saveDetections(captureId: Long, modelVersion: String, detections: List<Detection>) {
+        OpLog.log("detect", modelVersion, mapOf("capture" to captureId, "count" to detections.size, "alert" to detections.count { it.alert }))
         dao.setModelVersion(missionId, modelVersion)
         dao.insertDetections(detections.map { DetectionEntity(0, captureId, it.label, it.score, it.x, it.y, it.w, it.h, it.alert) })
     }

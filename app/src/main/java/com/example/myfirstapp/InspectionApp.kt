@@ -1,5 +1,10 @@
 package com.example.myfirstapp
 
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineScope
+import com.example.myfirstapp.data.OpLog
 import android.app.Application
 import android.content.Context
 import android.util.Log
@@ -45,12 +50,19 @@ class InspectionApp : Application() {
 
     private fun setDjiStatus(text: String) {
         Log.i("DjiSdk", text)
+        OpLog.log("sdk", text)
         _djiStatus.value = text
     }
 
+    /** 앱 전체 수명의 작업(운용 로그용 RC 버튼 감시). */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     override fun onCreate() {
         super.onCreate()
+        OpLog.init(this)
+        OpLog.log("app", "start")
         initDjiSdk()
+        appScope.launch { rcButtons.collect { OpLog.log("rc", it.name) } }
     }
 
     private val _ldmStatus = MutableStateFlow("LDM: 확인 전")

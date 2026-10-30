@@ -1,5 +1,7 @@
 package com.example.myfirstapp.ui.settings
 
+import com.example.myfirstapp.data.toJson
+import com.example.myfirstapp.data.OpLog
 import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -75,6 +77,7 @@ class SettingsViewModel(
     fun resetParams() = _state.update { it.copy(params = FlightParams(), message = "설계 기본값으로 되돌렸습니다. 저장해야 적용됩니다.") }
 
     fun saveParams() {
+        OpLog.log("setting", "flightDefaults", mapOf("params" to _state.value.params.toJson()))
         val s = _state.value
         if (!s.canSave) return
         viewModelScope.launch {
@@ -101,6 +104,7 @@ class SettingsViewModel(
     fun dismissDelete() = _state.update { it.copy(deleting = null) }
 
     fun confirmDelete() {
+        OpLog.log("setting", "delete", mapOf("target" to _state.value.deleting?.toString()))
         val target = _state.value.deleting ?: return
         _state.update { it.copy(deleting = null) }
         runFileJob(null) {

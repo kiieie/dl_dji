@@ -28,6 +28,7 @@ private fun csvField(v: Any?): String {
  * - `result.csv`: 전주별 결과와 1차 판독(UTF-8 BOM, 엑셀에서 한글이 깨지지 않게). 2차 판독(다른 플랫폼)의 입력이다
  * - `mission.json`: 미션·소티·파라미터와 전주별 사진·탐지
  * - `images/`: 받은 사진(파일이 없는 사진은 JSON에만 남는다)
+ * - `logs/`: 미션 기간의 운용 로그(4.4)
  */
 suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportResult {
     val mission = requireNotNull(dao.mission(missionId)) { "미션 #$missionId 없음" }
@@ -97,7 +98,13 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
             images.forEach { f ->
                 out.putNextEntry(ZipEntry("images/${f.name}")); f.inputStream().use { it.copyTo(out) }; out.closeEntry()
             }
+            // 운용 로그(4.4): 미션을 만든 날부터의 조작 기록
+            OpLog.files(mission.createdAt - DAY_MS).forEach { f ->
+                out.putNextEntry(ZipEntry("logs/${f.name}")); f.inputStream().use { it.copyTo(out) }; out.closeEntry()
+            }
         }
     }
     return ExportResult(zip, rows.size, images.size)
 }
+
+private const val DAY_MS = 24L * 3600 * 1000

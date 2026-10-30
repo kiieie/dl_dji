@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import com.example.myfirstapp.data.OpLog
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -51,6 +52,7 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
     fun cancelImport() = _state.update { it.copy(result = null) }
 
     fun save() {
+        OpLog.log("project", "import", mapOf("name" to _state.value.projectName))
         val s = _state.value
         val poles = (s.result as? CsvImportResult.Success)?.poles ?: return
         if (!s.canSave) return
@@ -66,6 +68,7 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
     fun dismissDelete() = _state.update { it.copy(deleting = null) }
 
     fun confirmDelete() {
+        OpLog.log("project", "delete", mapOf("project" to _state.value.deleting?.id))
         val p = _state.value.deleting ?: return
         _state.update { it.copy(deleting = null) }
         viewModelScope.launch { dao.deleteProject(p.id) }

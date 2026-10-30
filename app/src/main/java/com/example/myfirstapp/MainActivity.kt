@@ -1,5 +1,8 @@
 package com.example.myfirstapp
 
+import androidx.compose.runtime.DisposableEffect
+import android.view.MotionEvent
+import com.example.myfirstapp.data.OpLog
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -39,6 +42,12 @@ import java.nio.ByteBuffer
 
 class MainActivity : ComponentActivity() {
 
+    /** 운용 로그(4.4): 화면을 누른 위치(손가락을 뗄 때). 어떤 버튼인지는 각 화면 동작 로그로 남는다. */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_UP) OpLog.log("touch", "up", mapOf("x" to ev.x.toInt(), "y" to ev.y.toInt()))
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val dao = (application as InspectionApp).database.projectDao()
@@ -58,6 +67,13 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun AppNavHost(dao: ProjectDao) {
         val nav = rememberNavController()
+        DisposableEffect(nav) {
+            val listener = androidx.navigation.NavController.OnDestinationChangedListener { _, d, args ->
+                OpLog.log("nav", d.route.orEmpty(), args?.keySet()?.associateWith { k -> args.get(k)?.toString() }.orEmpty())
+            }
+            nav.addOnDestinationChangedListener(listener)
+            onDispose { nav.removeOnDestinationChangedListener(listener) }
+        }
         val ids = listOf(navArgument("pid") { type = NavType.LongType }, navArgument("mid") { type = NavType.LongType })
         // 앱 재시작 복구(6.4): 끝나지 않은 소티가 있으면 그 미션의 비행 화면을 바로 연다(뒤로 가면 미션 목록)
         var recoveryChecked by rememberSaveable { mutableStateOf(false) }

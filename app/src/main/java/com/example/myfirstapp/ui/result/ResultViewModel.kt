@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.result
 
+import com.example.myfirstapp.data.OpLog
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -202,6 +203,7 @@ class ResultViewModel(
 
     /** 판정을 저장하고 지금 보이는 목록의 다음 전주로 넘어간다. */
     fun saveReviewAndNext() {
+        OpLog.log("review", "save", mapOf("visit" to _state.value.selected?.visitId, "verdict" to _state.value.draft.verdict?.name))
         val s = _state.value
         val row = s.selected ?: return
         val verdict = s.draft.verdict ?: return _state.update { it.copy(message = "판정을 고르세요") }
@@ -216,6 +218,7 @@ class ResultViewModel(
 
     /** 앱 폴더에 ZIP을 만든 뒤 저장 위치를 고르게 한다(F-16). */
     fun export() {
+        OpLog.log("review", "export")
         viewModelScope.launch {
             val zip = File(exportDir, "projects/$projectId/missions/$missionId/export/$missionId.zip")
             runCatching { exportMission(dao, missionId, zip) }

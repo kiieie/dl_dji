@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.settings
 
+import com.example.myfirstapp.data.OpLog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -43,6 +44,7 @@ class AircraftSettingsViewModel(val tabs: List<Pair<String, List<AircraftSetting
     fun change(setting: AircraftSetting, value: Any) {
         viewModelScope.launch {
             val result = runCatching { setting.save(value) }
+            OpLog.log("aircraftSetting", setting.label, mapOf("value" to value.toString(), "ok" to result.isSuccess, "error" to result.exceptionOrNull()?.message))
             _state.update { it.copy(message = result.fold({ "${setting.label}: 적용했습니다" }, { e -> "${setting.label} 실패: ${e.message}" })) }
             reload()
         }

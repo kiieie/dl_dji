@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.executor.PreflightEvaluator
@@ -260,6 +261,7 @@ class FlightViewModel(
             val plan = plans.getOrNull(index)
             val first = ui.visits.firstOrNull { it.sortieIndex == index && it.status == VisitStatus.PENDING }?.pole?.position
             val list = PreflightEvaluator.checklist(d.preflight(), p, plan?.estBatteryPct ?: 0.0, first)
+            OpLog.log("preflight", "checklist", list.associate { it.label to "${if (it.ok) "OK" else "WARN"} ${it.value}" })
             _state.update { it.copy(preflight = list) }
         }
     }
@@ -287,17 +289,20 @@ class FlightViewModel(
 
     /** FPV 렌즈 전환(Pilot 2 카메라 뷰 전환). */
     fun setLens(lens: Lens) {
+        OpLog.log("flight", "lens", mapOf("lens" to lens.name))
         _state.update { it.copy(lens = lens) }
         drone?.let { d -> viewModelScope.launch { d.setVideoLens(lens).onFailure { e -> Log.w("Flight", "렌즈 전환 실패: ${e.message}") } } }
     }
 
     /** 짐벌 중앙 ↔ 아래(Pilot 2 짐벌 모드, RC C2). */
     fun toggleGimbal() {
+        OpLog.log("flight", "gimbal")
         drone?.let { d -> viewModelScope.launch { d.toggleGimbal().onFailure { e -> Log.w("Flight", "짐벌 전환 실패: ${e.message}") } } }
     }
 
     /** 착륙 보호 확인(기체가 지면 가까이에서 기다릴 때). 실행기 상태와 무관한 기체 명령이다. */
     fun confirmLanding() {
+        OpLog.log("flight", "confirmLanding")
         val d = drone ?: return
         viewModelScope.launch { d.confirmLanding().onFailure { e -> Log.w("Flight", "착륙 확인 실패: ${e.message}") } }
     }
@@ -307,7 +312,7 @@ class FlightViewModel(
     fun rcResume() = (drone as? FakeDroneGateway)?.pressRcResume()
     fun dropBattery() = (drone as? FakeDroneGateway)?.let { it.setBattery((it.telemetry.value.batteryPct - 30).coerceAtLeast(0.0)) }
 
-    private fun send(c: Command) = executor?.send(c)
+    private fun send(c: Command) = executor?.send(c).also { OpLog.log("flight", c.toString(), mapOf("mission" to missionId)) }
 
     override fun onCleared() {
         (drone as? DjiDroneGateway)?.close()

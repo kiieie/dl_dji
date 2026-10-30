@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import com.example.myfirstapp.data.OpLog
 import android.content.ContentResolver
 import android.net.Uri
 import android.util.Log
@@ -135,12 +136,12 @@ class PlanViewModel(
         }
     }
 
-    fun startArea() = _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, selected = null, tool = Tool.AREA) }
-    fun finishArea() = _state.update { it.copy(tool = Tool.NONE, focus = it.vertices) }
+    fun startArea() = OpLog.log("plan", "startArea").let { _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, selected = null, tool = Tool.AREA) } }
+    fun finishArea() = _state.update { it.copy(tool = Tool.NONE, focus = it.vertices) }.also { OpLog.log("plan", "finishArea", mapOf("vertices" to _state.value.vertices.size)) }
     fun undoVertex() = _state.update { it.copy(vertices = it.vertices.dropLast(1)) }
-    fun startHome() = _state.update { it.copy(selected = null, tool = Tool.HOME) }
+    fun startHome() = OpLog.log("plan", "startHome").let { _state.update { it.copy(selected = null, tool = Tool.HOME) } }
     fun cancelTool() = _state.update { it.copy(tool = Tool.NONE) }
-    fun updateParams(p: FlightParams) = _state.update { it.copy(params = p, plan = null) }
+    fun updateParams(p: FlightParams) = _state.update { it.copy(params = p, plan = null) }.also { OpLog.log("plan", "params", mapOf("params" to p.toJson())) }
     fun resetPlan() = _state.update { it.copy(plan = null) }
 
     /** F-06: 영역 안 전주만 개별로 빼거나 다시 넣는다. */
@@ -149,6 +150,7 @@ class PlanViewModel(
     }
 
     fun computePlan() {
+        OpLog.log("plan", "compute", mapOf("project" to projectId, "home" to _state.value.home?.toString(), "inArea" to _state.value.inArea.size))
         val s = _state.value
         val start = s.home ?: return
         if (!s.canPlan) return
@@ -175,6 +177,7 @@ class PlanViewModel(
     }
 
     fun savePlan() {
+        OpLog.log("plan", "save", mapOf("project" to projectId, "sorties" to _state.value.plan?.sorties?.size))
         val s = _state.value
         val p = s.plan ?: return
         viewModelScope.launch {
