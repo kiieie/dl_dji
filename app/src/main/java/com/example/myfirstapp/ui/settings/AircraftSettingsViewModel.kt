@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.myfirstapp.drone.AircraftCheck
 import com.example.myfirstapp.drone.AircraftSetting
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,12 +20,32 @@ data class AircraftSettingsUiState(
     val loading: Boolean = false,
     val message: String? = null,
     val confirming: AircraftSetting? = null,
+    /** 상태 점검 탭(10.4.3 ⑧): 마지막 점검 결과와 시각. */
+    val check: AircraftCheck? = null,
+    val checkedAt: Long? = null,
+    val checking: Boolean = false,
 )
 
 /** Pilot 2식 기체 설정(10장 ⑥, 매뉴얼 57쪽). 탭을 열 때 그 탭의 값을 기체에서 읽고, 바꾸면 쓰고 다시 읽는다. */
-class AircraftSettingsViewModel(val tabs: List<Pair<String, List<AircraftSetting>>>) : ViewModel() {
+class AircraftSettingsViewModel(
+    val tabs: List<Pair<String, List<AircraftSetting>>>,
+    private val readCheck: suspend () -> AircraftCheck = { AircraftCheck() },
+) : ViewModel() {
     private val _state = MutableStateFlow(AircraftSettingsUiState())
     val state: StateFlow<AircraftSettingsUiState> = _state.asStateFlow()
+
+    init { recheck() }
+
+    /** 상태 점검을 다시 읽는다([다시 점검]). */
+    fun recheck() {
+        if (_state.value.checking) return
+        viewModelScope.launch {
+            _state.update { it.copy(checking = true) }
+            val c = readCheck()
+            OpLog.log("aircraftCheck", "read", mapOf("connected" to c.connected, "issues" to c.issues))
+            _state.update { it.copy(check = c, checkedAt = System.currentTimeMillis(), checking = false) }
+        }
+    }
 
     fun openTab(index: Int) {
         _state.update { it.copy(tab = index, values = emptyMap(), message = null) }
@@ -64,6 +85,7 @@ class AircraftSettingsViewModel(val tabs: List<Pair<String, List<AircraftSetting
     fun dismiss() = _state.update { it.copy(confirming = null) }
 
     companion object {
-        fun factory(tabs: () -> List<Pair<String, List<AircraftSetting>>>) = viewModelFactory { initializer { AircraftSettingsViewModel(tabs()) } }
+        fun factory(tabs: () -> List<Pair<String, List<AircraftSetting>>>, readCheck: suspend () -> AircraftCheck) =
+            viewModelFactory { initializer { AircraftSettingsViewModel(tabs(), readCheck) } }
     }
 }

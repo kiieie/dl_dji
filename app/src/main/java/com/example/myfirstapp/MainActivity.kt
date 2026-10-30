@@ -134,7 +134,8 @@ class MainActivity : ComponentActivity() {
                     onFlight = ::openFlight,
                     onNewPlan = { pid -> nav.navigate("map/$pid") },
                     onCamera = { nav.navigate("camera") },
-                    onSettings = { nav.navigate("settings") { launchSingleTop = true } },
+                    onSettings = { nav.navigate("settings?general=true") { launchSingleTop = true } },
+                    onAircraftCheck = { nav.navigate("settings") { launchSingleTop = true } },
                     onVerification = { nav.navigate("verify") },
                 )
             }
@@ -181,7 +182,9 @@ class MainActivity : ComponentActivity() {
             composable("result/{pid}/{mid}", ids) { e ->
                 ResultScreen(e.arguments!!.getLong("pid"), e.arguments!!.getLong("mid"), dao, onBack = { nav.popBackStack() })
             }
-            composable("settings") { SettingsHub(onBack = { nav.popBackStack() }) }
+            composable("settings?general={general}", listOf(navArgument("general") { type = NavType.BoolType; defaultValue = false })) { e ->
+                SettingsHub(onBack = { nav.popBackStack() }, initialGeneral = e.arguments!!.getBoolean("general"))
+            }
             composable("verify") { VerificationPanel() }
         }
     }

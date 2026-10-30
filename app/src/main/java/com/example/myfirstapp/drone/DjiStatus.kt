@@ -67,7 +67,7 @@ suspend fun djiAircraftStatus(): AircraftStatus = runCatching {
     )
 }.getOrDefault(AircraftStatus())
 
-private fun modelName(type: String) = when (type) {
+internal fun modelName(type: String) = when (type) {
     "DJI_MAVIC_3_ENTERPRISE_SERIES" -> "Mavic 3 Enterprise"
     else -> type
 }

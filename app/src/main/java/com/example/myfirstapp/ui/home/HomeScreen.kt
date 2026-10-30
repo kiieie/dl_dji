@@ -90,6 +90,7 @@ fun HomeScreen(
     onNewPlan: (projectId: Long) -> Unit,
     onCamera: () -> Unit,
     onSettings: () -> Unit,
+    onAircraftCheck: () -> Unit,
     onVerification: () -> Unit,
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.factory(dao, ::djiAircraftStatus))
@@ -141,7 +142,7 @@ fun HomeScreen(
                     HomeTile(R.drawable.ic_album, "앨범", "결과 · 판독", Modifier.weight(1f), enabled = latest != null) {
                         latest?.let { onAlbum(it.projectId, it.missionId) }
                     }
-                    HomeTile(R.drawable.ic_shield, "기체 점검", "상태 · 설정", Modifier.weight(1f), onClick = onSettings)
+                    HomeTile(R.drawable.ic_shield, "기체 점검", "상태 · 설정", Modifier.weight(1f), onClick = onAircraftCheck)
                 }
             }
         }
