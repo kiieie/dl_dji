@@ -23,7 +23,10 @@ import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.RemoteControllerKey
+import dji.sdk.keyvalue.value.camera.CameraMode
 import dji.sdk.keyvalue.value.camera.CameraStorageLocation
+import dji.sdk.keyvalue.value.camera.MediaFileType
+import dji.sdk.keyvalue.value.common.CameraLensType
 import dji.sdk.keyvalue.value.camera.CameraVideoStreamSourceType
 import dji.sdk.keyvalue.value.gimbal.GimbalResetType
 import dji.sdk.keyvalue.value.camera.DateTime
@@ -157,6 +160,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(FlightControllerKey.KeyCompassHeading) { h -> _telemetry.update { it.copy(headingDeg = ((h ?: 0.0) + 360) % 360) } }
         keys.listen(KeyTools.createKey(CameraKey.KeyNewlyGeneratedMediaFile, camera), holder) { _, info ->
             if (info == null) return@listen
+            // 녹화한 영상은 SD에만 둔다(10.4.3). 지점·수동 사진으로 넘기지 않는다
+            if (info.type == MediaFileType.MOV || info.type == MediaFileType.MP4) return@listen
             val t = _telemetry.value
             val capture = CaptureInfo(
                 mediaId = info.index.toString(), lens = Lens.WIDE, position = t.position, altitudeM = t.altitudeM,
@@ -369,6 +374,20 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     override suspend fun toggleGimbal(): Result<Unit> = runCatching {
         djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(GimbalKey.KeyGimbalReset), GimbalResetType.PITCH_UP_OR_DOWN, it) }
+        Unit
+    }
+
+    /** 망원 렌즈 줌(M3E 망원은 같은 카메라 [camera]의 ZOOM 렌즈). */
+    override suspend fun setZoom(ratio: Double): Result<Unit> = runCatching {
+        djiDone { keys.setValue(KeyTools.createCameraKey(CameraKey.KeyCameraZoomRatios, camera, CameraLensType.CAMERA_LENS_ZOOM), ratio, it) }
+    }
+
+    override suspend fun setVideoMode(on: Boolean): Result<Unit> = runCatching {
+        djiDone { keys.setValue(KeyTools.createKey(CameraKey.KeyCameraMode, camera), if (on) CameraMode.VIDEO_NORMAL else CameraMode.PHOTO_NORMAL, it) }
+    }
+
+    override suspend fun setRecording(on: Boolean): Result<Unit> = runCatching {
+        djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(if (on) CameraKey.KeyStartRecord else CameraKey.KeyStopRecord, camera), it) }
         Unit
     }
 

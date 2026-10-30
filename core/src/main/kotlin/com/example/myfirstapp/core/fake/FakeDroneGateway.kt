@@ -193,6 +193,12 @@ class FakeDroneGateway(
         return Result.success(info)
     }
 
+    // 모의 카메라: 줌·영상 모드·녹화는 받기만 한다(영상 파일은 만들지 않음)
+    override suspend fun setVideoLens(lens: Lens): Result<Unit> = Result.success(Unit).also { calls += "lens:$lens" }
+    override suspend fun setZoom(ratio: Double): Result<Unit> = Result.success(Unit).also { calls += "zoom:$ratio" }
+    override suspend fun setVideoMode(on: Boolean): Result<Unit> = Result.success(Unit).also { calls += "videoMode:$on" }
+    override suspend fun setRecording(on: Boolean): Result<Unit> = Result.success(Unit).also { calls += "record:$on" }
+
     override suspend fun listMedia(sinceMs: Long): Result<List<CaptureInfo>> {
         calls += "listMedia"
         return Result.success(sdCard.filter { it.takenAtMs >= sinceMs })

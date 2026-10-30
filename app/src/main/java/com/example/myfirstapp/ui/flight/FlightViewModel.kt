@@ -84,6 +84,12 @@ data class FlightUiState(
     val modelVersion: String? = null,
     /** FPV 렌즈(Pilot 2 카메라 뷰 전환). */
     val lens: Lens = Lens.WIDE,
+    /** 망원 줌 배율(10.4.3 줌 +/−). 광각이면 1.0X로 보인다. */
+    val zoomRatio: Double = FlightParams().zoomRatio,
+    /** 사진/영상 전환에서 영상(셔터 = 녹화). */
+    val videoMode: Boolean = false,
+    /** 녹화를 시작한 시각. 녹화 중이 아니면 null. */
+    val recordingSinceMs: Long? = null,
     /** 비행 전 점검 체크리스트(Pilot 2): [비행 시작]을 누르면 채워지고, 확인하면 비운다. */
     val preflight: List<PreflightCheck>? = null,
     /** 미션 파라미터(촬영 방식 포함). 미니맵에 실제 촬영 지점 경로를 그린다. */
@@ -111,6 +117,7 @@ class FlightViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(FlightUiState())
     val state: StateFlow<FlightUiState> = _state.asStateFlow()
+    private val camera = CameraControl(viewModelScope, { drone }, { _state.value }, { f -> _state.update(f) }, "flight")
 
     private val notifier = ToneNotifier()
     private var model: TfliteYoloDetector? = null
@@ -215,13 +222,16 @@ class FlightViewModel(
         }
         _state.update {
             it.copy(
-                loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params,
+                loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = params.zoomRatio,
                 simulated = drone is FakeDroneGateway, modelVersion = detector.modelVersion,
             )
         }
         combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->
             val need = energy.move(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
+            val wasPaused = paused
             _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need) }
+            // RC 재개 등으로 일시정지를 벗어나면 녹화를 멈추고 사진 모드로(10.4.3)
+            if (wasPaused && ui.state != ExecState.Paused) camera.backToPhoto()
         }
     }
 
@@ -271,11 +281,17 @@ class FlightViewModel(
     }
 
     fun endMission() = send(Command.EndMission)
-    fun resume() = send(Command.Resume)
+    fun resume() {
+        camera.backToPhoto()
+        send(Command.Resume)
+    }
 
     /** 화면 [Ⅱ 수동 비행](Pilot 2 55쪽 경로 알약): RC 일시정지 버튼과 같다. 기체가 멈춰 호버링하고 스틱으로 조종한다. */
     fun pause() = send(Command.Pause)
     fun manualCapture() = send(Command.ManualCapture)
+
+    /** 화면 셔터: 영상 모드면 녹화 시작·정지, 사진이면 수동 촬영(일시정지 중). */
+    fun shutter() { if (_state.value.videoMode) toggleRecording() else manualCapture() }
     fun skip() = send(Command.Skip())
     fun markDone() = send(Command.MarkDone)
     /**
@@ -295,11 +311,14 @@ class FlightViewModel(
     }
 
     /** FPV 렌즈 전환(Pilot 2 카메라 뷰 전환). */
-    fun setLens(lens: Lens) {
-        OpLog.log("flight", "lens", mapOf("lens" to lens.name))
-        _state.update { it.copy(lens = lens) }
-        drone?.let { d -> viewModelScope.launch { d.setVideoLens(lens).onFailure { e -> Log.w("Flight", "렌즈 전환 실패: ${e.message}") } } }
-    }
+    fun setLens(lens: Lens) = camera.setLens(lens)
+
+    private val paused get() = _state.value.exec.state == ExecState.Paused
+
+    /** 줌 +/−·사진/영상·녹화는 일시정지 중에만(10.4.3). 지점 사진(광각)은 건드리지 않는다. */
+    fun zoom(up: Boolean) { if (paused) camera.zoom(up) }
+    fun setVideoMode(on: Boolean) { if (paused) camera.setVideoMode(on) }
+    fun toggleRecording() { if (paused || _state.value.recordingSinceMs != null) camera.toggleRecording() }
 
     /** 짐벌 중앙 ↔ 아래(Pilot 2 짐벌 모드, RC C2). */
     fun toggleGimbal() {

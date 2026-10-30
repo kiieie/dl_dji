@@ -35,7 +35,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.R
-import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.drone.DjiFpvView
 import com.example.myfirstapp.ui.home.LatestMission
@@ -74,7 +73,7 @@ fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -
         }
 
         TopBar(f, onExit, onOpenSettings, label = "수동 비행", canExit = true)
-        ZoomBox(f.lens, FlightParams().zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = TOP_BAR_HEIGHT + 9.dp))
+        ZoomBox(f.lens, f.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = TOP_BAR_HEIGHT + 9.dp))
 
         Column(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = TOP_BAR_HEIGHT + 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             // 떠 있는 동안 비행 화면으로 바꾸면 이 화면의 RTH·착륙 확인을 잃으므로 착륙한 뒤에만 보인다
@@ -89,8 +88,9 @@ fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -
         Box(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 150.dp)) { OverlayIconButton(R.drawable.ic_gimbal_center, "짐벌 중앙/아래", vm::toggleGimbal) }
 
         CameraColumn(
-            lens = f.lens, onLens = vm::setLens,
-            shutterEnabled = s.connected && !s.shooting, onShutter = vm::shoot,
+            s = f, onLens = vm::setLens,
+            shutterEnabled = s.connected && !s.shooting, onShutter = vm::shutter,
+            cameraEnabled = s.connected, onVideoMode = vm::setVideoMode, onZoom = vm::zoom,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = TOP_BAR_HEIGHT + 37.dp, end = 6.dp),
             shotsLabel = "${s.shots}장",
         )

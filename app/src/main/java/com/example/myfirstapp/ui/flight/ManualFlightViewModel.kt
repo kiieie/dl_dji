@@ -67,6 +67,7 @@ class ManualFlightViewModel(
     private val _state = MutableStateFlow(ManualFlightUiState())
     val state: StateFlow<ManualFlightUiState> = _state.asStateFlow()
     private val drone: DroneGateway? = if (djiAircraftConnected()) DjiDroneGateway(viewModelScope, File(appFilesDir, "manual/kmz")) else null
+    private val camera = CameraControl(viewModelScope, { drone }, { _state.value.flight }, { f -> _state.update { it.copy(flight = f(it.flight)) } }, "manual")
 
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))
@@ -86,7 +87,7 @@ class ManualFlightViewModel(
             when (it) {
                 RcButton.C2 -> toggleGimbal()
                 RcButton.SHUTTER -> rcShutter()
-                RcButton.FIVE_D_CENTER -> shoot() // ○(C3)도 5D 누름으로 온다
+                RcButton.FIVE_D_CENTER -> shutter() // ○(C3)도 5D 누름으로 온다
                 else -> {}
             }
         } }
@@ -98,7 +99,10 @@ class ManualFlightViewModel(
     /** 이번 화면에서 받은 사진 번호. RC 셔터 사진을 SD에서 고를 때 뺀다. */
     private val kept = mutableSetOf<String>()
 
-    /** 화면 셔터: 찍고 원본을 받는다. */
+    /** 화면 셔터: 영상 모드면 녹화 시작·정지, 사진이면 [shoot]. */
+    fun shutter() = if (_state.value.flight.videoMode) toggleRecording() else shoot()
+
+    /** 사진 셔터: 찍고 원본을 받는다. */
     fun shoot() {
         val d = drone ?: return
         if (_state.value.shooting) return
@@ -154,11 +158,11 @@ class ManualFlightViewModel(
         return file.name
     }
 
-    fun setLens(lens: Lens) {
-        OpLog.log("manual", "lens", mapOf("lens" to lens.name))
-        _state.update { it.copy(flight = it.flight.copy(lens = lens)) }
-        drone?.let { d -> viewModelScope.launch { d.setVideoLens(lens) } }
-    }
+
+    fun setLens(lens: Lens) = camera.setLens(lens)
+    fun zoom(up: Boolean) = camera.zoom(up)
+    fun setVideoMode(on: Boolean) = camera.setVideoMode(on)
+    fun toggleRecording() = camera.toggleRecording()
 
     fun toggleGimbal() {
         OpLog.log("manual", "gimbal")
