@@ -62,3 +62,22 @@ class FiveDGateTest {
         assertEquals(listOf(FIVE_D_DOWN), g.tick(250).actions)
     }
 }
+
+class FiveDFlowTest {
+    @Test
+    fun `흐름은 5D만 기다렸다 내보내고 다른 버튼은 버린다`() = kotlinx.coroutines.test.runTest {
+        val got = mutableListOf<FiveDGate.Result>()
+        kotlinx.coroutines.flow.flowOf(com.example.myfirstapp.core.port.RcButton.C1, FIVE_D_DOWN)
+            .fiveD(now = { testScheduler.currentTime })
+            .collect { got += it }
+        assertEquals(listOf(FiveDGate.Result(listOf(FIVE_D_DOWN))), got)
+    }
+
+    @Test
+    fun `줄 이동은 끝에서 멈춘다`() {
+        assertEquals(-1, moveIndex(0, 1, 0))
+        assertEquals(0, moveIndex(-1, 1, 3))
+        assertEquals(2, moveIndex(2, 1, 3))
+        assertEquals(0, moveIndex(0, -1, 3))
+    }
+}

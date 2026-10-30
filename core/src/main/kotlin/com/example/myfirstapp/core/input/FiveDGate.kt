@@ -1,6 +1,10 @@
 package com.example.myfirstapp.core.input
 
 import com.example.myfirstapp.core.port.RcButton
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.launch
 
 /**
  * RC Pro 5D 버튼 입력 정리(10장 1차 판독). 손가락이 기울어 가운데와 방향이 거의 동시에 들어오는 일이 잦다(2026-10-29 실측):
@@ -42,4 +46,26 @@ class FiveDGate(val settleMs: Long = 150, private val afterCenterMs: Long = 300)
         if (p == RcButton.FIVE_D_CENTER) ignoreDirectionUntil = t + afterCenterMs
         return Result(listOf(p))
     }
+}
+
+/**
+ * RC 버튼 흐름에서 5D만 [gate]로 걸러 내보낸다(누름 뒤 [FiveDGate.settleMs] 기다림 포함). 빈 결과는 내보내지 않는다.
+ * 화면이 맨 위에 있는 동안만 모은다(Compose `LaunchedEffect`). 대화상자 등으로 받지 않을 때는 받는 쪽이 무시한다.
+ */
+fun Flow<RcButton>.fiveD(gate: FiveDGate = FiveDGate(), now: () -> Long = System::currentTimeMillis): Flow<FiveDGate.Result> = channelFlow {
+    collect { b ->
+        if (!b.name.startsWith("FIVE_D_")) return@collect
+        gate.press(b, now()).takeIf { it.actions.isNotEmpty() || it.conflict }?.let { send(it) }
+        launch {
+            delay(gate.settleMs)
+            gate.tick(now()).takeIf { it.actions.isNotEmpty() }?.let { send(it) }
+        }
+    }
+}
+
+/** 목록에서 고른 줄을 [delta]만큼 옮긴다. 끝에서는 멈추고, 고른 줄이 없으면(-1) 첫 줄. 빈 목록이면 -1. */
+fun moveIndex(i: Int, delta: Int, size: Int): Int = when {
+    size == 0 -> -1
+    i < 0 -> 0
+    else -> (i + delta).coerceIn(0, size - 1)
 }

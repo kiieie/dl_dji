@@ -195,9 +195,9 @@ private fun HeadText(text: String, modifier: Modifier) = Text(text, modifier, fo
 
 /** 목록 아래 5D 안내(10.4.2). */
 @Composable
-internal fun FiveDHints(modifier: Modifier) {
+internal fun FiveDHints(modifier: Modifier, hints: List<Pair<String, String>> = listOf("5D ↕" to "고르기", "5D ●" to "실행", "5D ←" to "뒤로")) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
-        listOf("5D ↕" to "고르기", "5D ●" to "실행", "5D ←" to "뒤로").forEach { (k, v) ->
+        hints.forEach { (k, v) ->
             Text(
                 buildAnnotatedString {
                     withStyle(SpanStyle(color = TextSoft, fontWeight = FontWeight.SemiBold)) { append(k) }

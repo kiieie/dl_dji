@@ -7,10 +7,13 @@ import com.example.myfirstapp.core.port.nextZoom
 import com.example.myfirstapp.data.OpLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * 카메라 뷰 공통 카메라 조작(10.4.3): 렌즈, 줌 +/−, 사진/영상, 녹화. 자동·수동 비행 ViewModel이 같이 쓴다.
- * 상태는 각 ViewModel의 [FlightUiState]에 둔다([get]·[set]). 실패는 로그만 남긴다(화면 값은 누른 대로 둔다).
+ * 상태는 각 ViewModel의 [FlightUiState]에 둔다([get]·[set]). 화면 값은 누른 대로 바로 바꾸고, 기체가 거절하면 되돌린다.
+ * 명령은 누른 차례대로 하나씩 보낸다(렌즈 전환이 끝난 뒤 줌).
  */
 internal class CameraControl(
     private val scope: CoroutineScope,
@@ -21,8 +24,9 @@ internal class CameraControl(
 ) {
     fun setLens(lens: Lens) {
         OpLog.log(tag, "lens", mapOf("lens" to lens.name))
+        val was = get().lens
         set { it.copy(lens = lens) }
-        call("렌즈 전환") { setVideoLens(lens) }
+        call("렌즈 전환", { it.copy(lens = was) }) { setVideoLens(lens) }
     }
 
     /** 줌 +/−. 광각이면 먼저 망원으로 바꾸고 지금 배율을 건다(누른 단계는 그다음부터). */
@@ -32,21 +36,22 @@ internal class CameraControl(
         if (s.lens != Lens.ZOOM) setLens(Lens.ZOOM)
         OpLog.log(tag, "zoom", mapOf("ratio" to ratio))
         set { it.copy(zoomRatio = ratio) }
-        call("줌") { setZoom(ratio) }
+        call("줌", { it.copy(zoomRatio = s.zoomRatio) }) { setZoom(ratio) }
     }
 
     fun setVideoMode(on: Boolean) {
         if (get().videoMode == on || get().recordingSinceMs != null) return
         OpLog.log(tag, "videoMode", mapOf("on" to on))
         set { it.copy(videoMode = on) }
-        call("영상 모드") { setVideoMode(on) }
+        call("영상 모드", { it.copy(videoMode = !on) }) { setVideoMode(on) }
     }
 
     fun toggleRecording() {
-        val on = get().recordingSinceMs == null
+        val was = get().recordingSinceMs
+        val on = was == null
         OpLog.log(tag, "record", mapOf("on" to on))
         set { it.copy(recordingSinceMs = if (on) System.currentTimeMillis() else null) }
-        call("녹화") { setRecording(on) }
+        call("녹화", { it.copy(recordingSinceMs = was) }) { setRecording(on) }
     }
 
     /** 녹화를 멈추고 사진 모드로 돌린다(자동 비행 재개 전, 10.4.3). */
@@ -59,7 +64,7 @@ internal class CameraControl(
      * 재개 전용: 녹화 정지와 사진 모드 전환을 기체가 받을 때까지 기다린다. 미션 재개와 동시에 보내면 첫 지점 사진을 놓칠 수 있다.
      * 영상 모드가 아니면 바로 돌아온다.
      */
-    suspend fun backToPhotoAndWait() {
+    suspend fun backToPhotoAndWait() = lock.withLock {
         val d = drone()
         if (get().recordingSinceMs != null) {
             set { it.copy(recordingSinceMs = null) }
@@ -71,8 +76,17 @@ internal class CameraControl(
         }
     }
 
-    private fun call(what: String, block: suspend DroneGateway.() -> Result<Unit>) {
+    /** 카메라 명령 차례(공정한 [Mutex]라 누른 순서대로). */
+    private val lock = Mutex()
+
+    private fun call(what: String, undo: (FlightUiState) -> FlightUiState, block: suspend DroneGateway.() -> Result<Unit>) {
         val d = drone() ?: return
-        scope.launch { d.block().onFailure { e -> Log.w("Camera", "$what 실패: ${e.message}") } }
+        scope.launch {
+            lock.withLock { d.block() }.onFailure { e ->
+                Log.w("Camera", "$what 실패: ${e.message}")
+                OpLog.log(tag, "cameraFail", mapOf("what" to what, "error" to e.message))
+                set(undo)
+            }
+        }
     }
 }

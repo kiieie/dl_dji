@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.myfirstapp.core.input.moveIndex
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.data.AlbumMission
 import com.example.myfirstapp.data.AlbumPhoto
@@ -77,6 +78,12 @@ class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?
     }
 
     fun setFilter(f: AlbumFilter) = _state.update { it.copy(filter = f) }
+
+    /** 5D ↕: 왼쪽 목록에서 위·아래 줄을 고른다. 끝에서는 멈춘다. */
+    fun move(delta: Int) {
+        val s = _state.value
+        s.groups.getOrNull(moveIndex(s.groups.indexOf(s.group), delta, s.groups.size))?.takeIf { it != s.group }?.let(::select)
+    }
 
     companion object {
         fun factory(dao: ProjectDao, appFilesDir: File?) = viewModelFactory { initializer { AlbumViewModel(dao, appFilesDir) } }

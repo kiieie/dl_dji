@@ -61,6 +61,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import com.example.myfirstapp.InspectionApp
+import com.example.myfirstapp.core.input.fiveD
+import com.example.myfirstapp.core.input.moveIndex
+import com.example.myfirstapp.core.port.RcButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -90,6 +96,22 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false) {
     var tab by rememberSaveable { mutableIntStateOf(if (initialGeneral) general else 0) }
     var guide by rememberSaveable { mutableStateOf<String?>(null) }
     val c = s.check
+    fun pick(i: Int) {
+        tab = i
+        if (i == 0) vm.recheck() else if (i < general) vm.openTab(i - 1)
+    }
+    // RC 5D(10.4.3): ↕ 탭 고르기. 대화상자가 떠 있으면 받지 않는다(← 뒤로는 MainActivity 몫)
+    val rc = (LocalContext.current.applicationContext as InspectionApp).rcButtons
+    LaunchedEffect(vm, guide == null && s.confirming == null) {
+        if (guide == null && s.confirming == null) rc.fiveD().collect { r ->
+            r.actions.forEach { b ->
+                if (b == RcButton.FIVE_D_UP || b == RcButton.FIVE_D_DOWN) {
+                    val i = moveIndex(tab, if (b == RcButton.FIVE_D_UP) -1 else 1, general + 1)
+                    if (i != tab) pick(i)
+                }
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(40.dp).padding(start = 4.dp, end = 10.dp)) {
@@ -112,10 +134,7 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false) {
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 (listOf("상태 점검") + vm.tabs.map { it.first } + "일반").forEachIndexed { i, name ->
-                    TabRow(name, tab == i, badge = if (i == 0) c?.issues?.takeIf { it > 0 } else null) {
-                        tab = i
-                        if (i == 0) vm.recheck() else if (i < general) vm.openTab(i - 1)
-                    }
+                    TabRow(name, tab == i, badge = if (i == 0) c?.issues?.takeIf { it > 0 } else null) { pick(i) }
                 }
             }
             Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)) {

@@ -2,6 +2,12 @@ package com.example.myfirstapp.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import com.example.myfirstapp.core.input.fiveD
+import com.example.myfirstapp.core.model.ParamItem
+import com.example.myfirstapp.core.model.step
+import com.example.myfirstapp.ui.mission.FiveDHints
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -166,8 +172,11 @@ fun MapScreen(
     LaunchedEffect(s.flyMissionId) {
         s.flyMissionId?.let { vm.onFlightOpened(); onStartFlight(it) }
     }
-    // 영역·이륙 지점을 찍는 중 뒤로 가기(5D ← 포함)는 화면을 떠나지 않고 도구만 취소한다(10.3)
+    // 영역·이륙 지점을 찍는 중 뒤로 가기는 화면을 떠나지 않고 도구만 취소한다(10.3)
     BackHandler(enabled = s.tool != Tool.NONE, onBack = vm::cancelTool)
+    // RC 5D(10.4.3): ↕ 미션 설정 항목, ↔ 값. 5D ←는 여기서 뒤로가 아니다(MainActivity 허용 목록에서 뺌)
+    val rc = (context.applicationContext as InspectionApp).rcButtons
+    LaunchedEffect(vm) { rc.fiveD().collect(vm::on5d) }
 
     Column(Modifier.fillMaxSize()) {
         PlanHeader(s, replanFrom, onBack)
@@ -331,10 +340,11 @@ private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewMode
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         val scroll = rememberScrollState()
         Column(Modifier.weight(1f).verticalScroll(scroll)) {
-            ParamRows(s.params, pole, enabled = s.tool == Tool.NONE, onChange = vm::updateParams)
+            ParamRows(s.params, pole, enabled = s.tool == Tool.NONE, focus = s.paramFocus, onChange = vm::updateParams)
             s.paramErrors.forEach { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) }
             s.plan?.let { PlanSummary(it, s.planMs, s.params) }
         }
+        FiveDHints(Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 12.dp), listOf("5D ↕" to "항목", "5D ↔" to "값"))
         val ready = s.plan != null && s.plan.sorties.isNotEmpty() && !s.saving
         Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(
@@ -386,8 +396,12 @@ internal fun perPole(p: FlightParams) = if (p.shotMode == ShotMode.DIAGONAL4) 4 
  * 전주 위는 점검 고도·속도. 아래에 이동 고도·예비율. 범위 검증은 [FlightParams.validate]. 영역·이륙 지점을 찍는 동안에는 잠근다.
  */
 @Composable
-private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, onChange: (FlightParams) -> Unit) {
-    Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, focus: ParamItem?, onChange: (FlightParams) -> Unit) {
+    fun step(item: ParamItem): (Int) -> Unit = { onChange(p.step(item, it)) }
+    Row(
+        Modifier.focusMark(focus == ParamItem.SHOT_MODE).padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         ShotMode.entries.forEach { mode ->
             val on = p.shotMode == mode
             Surface(
@@ -403,8 +417,8 @@ private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, onCh
     }
     Column(Modifier.padding(horizontal = 12.dp)) {
         if (p.shotMode == ShotMode.DIAGONAL4) {
-            ParamRow("비행 고도", "${p.diagonalAltitudeM.toInt()}", "m", enabled) { onChange(p.copy(diagonalAltitudeM = p.diagonalAltitudeM + it)) }
-            ParamRow("전주 거리", "${p.diagonalDistanceM.toInt()}", "m", enabled) { onChange(p.copy(diagonalDistanceM = p.diagonalDistanceM + it)) }
+            ParamRow("비행 고도", "${p.diagonalAltitudeM.toInt()}", "m", enabled, focus == ParamItem.DIAGONAL_ALTITUDE, step(ParamItem.DIAGONAL_ALTITUDE))
+            ParamRow("전주 거리", "${p.diagonalDistanceM.toInt()}", "m", enabled, focus == ParamItem.DIAGONAL_DISTANCE, step(ParamItem.DIAGONAL_DISTANCE))
             // 피치는 고도·거리·조준 높이(전주 지상고, 없으면 기본 조준 높이)로 정해진다(5.6)
             val aim = pole?.let { Viewpoints.aimHeight(it.toPole(), p) } ?: p.aimHeightM
             val pitch = -Math.toDegrees(atan2(p.diagonalAltitudeM - aim, p.diagonalDistanceM))
@@ -415,22 +429,30 @@ private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, onCh
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         } else {
-            ParamRow("점검 고도", "${p.inspectAltitudeM.toInt()}", "m", enabled) { onChange(p.copy(inspectAltitudeM = p.inspectAltitudeM + it * 5)) }
+            ParamRow("점검 고도", "${p.inspectAltitudeM.toInt()}", "m", enabled, focus == ParamItem.INSPECT_ALTITUDE, step(ParamItem.INSPECT_ALTITUDE))
         }
-        ParamRow("속도", "${p.speedMps.toInt()}", "m/s", enabled) { onChange(p.copy(speedMps = p.speedMps + it)) }
-        ParamRow("이동 고도", "${p.transitAltitudeM.toInt()}", "m", enabled) { onChange(p.copy(transitAltitudeM = p.transitAltitudeM + it * 5)) }
-        ParamRow("배터리 예비율", "${p.batteryReservePct.toInt()}", "%", enabled) { onChange(p.copy(batteryReservePct = p.batteryReservePct + it * 5)) }
-        Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+        ParamRow("속도", "${p.speedMps.toInt()}", "m/s", enabled, focus == ParamItem.SPEED, step(ParamItem.SPEED))
+        ParamRow("이동 고도", "${p.transitAltitudeM.toInt()}", "m", enabled, focus == ParamItem.TRANSIT_ALTITUDE, step(ParamItem.TRANSIT_ALTITUDE))
+        ParamRow("배터리 예비율", "${p.batteryReservePct.toInt()}", "%", enabled, focus == ParamItem.BATTERY_RESERVE, step(ParamItem.BATTERY_RESERVE))
+        Row(Modifier.fillMaxWidth().height(40.dp).focusMark(focus == ParamItem.TERRAIN_FOLLOW), verticalAlignment = Alignment.CenterVertically) {
             Text("실시간 지형 추적", Modifier.weight(1f), fontSize = 12.sp, color = TextSoft)
             Switch(checked = p.terrainFollow, onCheckedChange = { onChange(p.copy(terrainFollow = it)) }, enabled = enabled)
         }
     }
 }
 
+/** 5D로 고른 항목 표시: 파랑 테두리, 패널이 스크롤되면 보이는 곳으로 끌어온다. */
+@Composable
+private fun Modifier.focusMark(focused: Boolean): Modifier {
+    val bring = remember { BringIntoViewRequester() }
+    LaunchedEffect(focused) { if (focused) bring.bringIntoView() }
+    return bringIntoViewRequester(bring).then(if (focused) Modifier.border(1.dp, Accent, RoundedCornerShape(4.dp)) else Modifier)
+}
+
 /** 항목 한 줄 40dp: 이름, [−] 값 [+](32dp). 버튼 설명은 스모크 스크립트가 찾는 이름이다("속도 낮추기" 등). */
 @Composable
-private fun ParamRow(label: String, value: String, unit: String, enabled: Boolean, onStep: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun ParamRow(label: String, value: String, unit: String, enabled: Boolean, focused: Boolean, onStep: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(40.dp).focusMark(focused), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), fontSize = 12.sp, color = TextSoft, maxLines = 1)
         StepButton("−", "$label 낮추기", enabled) { onStep(-1) }
         Text(

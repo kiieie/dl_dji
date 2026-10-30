@@ -45,8 +45,8 @@ import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.nio.ByteBuffer
 
-/** RC 5D ←를 뒤로 가기로 쓰는 화면(10.3 허용 목록). */
-private val FIVE_D_BACK_ROUTES = listOf("projects", "map/", "settings", "verify", "album")
+/** RC 5D ←를 뒤로 가기로 쓰는 화면(10.3 허용 목록). 계획 화면은 ↔가 값 바꾸기라 뺀다. */
+private val FIVE_D_BACK_ROUTES = listOf("projects", "settings", "verify", "album")
 
 class MainActivity : ComponentActivity() {
 
@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
             dao.openSortieMission()?.let { openFlight(it.projectId, it.missionId) }
         }
         // RC 5D ← = 뒤로(10.3). 허용한 화면에서만 동작한다(홈·비행·수동 비행·판독은 제외, 새 화면도 기본은 제외).
-        // 대화상자가 열려 있으면 그 대화상자만 닫히고(FullscreenAlertDialog의 BackHandler), 계획 도구 중이면 도구만 취소된다.
+        // 대화상자가 열려 있으면 그 대화상자만 닫힌다(FullscreenAlertDialog의 BackHandler).
         LaunchedEffect(Unit) {
             (application as InspectionApp).rcButtons.collect { b ->
                 val route = nav.currentDestination?.route ?: return@collect

@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -53,7 +54,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.R
+import com.example.myfirstapp.InspectionApp
+import com.example.myfirstapp.core.input.fiveD
 import com.example.myfirstapp.core.model.CaptureSource
+import com.example.myfirstapp.core.port.RcButton
+import com.example.myfirstapp.ui.mission.FiveDHints
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.PoleSymbol
@@ -86,6 +91,24 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
     val s by vm.state.collectAsStateWithLifecycle()
     var viewing by remember { mutableStateOf<File?>(null) }
     val group = s.group
+    // RC 5D(10.4.3): ↕ 미션 고르기, ● 미션은 판독으로·수동 하루치는 첫 사진 크게. 사진을 크게 보는 동안은 받지 않는다(← 뒤로는 MainActivity 몫)
+    val rc = (context.applicationContext as InspectionApp).rcButtons
+    LaunchedEffect(vm, viewing == null) {
+        if (viewing == null) rc.fiveD().collect { r ->
+            r.actions.forEach { b ->
+                when (b) {
+                    RcButton.FIVE_D_UP -> vm.move(-1)
+                    RcButton.FIVE_D_DOWN -> vm.move(1)
+                    RcButton.FIVE_D_CENTER -> when (val g = vm.state.value.group) {
+                        is AlbumGroup.Mission -> onReview(g.m.projectId, g.m.missionId)
+                        is AlbumGroup.ManualDay -> viewing = g.files.firstOrNull()
+                        null -> Unit
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(40.dp).padding(start = 4.dp, end = 10.dp)) {
@@ -120,12 +143,20 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 if (!s.loading && s.groups.isEmpty()) Text("사진이 없습니다.", Modifier.padding(12.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val list = rememberLazyListState()
+                // 5D로 고른 줄이 화면 밖이면 따라간다
+                LaunchedEffect(group?.key) {
+                    val i = s.groups.indexOf(group)
+                    val visible = list.layoutInfo.visibleItemsInfo
+                    if (i >= 0 && visible.isNotEmpty() && (i <= visible.first().index || i >= visible.last().index)) list.animateScrollToItem(i)
+                }
                 LazyColumn(
-                    Modifier.fillMaxSize().scrollbar(list), state = list,
+                    Modifier.weight(1f).fillMaxWidth().scrollbar(list), state = list,
                     contentPadding = PaddingValues(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     items(s.groups, key = { it.key }) { g -> GroupRow(g, g.key == group?.key) { vm.select(g) } }
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                FiveDHints(Modifier.fillMaxWidth().height(26.dp).padding(horizontal = 12.dp), listOf("5D ↕" to "고르기", "5D ●" to "열기", "5D ←" to "뒤로"))
             }
             Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
                 val count = when (group) { is AlbumGroup.ManualDay -> group.files.size; else -> s.shown.size }

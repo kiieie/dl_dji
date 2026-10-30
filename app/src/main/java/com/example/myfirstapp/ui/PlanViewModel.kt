@@ -8,6 +8,12 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.ParamItem
+import com.example.myfirstapp.core.model.items
+import com.example.myfirstapp.core.model.moveItem
+import com.example.myfirstapp.core.model.step
+import com.example.myfirstapp.core.input.FiveDGate
+import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.core.route.EnergyModel
 import com.example.myfirstapp.core.route.EnergyParams
 import com.example.myfirstapp.core.route.LineNumbers
@@ -66,6 +72,8 @@ data class PlanUiState(
     val flyMissionId: Long? = null,
     /** 미션을 저장하는 중. 장갑으로 두 번 눌러도 한 번만 저장한다. */
     val saving: Boolean = false,
+    /** 5D로 고른 미션 설정 항목(10.4.3). 처음 ↕를 누르기 전에는 null. */
+    val paramFocus: ParamItem? = null,
 ) {
     val paramErrors: List<String> get() = params.validate()
     /** 영역 안 전주. 상태 하나에 한 번만 계산한다(화면·canPlan·경로 계산이 여러 번 읽음, 전주 1,000개 이상). */
@@ -172,6 +180,24 @@ class PlanViewModel(
     fun startHome() = OpLog.log("plan", "startHome").let { _state.update { it.copy(selected = null, tool = Tool.HOME) } }
     fun cancelTool() = _state.update { it.copy(tool = Tool.NONE) }
     fun updateParams(p: FlightParams) = _state.update { it.copy(params = p, plan = null) }.also { OpLog.log("plan", "params", mapOf("params" to p.toJson())) }
+
+    /** RC 5D(10.4.3 계획 패널): ↕ 항목 고르기, ↔ 값 바꾸기. 영역·이륙 지점을 찍는 중이거나 저장 중이면 받지 않는다. */
+    fun on5d(r: FiveDGate.Result) {
+        if (r.conflict) _state.update { it.copy(message = "5D 입력이 겹쳐 무시했습니다. 다시 누르세요") }
+        r.actions.forEach { b ->
+            val s = _state.value
+            if (s.tool != Tool.NONE || s.saving) return@forEach
+            when (b) {
+                RcButton.FIVE_D_UP, RcButton.FIVE_D_DOWN ->
+                    _state.update { it.copy(paramFocus = it.params.moveItem(it.paramFocus, if (b == RcButton.FIVE_D_UP) -1 else 1)) }
+                RcButton.FIVE_D_LEFT, RcButton.FIVE_D_RIGHT -> {
+                    val item = s.paramFocus?.takeIf { it in s.params.items() } ?: return@forEach
+                    updateParams(s.params.step(item, if (b == RcButton.FIVE_D_LEFT) -1 else 1))
+                }
+                else -> Unit
+            }
+        }
+    }
 
     /** F-06: 영역 안 전주만 개별로 빼거나 다시 넣는다. */
     fun toggleExcluded(poleId: String) = _state.update {
