@@ -49,7 +49,8 @@ import com.example.myfirstapp.ui.flight.PolePending
 /**
  * 홈(Pilot 2 홈페이지, 10.0 사용성 원칙): 자주 쓰는 것은 크게.
  * 위: 앱 이름, 기체 상태 칩(누르면 세부), 작은 [설정] [연동 검증].
- * 왼쪽: 최근 미션 카드와 큰 [이어서 비행]/[비행 시작], [결과·판독]. 오른쪽: 큰 [카메라 뷰로 들어가기], 중간 [비행경로] [앨범].
+ * 왼쪽: 최근 미션 카드와 큰 [이어서 비행]/[비행 시작](자동 점검 비행), [결과·판독].
+ * 오른쪽: 큰 [카메라 뷰로 들어가기](미션 없는 수동 비행), 중간 [비행경로] [앨범].
  */
 @Composable
 fun HomeScreen(
@@ -57,6 +58,7 @@ fun HomeScreen(
     onRoutes: () -> Unit,
     onAlbum: (projectId: Long, missionId: Long) -> Unit,
     onFlight: (projectId: Long, missionId: Long) -> Unit,
+    onCamera: () -> Unit,
     onSettings: () -> Unit,
     onVerification: () -> Unit,
 ) {
@@ -68,7 +70,11 @@ fun HomeScreen(
 
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("전주 점검", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            // 소속 표시: 공식 로고 파일을 받으면 이미지(res/drawable/kepco_logo)로 바꾼다. 로고 모양을 흉내 내 그리지 않는다
+            Column {
+                Text("KEPCO", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold, color = KepcoBlue, letterSpacing = 2.sp)
+                Text("전주 점검", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            }
             AircraftChip(s.aircraft, Modifier.weight(1f)) { showAircraft = true }
             TextButton(onClick = onVerification) { Text("연동 검증") }
             OutlinedButton(onClick = onSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("⚙ 설정") }
@@ -110,10 +116,16 @@ fun HomeScreen(
                 }
             }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // 수동 비행(Pilot 2 카메라 뷰). 미션 비행은 왼쪽 카드의 [비행 시작]/[이어서 비행]
                 Button(
-                    onClick = { if (latest != null && latest.remaining > 0) onFlight(latest.projectId, latest.missionId) else onRoutes() },
+                    onClick = onCamera,
                     modifier = Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(12.dp),
-                ) { Text("카메라 뷰로 들어가기", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("카메라 뷰로 들어가기", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("수동 비행 · 촬영", fontSize = 15.sp)
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     FilledTonalButton(onClick = onRoutes, modifier = Modifier.weight(1f).height(72.dp), shape = RoundedCornerShape(12.dp)) {
                         Text("비행경로", fontSize = 18.sp)
@@ -182,3 +194,6 @@ private fun Item(label: String, value: String?) {
         Text(value ?: "--", fontWeight = FontWeight.Bold)
     }
 }
+
+/** 소속 글자 색(파랑). */
+private val KepcoBlue = androidx.compose.ui.graphics.Color(0xFF4C8DFF)

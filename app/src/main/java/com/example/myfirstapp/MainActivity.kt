@@ -29,6 +29,7 @@ import com.example.myfirstapp.drone.DjiPoc
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
+import com.example.myfirstapp.ui.flight.ManualFlightScreen
 import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.result.ResultFilter
@@ -117,10 +118,13 @@ class MainActivity : ComponentActivity() {
                         nav.navigate("missions/$pid")
                         nav.navigate("flight/$pid/$mid")
                     },
+                    onCamera = { nav.navigate("camera") },
                     onSettings = { nav.navigate("settings") },
                     onVerification = { nav.navigate("verify") },
                 )
             }
+            // 수동 비행 카메라 뷰(Pilot 2 카메라 뷰): 미션 없이 조종사가 스틱으로 난다
+            composable("camera") { ManualFlightScreen(onExit = { nav.popBackStack() }, onOpenSettings = { nav.navigate("settings") }) }
             composable("projects") {
                 ProjectScreen(
                     dao,

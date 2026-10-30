@@ -66,7 +66,7 @@ internal val PolePending = Color(0xFFFF9F43)
 internal val Aircraft = Color(0xFFFFC53D)
 
 /** 영상·지도 위 버튼과 글자 바탕(10.1 DJI 톤): 뒤가 비치도록 반투명 검정. */
-private val OverlayBg = Color.Black.copy(alpha = 0.5f)
+internal val OverlayBg = Color.Black.copy(alpha = 0.5f)
 
 /**
  * 비행 화면 ④(10장). 상태와 명령은 [FlightViewModel]이 갖고, 이 화면은 그리기와 입력 전달만 한다.
@@ -231,7 +231,7 @@ private fun FpvView(simulated: Boolean, modifier: Modifier) {
  * GNSS 위성 · 신호 · 배터리 % · 설정 ⚙. 시스템 상태 표시줄은 녹(정상)·주(주의)·빨(경고).
  */
 @Composable
-private fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> Unit) {
+internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> Unit, label: String? = null, canExit: Boolean = s.canExit) {
     val t = s.telemetry
     val state = s.exec.state
     val warn = s.exec.rthCountdownSec != null || (t != null && t.connected && t.gpsLevel < 3)
@@ -245,10 +245,10 @@ private fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> U
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        TextButton(onClick = onExit, enabled = s.canExit) { Text("←", fontSize = 22.sp) }
+        TextButton(onClick = onExit, enabled = canExit) { Text("←", fontSize = 22.sp) }
         // 시스템 상태 표시줄: 지금 상태 또는 마지막 경고
         Text(
-            s.exec.message?.takeIf { warn } ?: stateLabel(state),
+            s.exec.message?.takeIf { warn } ?: label ?: stateLabel(state),
             modifier = Modifier.background(statusColor, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 2.dp),
             color = Color.Black, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1,
         )
@@ -440,7 +440,7 @@ private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Uni
 
 /** 잘못 누르지 않도록 1초 이상 눌러야 동작하는 RTH 버튼(10장). */
 @Composable
-private fun RthButton(onLongPress: () -> Unit) {
+internal fun RthButton(onLongPress: () -> Unit) {
     Box(
         Modifier.size(width = 180.dp, height = 56.dp).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.error.copy(alpha = 0.75f))
             .semantics { contentDescription = "RTH 길게 누르기" }
