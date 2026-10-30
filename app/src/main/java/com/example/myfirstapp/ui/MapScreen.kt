@@ -1,5 +1,10 @@
 package com.example.myfirstapp.ui
 
+import androidx.compose.foundation.layout.fillMaxWidth
+import com.example.myfirstapp.core.model.ShotMode
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedButton
 import android.graphics.RectF
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -134,8 +139,9 @@ fun MapScreen(
             )
         }
 
+        // 경로 설정 패널은 Pilot 2처럼 오른쪽(10장, 매뉴얼 68쪽)
         Card(
-            Modifier.padding(16.dp).widthIn(max = PANEL_WIDTH_DP.dp),
+            Modifier.align(Alignment.TopEnd).padding(16.dp).widthIn(max = PANEL_WIDTH_DP.dp),
             colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainer),
         ) {
             Column(
@@ -143,7 +149,7 @@ fun MapScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onBack) { Text("← 목록") }
+                    TextButton(onClick = onBack) { Text("←") }
                     Text(s.projectName, style = MaterialTheme.typography.titleMedium)
                     Text("전주 ${s.poles?.size ?: 0}개 · 지도 ${s.mapFiles.size}개", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -225,9 +231,27 @@ fun MapScreen(
 
 private const val PANEL_WIDTH_DP = 420
 
-/** 핵심 파라미터 4개(6.3). 장갑 낀 손가락으로 누를 수 있게 48dp [−][+] 버튼으로 바꾼다. 범위 검증은 [FlightParams.validate]. */
+/**
+ * 경로 설정(6.3, Pilot 2 비행경로 설정): 촬영 방식(5.6)과 핵심 파라미터. 장갑 낀 손가락으로 누를 수 있게 48dp [−][+] 버튼.
+ * 범위 검증은 [FlightParams.validate].
+ */
 @Composable
 private fun ParamSteppers(p: FlightParams, onChange: (FlightParams) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        ShotMode.entries.forEachIndexed { i, mode ->
+            SegmentedButton(
+                selected = p.shotMode == mode,
+                onClick = { onChange(p.copy(shotMode = mode)) },
+                shape = SegmentedButtonDefaults.itemShape(i, ShotMode.entries.size),
+            ) { Text(if (mode == ShotMode.OVERHEAD) "전주 위" else "4방향 사선") }
+        }
+    }
+    if (p.shotMode == ShotMode.DIAGONAL4) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Stepper("사선 고도", "${p.diagonalAltitudeM.toInt()}m", Modifier.weight(1f)) { onChange(p.copy(diagonalAltitudeM = p.diagonalAltitudeM + it)) }
+            Stepper("전주 거리", "${p.diagonalDistanceM.toInt()}m", Modifier.weight(1f)) { onChange(p.copy(diagonalDistanceM = p.diagonalDistanceM + it)) }
+        }
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Stepper("이동 고도", "${p.transitAltitudeM.toInt()}m", Modifier.weight(1f)) { onChange(p.copy(transitAltitudeM = p.transitAltitudeM + it * 5)) }
         Stepper("점검 고도", "${p.inspectAltitudeM.toInt()}m", Modifier.weight(1f)) { onChange(p.copy(inspectAltitudeM = p.inspectAltitudeM + it * 5)) }
@@ -263,6 +287,9 @@ private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
     val km = plan.sorties.sumOf { it.estDistanceM } / 1000
     val min = plan.sorties.sumOf { it.estDurationSec } / 60
     Text("소티 ${plan.sorties.size}개 · 전주 ${visits}개 · ${fmt(km)}km · ${fmt(min)}분", style = MaterialTheme.typography.titleSmall)
+    // Pilot 2 경로 정보: 웨이포인트·사진 수(촬영 방식 5.6에 따라 전주당 1곳 또는 4곳)
+    val perPole = if (params.shotMode == ShotMode.DIAGONAL4) 4 else 1
+    Text("웨이포인트 ${visits * perPole}개 · 사진 ${visits * perPole}장 · ${if (perPole == 4) "4방향 사선" else "전주 위"}", style = MaterialTheme.typography.bodySmall)
     plan.sorties.forEachIndexed { i, s ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(12.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(SORTIE_COLORS[i % SORTIE_COLORS.size]))))
@@ -392,7 +419,7 @@ private fun PoleMap(
                             // 왼쪽 위 계획 패널에 전주가 가리지 않도록 왼쪽 여백을 더 둔다.
                             val pad = (64 * density).toInt()
                             val bounds = LatLngBounds.Builder().includes(points).build()
-                            CameraUpdateFactory.newLatLngBounds(bounds, ((PANEL_WIDTH_DP + 32) * density).toInt(), pad, pad, pad)
+                            CameraUpdateFactory.newLatLngBounds(bounds, pad, pad, ((PANEL_WIDTH_DP + 32) * density).toInt(), pad)
                         },
                     )
                 }
@@ -406,7 +433,7 @@ private fun PoleMap(
         mapView.getMapAsync { map ->
             val pad = (64 * density).toInt()
             val bounds = LatLngBounds.Builder().includes(focus.map { LatLng(it.lat, it.lon) }).build()
-            map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, ((PANEL_WIDTH_DP + 32) * density).toInt(), pad, pad, pad))
+            map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, pad, pad, ((PANEL_WIDTH_DP + 32) * density).toInt(), pad))
         }
     }
 
