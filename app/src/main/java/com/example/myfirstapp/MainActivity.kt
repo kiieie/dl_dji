@@ -18,6 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.drone.DjiPoc
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
@@ -26,7 +27,9 @@ import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.settings.SettingsScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
+import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
+import java.io.File
 import java.nio.ByteBuffer
 
 class MainActivity : ComponentActivity() {
@@ -131,8 +134,16 @@ class MainActivity : ComponentActivity() {
         val app = application as InspectionApp
         // SDK 초기화·등록은 InspectionApp이 앱 시작 때 한다. 여기서는 상태만 보여 준다.
         val djiStatus by app.djiStatus.collectAsState()
+        val ldmStatus by app.ldmStatus.collectAsState()
         var yoloStatus by remember { mutableStateOf("YOLO TFLite: 초기화되지 않음") }
         var rcStatus by remember { mutableStateOf("RC 버튼: SDK 등록 뒤 감시") }
+        var pocStatus by remember { mutableStateOf("기체 PoC: 버튼을 누르세요") }
+        val scope = rememberCoroutineScope()
+        // 기체 PoC(13장 1단계) 호출. 실패는 문구로만 보인다.
+        fun poc(name: String, call: suspend () -> String) {
+            pocStatus = "$name 진행 중..."
+            scope.launch { pocStatus = runCatching { call() }.getOrElse { "❌ $name 실패: ${it.message}" } }
+        }
         LaunchedEffect(Unit) {
             rcStatus = "RC 버튼: 감시 중(일시정지, C1, C2, RTH)"
             app.rcButtons.collect { b ->
@@ -151,10 +162,21 @@ class MainActivity : ComponentActivity() {
             // 라이브러리 연동 현황판
             Text(text = djiStatus, style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(10.dp))
+            Text(text = ldmStatus, style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(10.dp))
             Text(text = yoloStatus, style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(10.dp))
             Text(text = rcStatus, style = MaterialTheme.typography.bodyLarge)
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { poc("기체 상태") { DjiPoc.aircraft() } }) { Text("기체 상태") }
+                OutlinedButton(onClick = { poc("촬영·다운로드") { DjiPoc.shootAndDownload(File(getExternalFilesDir(null), "poc")) } }) { Text("촬영·다운로드(③)") }
+                OutlinedButton(onClick = { poc("시뮬레이터 켜기") { DjiPoc.simulator(true) } }) { Text("시뮬레이터 켜기") }
+                OutlinedButton(onClick = { poc("시뮬레이터 끄기") { DjiPoc.simulator(false) } }) { Text("시뮬레이터 끄기") }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = pocStatus, style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(20.dp))
 
             Button(
                 onClick = {

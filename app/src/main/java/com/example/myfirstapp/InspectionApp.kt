@@ -8,8 +8,10 @@ import com.example.myfirstapp.data.AppDatabase
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.drone.djiRcButtonPresses
 import dji.v5.common.error.IDJIError
+import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.SDKManager
+import dji.v5.manager.ldm.LDMManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -49,7 +51,42 @@ class InspectionApp : Application() {
         initDjiSdk()
     }
 
-    // ponytail: LDM(7.2)은 아직 적용하지 않음. PoC ④에서 init 뒤 라이선스 로드 → enableLDM 순서로 넣는다.
+    private val _ldmStatus = MutableStateFlow("LDM: 확인 전")
+    /** LDM(7.2) 상태 문구. 검증 화면에 보인다. */
+    val ldmStatus: StateFlow<String> = _ldmStatus.asStateFlow()
+
+    /**
+     * LDM(7.2): init 뒤 라이선스 내용을 먼저 로드하고 enableLDM을 부른다(로드 전에 켜면 SDK가 DJI 서버에 라이선스를 요청한다).
+     * 끝나면 성공·실패와 관계없이 [then]으로 등록을 이어 간다. 실패하면 7.2 선택지 ②(최초 1회 온라인 등록)와 같다.
+     */
+    private fun enableLdm(then: () -> Unit) {
+        val ldm = LDMManager.getInstance()
+        val license = BuildConfig.DJI_LDM_LICENSE
+        if (license.isEmpty()) {
+            _ldmStatus.value = "LDM: 라이선스 없음(secrets/license_kr.co.dl_dji.txt)"
+            return then()
+        }
+        val loadError = ldm.loadLocalLDMLicenseContent(license)
+        if (loadError != null) {
+            _ldmStatus.value = "❌ LDM 라이선스 로드 실패: ${loadError.description()}"
+            Log.w("DjiSdk", _ldmStatus.value)
+            return then()
+        }
+        ldm.enableLDM(this, object : CommonCallbacks.CompletionCallback {
+            override fun onSuccess() {
+                _ldmStatus.value = "✅ LDM 켜짐(라이선스 로드 ${ldm.isLDMLicenseLoaded()}, 사용 ${ldm.isLDMEnabled()})"
+                Log.i("DjiSdk", _ldmStatus.value)
+                then()
+            }
+
+            override fun onFailure(error: IDJIError) {
+                _ldmStatus.value = "❌ LDM 켜기 실패: ${error.description()}"
+                Log.w("DjiSdk", _ldmStatus.value)
+                then()
+            }
+        })
+    }
+
     private fun initDjiSdk() {
         try {
             SDKManager.getInstance().init(this, object : SDKManagerCallback {
@@ -62,12 +99,12 @@ class InspectionApp : Application() {
                     setDjiStatus("❌ DJI SDK 등록 실패: ${error.description()}")
                 }
 
-                override fun onProductDisconnect(productId: Int) {}
-                override fun onProductConnect(productId: Int) {}
+                override fun onProductDisconnect(productId: Int) = Log.i("DjiSdk", "기체 연결 끊김: $productId").let {}
+                override fun onProductConnect(productId: Int) = Log.i("DjiSdk", "기체 연결: $productId").let {}
                 override fun onProductChanged(productId: Int) {}
 
                 override fun onInitProcess(event: DJISDKInitEvent, totalProcess: Int) {
-                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) SDKManager.getInstance().registerApp()
+                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) enableLdm { SDKManager.getInstance().registerApp() }
                 }
 
                 override fun onDatabaseDownloadProgress(current: Long, total: Long) {}

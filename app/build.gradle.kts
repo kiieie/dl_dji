@@ -16,6 +16,11 @@ val cesiumIonToken: String = rootProject.file("secrets/cesium.properties").takeI
     ?.let { f -> Properties().apply { f.inputStream().use(::load) }.getProperty("CESIUM_ION_TOKEN") }
     .orEmpty()
 
+// DJI LDM 오프라인 라이선스(7.2). secrets/license_kr.co.dl_dji.txt(git 제외)의 내용을 BuildConfig로 넣는다. 없으면 LDM 없이 빌드한다.
+val ldmLicense: String = rootProject.file("secrets/license_kr.co.dl_dji.txt").takeIf { it.exists() }
+    ?.readText()?.trim().orEmpty()
+    .also { if (it.isEmpty()) logger.warn("secrets/license_kr.co.dl_dji.txt 없음: LDM 라이선스 없이 빌드합니다") }
+
 android {
     namespace = "com.example.myfirstapp"
     compileSdk = 35
@@ -30,6 +35,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["DJI_API_KEY"] = djiApiKey
         buildConfigField("String", "CESIUM_ION_TOKEN", "\"$cesiumIonToken\"")
+        buildConfigField("String", "DJI_LDM_LICENSE", "\"$ldmLicense\"")
 
         // M1 Mac 및 DJI SDK 기기 구동을 위한 아키텍처 고정
         ndk {

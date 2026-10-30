@@ -20,8 +20,8 @@
   - ⚠️ **미검증**: 라이선스가 앱 키 등록(`SDKManager.init()`이 자동 수행)까지 오프라인으로 만들어 주는지, 라이선스 로드 이전에 서버로 나가는 트래픽이 없는지 확인되지 않았다. PoC ④에서 네트워크 캡처로 실측한다.
   - 선택지 ①: DJI에 오프라인 라이선스 신청 → 완전 오프라인 등록 (라이선스 파일 `license_kr.co.dl_dji.txt`(앱 `kr.co.dl_dji` 기준)를 2026-10-28에 확보해 `secrets/`에 두었다(git 제외). **오프라인 등록 동작은 PoC ④ 확인 후 확정**)
   - 선택지 ②: 최초 1회만 인터넷에 연결해 등록하고(앱 키 인증 트래픽만 발생) 이후 LDM + 오프라인 운용
-- **라이선스 적용 순서**: `SDKManager.init()` → `LDMManager.loadLocalLDMLicenseContent(내용)`(라이선스 파일 내용 로드) → `enableLDM` → `isLDMLicenseLoaded()` 확인. 라이선스를 먼저 로드하지 않고 `enableLDM`을 호출하면 SDK가 DJI 서버에 라이선스를 요청하므로 순서를 지킨다. (로드 API 이름은 공식 문서 기준이며 5.18.0에서 PoC 때 확인)
-- **라이선스 파일 관리**: 앱 assets에 넣어 배포하되 저장소에는 올리지 않는다(`.gitignore`의 `secrets/`). LDM을 연동할 때 빌드에서 `secrets/`의 파일을 assets로 복사한다. 앱 API 키도 `local.properties`로 옮기는 방안을 구현 단계에서 검토한다.
+- **라이선스 적용 순서**: `SDKManager.init()` → `LDMManager.loadLocalLDMLicenseContent(내용)`(라이선스 파일 내용 로드) → `enableLDM` → `isLDMLicenseLoaded()` 확인. 라이선스를 먼저 로드하지 않고 `enableLDM`을 호출하면 SDK가 DJI 서버에 라이선스를 요청하므로 순서를 지킨다. (5.18.0에서 PoC ④로 확인, 2026-10-30)
+- **라이선스 파일 관리**: 앱 assets에 넣어 배포하되 저장소에는 올리지 않는다(`.gitignore`의 `secrets/`). 빌드가 `secrets/license_kr.co.dl_dji.txt`의 내용을 `BuildConfig.DJI_LDM_LICENSE`로 넣는다(assets 폴더 전체 복사는 다른 비밀 파일까지 APK에 들어가므로 쓰지 않음, 2026-10-30). 앱 API 키도 `local.properties`로 옮기는 방안을 구현 단계에서 검토한다.
 - LDM을 켜면 인터넷이 필요한 SDK 기능(비행제한구역 DB 온라인 갱신, 온라인 잠금 해제, 로그 업로드 등)을 쓸 수 없다. 비행제한구역 잠금 해제가 필요한 지역은 사전 절차가 필요하다.
 - 조종기(RC Pro) 자체도 시스템 설정에서 LDM을 켜고, 현장에서는 Wi-Fi를 끈 채로 운용하도록 운용 지침에 넣는다.
 
