@@ -115,6 +115,7 @@ class MainActivity : ComponentActivity() {
                     onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}") { inclusive = true } } },
                     // 소티 완료 뒤 1차 판독은 검출 전주부터 연다(뒤로 가면 비행 화면)
                     onReview = { nav.navigate("result/$pid/$mid?filter=DETECTED") },
+                    onOpenSettings = { nav.navigate("settings") },
                 )
             }
             composable(

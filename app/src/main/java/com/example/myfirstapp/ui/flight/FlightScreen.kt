@@ -51,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.executor.ExecState
+import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.data.ProjectDao
 
@@ -77,6 +78,7 @@ fun FlightScreen(
     onExit: () -> Unit,
     onShowResult: () -> Unit,
     onReview: () -> Unit,
+    onOpenSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
@@ -98,7 +100,7 @@ fun FlightScreen(
                 OutlinedButton(onClick = onExit) { Text("나가기") }
             }
         }
-        else -> FlightContent(s, vm, onExit, onShowResult, onReview)
+        else -> FlightContent(s, vm, onExit, onShowResult, onReview, onOpenSettings)
     }
 }
 
@@ -110,18 +112,25 @@ private fun Centered(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun FlightContent(s: FlightUiState, vm: FlightViewModel, onExit: () -> Unit, onShowResult: () -> Unit, onReview: () -> Unit) {
+private fun FlightContent(
+    s: FlightUiState,
+    vm: FlightViewModel,
+    onExit: () -> Unit,
+    onShowResult: () -> Unit,
+    onReview: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
     val ui = s.exec
-    // DJI UX SDK 기본 화면 배치(10장): FPV 전체 화면, 위쪽 얇은 상태바, 오른쪽 아래 미니맵. 미니맵을 누르면 자리를 바꾼다.
+    // DJI Pilot 2 카메라 뷰 배치(10장, 매뉴얼 54쪽): FPV 전체 화면, 위쪽 상단 바, 오른쪽 카메라 버튼, 아래 가운데 계기, 왼쪽 아래 지도. 지도를 누르면 자리를 바꾼다.
     var mapMain by rememberSaveable { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // 큰 지도는 손으로 움직일 수 있고, 처음에는 왼쪽 모의 RC와 오른쪽 버튼을 피해 맞춘다
-        if (mapMain) FlightMap(s, interactive = true, pad = listOf(170.dp, 110.dp, 230.dp, 160.dp), Modifier.fillMaxSize())
+        if (mapMain) FlightMap(s, interactive = true, pad = listOf(260.dp, 110.dp, 120.dp, 160.dp), Modifier.fillMaxSize())
         else FpvView(s.simulated, Modifier.fillMaxSize())
 
         // 미니맵은 버튼보다 먼저 그려 버튼을 가리지 않게 한다
         Surface(
-            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp).size(240.dp, 135.dp),
+            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp).size(240.dp, 135.dp),
             shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLowest,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -133,20 +142,24 @@ private fun FlightContent(s: FlightUiState, vm: FlightViewModel, onExit: () -> U
         }
 
         Column(Modifier.fillMaxWidth()) {
-            TopBar(s, onExit)
+            TopBar(s, onExit, onOpenSettings)
             if (ui.state != ExecState.SortieDone) ProgressPanel(s, Modifier.padding(start = 12.dp, top = 8.dp))
         }
 
-        // 오른쪽: 명령 버튼(자동 비행 중에는 [RTH 길게]뿐, 10장)
+        // 오른쪽: Pilot 2처럼 위에 [RTH 길게], 가운데 세로로 렌즈·셔터·재생·짐벌(10장)
         Column(
             Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 12.dp),
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) { SideControls(s, vm) }
+        CameraControls(s, vm, onReview, Modifier.align(Alignment.CenterEnd).padding(end = 12.dp, top = 40.dp))
 
-        if (s.simulated && ui.state != ExecState.SortieDone) MockRcControls(vm, Modifier.align(Alignment.BottomStart).padding(12.dp))
+        if (s.simulated && ui.state != ExecState.SortieDone) MockRcControls(vm, Modifier.align(Alignment.CenterStart).padding(start = 12.dp, top = 40.dp))
 
-        Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)) { BottomAction(s, vm, onShowResult) }
+        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            BottomAction(s, vm, onShowResult)
+            s.telemetry?.let { NavDisplay(it, s.home, Modifier.padding(top = 8.dp)) }
+        }
 
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm, onReview)
     }
@@ -165,29 +178,90 @@ private fun FpvView(simulated: Boolean, modifier: Modifier) {
     }
 }
 
-/** 위쪽 상태바(DJI 기본 화면처럼 한 줄): 상태, 배터리와 복귀 필요량, 고도, GPS. */
+/**
+ * 상단 바(Pilot 2 순서, 매뉴얼 56쪽): 홈 ← · 시스템 상태 표시줄(상태색 바탕) · 비행 상태 · 배터리 바 ·
+ * GNSS 위성 · 신호 · 배터리 % · 설정 ⚙. 시스템 상태 표시줄은 녹(정상)·주(주의)·빨(경고).
+ */
 @Composable
-private fun TopBar(s: FlightUiState, onExit: () -> Unit) {
+private fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> Unit) {
     val t = s.telemetry
     val state = s.exec.state
-    val stateColor = when (state) {
-        ExecState.Paused, ExecState.ReturningHome -> Aircraft
-        ExecState.LinkLost -> PoleFailed
+    val warn = s.exec.rthCountdownSec != null || (t != null && t.connected && t.gpsLevel < 3)
+    val statusColor = when {
+        state == ExecState.LinkLost || t?.connected == false -> PoleFailed
+        warn || state == ExecState.Paused || state == ExecState.ReturningHome -> PolePending
         else -> PoleDone
     }
     Row(
-        Modifier.fillMaxWidth().height(44.dp).background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 12.dp),
+        Modifier.fillMaxWidth().height(44.dp).background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (s.canExit) TextButton(onClick = onExit) { Text("← 나가기") }
-        Text(stateLabel(state), color = stateColor, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        if (t != null) {
-            Text("배터리 ${t.batteryPct.toInt()}% (복귀 ${s.returnNeedPct}%)", color = Color.White)
-            Text("${t.altitudeM.toInt()}m", color = Color.White)
-            Text("GPS ${"●".repeat(t.gpsLevel)}${"○".repeat((5 - t.gpsLevel).coerceAtLeast(0))}", color = Color.White)
-        }
+        TextButton(onClick = onExit, enabled = s.canExit) { Text("←", fontSize = 22.sp) }
+        // 시스템 상태 표시줄: 지금 상태 또는 마지막 경고
+        Text(
+            s.exec.message?.takeIf { warn } ?: stateLabel(state),
+            modifier = Modifier.background(statusColor, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 2.dp),
+            color = Color.Black, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1,
+        )
         if (s.simulated) Text("모의 기체 ×${FAKE_TIME_SCALE.toInt()}", color = MaterialTheme.colorScheme.primary)
+        if (t != null) {
+            BatteryBar(t.batteryPct, s.returnNeedPct, Modifier.weight(1f))
+            Text("GNSS ${t.satellites}", color = Color.White, style = MaterialTheme.typography.labelLarge)
+            Text("신호 ${signalDots(t.signalPct, t.connected)}", color = signalColor(t.signalPct, t.connected), style = MaterialTheme.typography.labelLarge)
+            Text("${t.batteryPct.toInt()}%", color = if (t.batteryPct < 30) PoleFailed else Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        } else {
+            Box(Modifier.weight(1f))
+        }
+        TextButton(onClick = onOpenSettings) { Text("⚙", fontSize = 22.sp) }
+    }
+}
+
+/** 배터리 바(Pilot 2): 남은 양을 막대로, 복귀에 필요한 양을 노란 눈금으로. */
+@Composable
+private fun BatteryBar(pct: Double, returnNeed: Int, modifier: Modifier) {
+    Box(modifier.height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.2f))) {
+        Box(
+            Modifier.fillMaxWidth((pct / 100).toFloat().coerceIn(0f, 1f)).height(6.dp)
+                .background(if (pct < 30) PoleFailed else PoleDone),
+        )
+        Box(Modifier.fillMaxWidth((returnNeed / 100f).coerceIn(0f, 1f)).height(6.dp).background(Aircraft.copy(alpha = 0.8f)))
+    }
+}
+
+/** 신호 3점(Pilot 2): 흰 3점 강함, 노랑 2점 중간, 빨강 1점 약함. 품질값이 없으면 연결 여부만. */
+private fun signalDots(q: Int?, connected: Boolean) = when {
+    !connected -> "✕"
+    q == null || q >= 60 -> "●●●"
+    q >= 30 -> "●●○"
+    else -> "●○○"
+}
+
+private fun signalColor(q: Int?, connected: Boolean) = when {
+    !connected -> PoleFailed
+    q == null || q >= 60 -> Color.White
+    q >= 30 -> Aircraft
+    else -> PoleFailed
+}
+
+/** 카메라 버튼(Pilot 2 카메라 뷰 오른쪽): 렌즈 전환, 셔터(일시정지 중 수동 촬영), 재생(1차 판독), 짐벌 중앙/아래(C2). */
+@Composable
+private fun CameraControls(s: FlightUiState, vm: FlightViewModel, onReview: () -> Unit, modifier: Modifier) {
+    val paused = s.exec.state == ExecState.Paused
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val lensColors = ButtonDefaults.filledTonalButtonColors(containerColor = OverlayBg, contentColor = Color.White)
+        FilledTonalButton(onClick = { vm.setLens(if (s.lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE) }, colors = lensColors) {
+            Text(if (s.lens == Lens.WIDE) "광각" else "망원")
+        }
+        // 셔터: 자동 비행 중에는 미션이 찍으므로 일시정지 때만 누를 수 있다
+        Box(
+            Modifier.size(64.dp).clip(RoundedCornerShape(32.dp))
+                .background(if (paused) Color.White else Color.White.copy(alpha = 0.3f))
+                .clickable(enabled = paused, onClickLabel = "수동 촬영") { vm.manualCapture() },
+            contentAlignment = Alignment.Center,
+        ) { Box(Modifier.size(52.dp).clip(RoundedCornerShape(26.dp)).background(if (paused) PoleFailed else Color.Gray)) }
+        FilledTonalButton(onClick = vm::toggleGimbal, colors = lensColors) { Text("짐벌 ⇅") }
+        FilledTonalButton(onClick = onReview, colors = lensColors) { Text("재생 ▶") }
     }
 }
 
@@ -211,10 +285,9 @@ private fun ProgressPanel(s: FlightUiState, modifier: Modifier) {
 private fun SideControls(s: FlightUiState, vm: FlightViewModel) {
     val state = s.exec.state
     if (state == ExecState.Paused) {
-        // 화면 높이(약 400dp)가 좁아 가로 한 줄로 둔다. 뒤 영상이 비치게 반투명
+        // 화면 높이(약 400dp)가 좁아 가로 한 줄로 둔다. 뒤 영상이 비치게 반투명. 촬영은 오른쪽 셔터로
         val colors = ButtonDefaults.filledTonalButtonColors(containerColor = OverlayBg, contentColor = Color.White)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = vm::manualCapture, modifier = Modifier.heightIn(min = 48.dp), colors = colors) { Text("촬영") }
             FilledTonalButton(onClick = vm::skip, modifier = Modifier.heightIn(min = 48.dp), colors = colors) { Text("건너뛰기") }
             FilledTonalButton(onClick = vm::markDone, modifier = Modifier.heightIn(min = 48.dp), colors = colors) { Text("완료 처리") }
         }
@@ -333,7 +406,7 @@ private fun stateLabel(s: ExecState) = when (s) {
     ExecState.PreflightCheck -> "비행 전 점검"
     ExecState.Takeoff -> "이륙 중"
     ExecState.PreparingLeg -> "구간 준비"
-    ExecState.FlyingLeg -> "이동 중"
+    ExecState.FlyingLeg -> "임무 비행"
     ExecState.Arrived -> "도착"
     ExecState.Capturing -> "촬영 중"
     ExecState.Downloading -> "다운로드 중"

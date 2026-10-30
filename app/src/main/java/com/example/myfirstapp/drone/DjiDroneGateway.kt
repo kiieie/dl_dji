@@ -13,6 +13,7 @@ import com.example.myfirstapp.core.port.LegMission
 import com.example.myfirstapp.core.port.PreflightReport
 import com.example.myfirstapp.core.route.Viewpoint
 import com.example.myfirstapp.core.route.WpmlWriter
+import dji.sdk.keyvalue.key.AirLinkKey
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.DJIKeyInfo
@@ -20,6 +21,8 @@ import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.camera.CameraStorageLocation
+import dji.sdk.keyvalue.value.camera.CameraVideoStreamSourceType
+import dji.sdk.keyvalue.value.gimbal.GimbalResetType
 import dji.sdk.keyvalue.value.camera.DateTime
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.EmptyMsg
@@ -127,7 +130,12 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(FlightControllerKey.KeyAircraftLocation3D) { p ->
             _telemetry.update { t -> if (p == null || (p.latitude == 0.0 && p.longitude == 0.0)) t else t.copy(position = GeoPoint(p.latitude, p.longitude), altitudeM = p.altitude) }
         }
-        on(FlightControllerKey.KeyAircraftVelocity) { v -> _telemetry.update { it.copy(speedMps = v?.let { Math.hypot(v.x, v.y) } ?: 0.0) } }
+        on(FlightControllerKey.KeyAircraftVelocity) { v ->
+            // 속도는 북·동·아래(NED) 성분이라 수직 속도는 부호를 바꾼다
+            _telemetry.update { it.copy(speedMps = v?.let { Math.hypot(v.x, v.y) } ?: 0.0, verticalSpeedMps = -(v?.z ?: 0.0)) }
+        }
+        on(FlightControllerKey.KeyGPSSatelliteCount) { n -> _telemetry.update { it.copy(satellites = n ?: 0) } }
+        on(AirLinkKey.KeySignalQuality) { q -> _telemetry.update { it.copy(signalPct = q) } }
         on(BatteryKey.KeyChargeRemainingInPercent) { b -> _telemetry.update { it.copy(batteryPct = (b ?: 0).toDouble()) } }
         on(FlightControllerKey.KeyGPSSignalLevel) { g -> _telemetry.update { it.copy(gpsLevel = gpsLevel(g)) } }
         on(FlightControllerKey.KeyHomeLocation) { h ->
@@ -341,6 +349,16 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         }
         withTimeoutOrNull(15_000) { djiDone { media.pullMediaFileListFromCamera(param, it) } } ?: error("SD 목록 응답 없음")
         Log.i(TAG, "SD 목록(미디어 모드) ${media.mediaFileListData.data.size}개")
+    }
+
+    override suspend fun setVideoLens(lens: Lens): Result<Unit> = runCatching {
+        val source = if (lens == Lens.ZOOM) CameraVideoStreamSourceType.ZOOM_CAMERA else CameraVideoStreamSourceType.WIDE_CAMERA
+        djiDone { keys.setValue(KeyTools.createKey(CameraKey.KeyCameraVideoStreamSource, camera), source, it) }
+    }
+
+    override suspend fun toggleGimbal(): Result<Unit> = runCatching {
+        djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(GimbalKey.KeyGimbalReset), GimbalResetType.PITCH_UP_OR_DOWN, it) }
+        Unit
     }
 
     override suspend fun confirmLanding(): Result<Unit> = runCatching {

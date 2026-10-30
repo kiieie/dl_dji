@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.executor.ExecutorConfig
 import com.example.myfirstapp.data.TelemetrySampleEntity
 import com.example.myfirstapp.drone.DjiDroneGateway
@@ -79,6 +80,8 @@ data class FlightUiState(
     val simulated: Boolean = false,
     val modelVersion: String? = null,
     val sortieSummary: SortieSummary? = null,
+    /** FPV 렌즈(Pilot 2 카메라 뷰 전환). */
+    val lens: Lens = Lens.WIDE,
 ) {
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.SortieDone, ExecState.MissionDone)
     val sortieCount get() = (exec.visits.maxOfOrNull { it.sortieIndex } ?: 0) + 1
@@ -128,8 +131,9 @@ class FlightViewModel(
         when (b) {
             RcButton.PAUSE -> rcPause()
             RcButton.C1 -> resume()
+            RcButton.C2 -> toggleGimbal()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
-            else -> Unit // C2(짐벌)는 기체 뒤, 5D는 비행 명령에 쓰지 않는다(10장)
+            else -> Unit // 5D는 비행 명령에 쓰지 않는다(10장)
         }
     }
 
@@ -246,6 +250,17 @@ class FlightViewModel(
     fun skip() = send(Command.Skip())
     fun markDone() = send(Command.MarkDone)
     fun returnHome() = send(Command.ReturnHome)
+
+    /** FPV 렌즈 전환(Pilot 2 카메라 뷰 전환). */
+    fun setLens(lens: Lens) {
+        _state.update { it.copy(lens = lens) }
+        drone?.let { d -> viewModelScope.launch { d.setVideoLens(lens).onFailure { e -> Log.w("Flight", "렌즈 전환 실패: ${e.message}") } } }
+    }
+
+    /** 짐벌 중앙 ↔ 아래(Pilot 2 짐벌 모드, RC C2). */
+    fun toggleGimbal() {
+        drone?.let { d -> viewModelScope.launch { d.toggleGimbal().onFailure { e -> Log.w("Flight", "짐벌 전환 실패: ${e.message}") } } }
+    }
 
     /** 착륙 보호 확인(기체가 지면 가까이에서 기다릴 때). 실행기 상태와 무관한 기체 명령이다. */
     fun confirmLanding() {

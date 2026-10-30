@@ -18,6 +18,10 @@ data class Telemetry(
     val gimbalPitchDeg: Double = 0.0,
     /** 착륙 직전(지면 약 0.5~2m) 기체가 조종사 확인을 기다림(착륙 보호). Pilot 2의 [착륙 확인]과 같다. */
     val landingConfirmNeeded: Boolean = false,
+    /** Pilot 2 상단 바·내비게이션 표시용: 위성 수, 영상·조종 신호 품질(0~100, 모르면 null), 수직 속도(상승 +). */
+    val satellites: Int = 0,
+    val signalPct: Int? = null,
+    val verticalSpeedMps: Double = 0.0,
 ) {
     val isFlying: Boolean get() = flightMode != FlightMode.ON_GROUND && flightMode != FlightMode.UNKNOWN
 

@@ -54,6 +54,12 @@ interface DroneGateway {
 
     /** 착륙 보호 확인: [Telemetry.landingConfirmNeeded]일 때 마저 내려앉는다. */
     suspend fun confirmLanding(): Result<Unit> = Result.failure(UnsupportedOperationException("착륙 확인 미지원"))
+
+    /** FPV 영상 렌즈(광각/망원) 바꾸기(Pilot 2 카메라 뷰 전환). */
+    suspend fun setVideoLens(lens: Lens): Result<Unit> = Result.failure(UnsupportedOperationException("렌즈 전환 미지원"))
+
+    /** 짐벌 중앙 ↔ 아래 전환(Pilot 2 짐벌 모드, RC C2). */
+    suspend fun toggleGimbal(): Result<Unit> = Result.failure(UnsupportedOperationException("짐벌 전환 미지원"))
 }
 
 /** 구간 미션: 현재 위치에서 이동 고도로 목표 상공까지 간 뒤 점검 고도로 내려간다(6.2). */
