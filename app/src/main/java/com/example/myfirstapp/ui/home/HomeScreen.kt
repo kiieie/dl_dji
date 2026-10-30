@@ -139,8 +139,8 @@ fun HomeScreen(
                     HomeTile(R.drawable.ic_route, "비행경로", "전주 파일 · 계획", Modifier.weight(1f), onClick = onRoutes)
                 }
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HomeTile(R.drawable.ic_album, "앨범", "결과 · 판독", Modifier.weight(1f), enabled = latest != null) {
-                        latest?.let { onAlbum(it.projectId, it.missionId) }
+                    HomeTile(R.drawable.ic_album, "앨범", "사진 모아 보기", Modifier.weight(1f)) {
+                        onAlbum(latest?.projectId ?: 0, latest?.missionId ?: 0)
                     }
                     HomeTile(R.drawable.ic_shield, "기체 점검", "상태 · 설정", Modifier.weight(1f), onClick = onAircraftCheck)
                 }

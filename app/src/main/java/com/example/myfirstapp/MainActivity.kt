@@ -34,6 +34,7 @@ import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
 import com.example.myfirstapp.ui.flight.ManualFlightScreen
 import com.example.myfirstapp.ui.home.HomeScreen
+import com.example.myfirstapp.ui.album.AlbumScreen
 import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.settings.SettingsHub
@@ -45,7 +46,7 @@ import java.io.File
 import java.nio.ByteBuffer
 
 /** RC 5D ←를 뒤로 가기로 쓰는 화면(10.3 허용 목록). */
-private val FIVE_D_BACK_ROUTES = listOf("projects", "map/", "settings", "verify")
+private val FIVE_D_BACK_ROUTES = listOf("projects", "map/", "settings", "verify", "album")
 
 class MainActivity : ComponentActivity() {
 
@@ -130,7 +131,7 @@ class MainActivity : ComponentActivity() {
                 HomeScreen(
                     dao,
                     onRoutes = { nav.navigate("projects") },
-                    onAlbum = { pid, mid -> nav.navigate("result/$pid/$mid") },
+                    onAlbum = { _, _ -> nav.navigate("album") },
                     onFlight = ::openFlight,
                     onNewPlan = { pid -> nav.navigate("map/$pid") },
                     onCamera = { nav.navigate("camera") },
@@ -185,6 +186,8 @@ class MainActivity : ComponentActivity() {
             composable("settings?general={general}", listOf(navArgument("general") { type = NavType.BoolType; defaultValue = false })) { e ->
                 SettingsHub(onBack = { nav.popBackStack() }, initialGeneral = e.arguments!!.getBoolean("general"))
             }
+            // 앨범(10.4.3 ⑦): 사진 모아 보기. 미션 사진을 누르면 그 미션 판독으로
+            composable("album") { AlbumScreen(dao, onBack = { nav.popBackStack() }, onReview = { pid, mid -> nav.navigate("result/$pid/$mid") }) }
             composable("verify") { VerificationPanel() }
         }
     }

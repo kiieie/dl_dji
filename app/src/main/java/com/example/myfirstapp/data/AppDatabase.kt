@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -279,6 +280,22 @@ data class ResultRow(
     val displayName get() = poleDisplayName(poleId, lineName, lineNo)
 }
 
+/** 앨범 미션 한 줄. */
+data class AlbumMission(val missionId: Long, val projectId: Long, val projectName: String, val createdAt: Long, val photoCount: Int)
+
+/** 앨범 사진 한 장과 그 전주. */
+data class AlbumPhoto(
+    @Embedded val capture: CaptureEntity,
+    val poleId: String,
+    val lineName: String?,
+    val lineNo: String?,
+    val equipment: String?,
+    val voltage: String?,
+    val alertCount: Int,
+) {
+    val displayName get() = poleDisplayName(poleId, lineName, lineNo)
+}
+
 /** 미션 목록(①-1) 카드 한 장. [lastFlightAt]은 소티 착륙(없으면 이륙) 시각 중 가장 늦은 값이다. */
 data class MissionSummary(
     val id: Long,
@@ -430,6 +447,23 @@ interface ProjectDao {
             "WHERE s.missionId = :missionId ORDER BY c.id",
     )
     suspend fun missionCaptures(missionId: Long): List<CaptureEntity>
+
+    /** 앨범(10.4.3 ⑦) 왼쪽 목록: 모든 미션, 최신순, 사진 수. */
+    @Query(
+        "SELECT m.id AS missionId, m.projectId, p.name AS projectName, m.createdAt, " +
+            "(SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS photoCount " +
+            "FROM mission m JOIN project p ON p.id = m.projectId ORDER BY m.createdAt DESC",
+    )
+    suspend fun albumMissions(): List<AlbumMission>
+
+    /** 앨범 사진: 방문 순서대로, 전주 이름·설비와 경고 탐지 수. */
+    @Query(
+        "SELECT c.*, po.poleId, po.lineName, po.lineNo, po.equipment, po.voltage, " +
+            "(SELECT COUNT(*) FROM detection d WHERE d.captureId = c.id AND d.alert) AS alertCount " +
+            "FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId JOIN pole po ON po.id = v.poleRowId " +
+            "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`, c.id",
+    )
+    suspend fun albumPhotos(missionId: Long): List<AlbumPhoto>
 
     @Query(
         "SELECT d.* FROM detection d JOIN capture c ON c.id = d.captureId JOIN visit v ON v.id = c.visitId " +
