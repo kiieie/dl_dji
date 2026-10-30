@@ -10,6 +10,9 @@ import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.OpLog
+import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.ui.home.LatestMission
+import com.example.myfirstapp.ui.home.loadLatestMission
 import com.example.myfirstapp.data.listMbtiles
 import com.example.myfirstapp.data.onlineSatelliteTilesRetrying
 import com.example.myfirstapp.drone.DjiDroneGateway
@@ -35,6 +38,8 @@ data class ManualFlightUiState(
     val shooting: Boolean = false,
     val shots: Int = 0,
     val message: String? = null,
+    /** 왼쪽 위 경로 알약(Pilot 2 55쪽)이 이어서 열 최근 미션. 없으면 알약을 숨긴다. */
+    val latest: LatestMission? = null,
 )
 
 /**
@@ -42,6 +47,7 @@ data class ManualFlightUiState(
  * 셔터는 언제든 찍고 원본을 `manual/<날짜>/`에 받는다(전주와 연결하지 않음). 자동 점검 비행은 미션의 [비행 시작]으로 한다.
  */
 class ManualFlightViewModel(
+    dao: ProjectDao,
     private val appFilesDir: File?,
     rcButtons: Flow<RcButton> = emptyFlow(),
 ) : ViewModel() {
@@ -59,6 +65,7 @@ class ManualFlightViewModel(
             val tiles = onlineSatelliteTilesRetrying()
             _state.update { it.copy(flight = it.flight.copy(onlineTiles = tiles)) }
         }
+        viewModelScope.launch { loadLatestMission(dao)?.let { m -> _state.update { it.copy(latest = m) } } }
         // RC: 셔터 버튼은 기체가 직접 찍는다. C2는 짐벌 전환(비행 화면과 같음)
         viewModelScope.launch { rcButtons.collect { if (it == RcButton.C2) toggleGimbal() } }
     }
@@ -114,6 +121,7 @@ class ManualFlightViewModel(
     }
 
     companion object {
-        fun factory(appFilesDir: File?, rcButtons: Flow<RcButton>) = viewModelFactory { initializer { ManualFlightViewModel(appFilesDir, rcButtons) } }
+        fun factory(dao: ProjectDao, appFilesDir: File?, rcButtons: Flow<RcButton>) =
+            viewModelFactory { initializer { ManualFlightViewModel(dao, appFilesDir, rcButtons) } }
     }
 }

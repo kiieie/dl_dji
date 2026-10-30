@@ -211,7 +211,7 @@ adb push build/testdata/test-grid.mbtiles /sdcard/Download/
 ```
 
 - CSV: 앱 ② 가져오기의 [CSV 파일 선택]에서 `Download/poles-1000.csv`를 고릅니다.
-- 지도: 계획 화면의 [지도 파일 추가]에서 `.mbtiles`를 고르면 앱 폴더 `maps/`로 복사됩니다.
+- 지도: 설정 화면의 [지도 파일 추가]에서 `.mbtiles`를 고르면 앱 폴더 `maps/`로 복사됩니다.
 - 시험 지도는 좌표 격자만 그린 합성 타일입니다(실제 지도는 VWorld 약관 확인 뒤).
 
 ### 탐지 모델(선택)

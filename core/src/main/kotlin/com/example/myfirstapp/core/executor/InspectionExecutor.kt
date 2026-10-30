@@ -562,7 +562,7 @@ class InspectionExecutor(
         m.detections?.let {
             recorder.saveDetections(m.captureId, detector?.modelVersion.orEmpty(), it)
             lastDetections = it
-            if (it.any { d -> d.alert }) notifier.play(Sound.ANOMALY)
+            // 비행 중에는 촬영에 집중한다: 탐지는 저장만 하고 알리지 않는다. 판독은 미션 뒤 결과 화면에서(10장, 2026-10-30 사용자 요청)
         }
         if (m.bytes == null) message = "사진 다운로드 실패 — 비행 후 원본을 받으세요."
     }

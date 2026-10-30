@@ -16,21 +16,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -46,8 +46,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
@@ -70,7 +70,7 @@ internal val OverlayBg = Color.Black.copy(alpha = 0.5f)
 
 /**
  * 비행 화면 ④(10장). 상태와 명령은 [FlightViewModel]이 갖고, 이 화면은 그리기와 입력 전달만 한다.
- * [onReview]는 소티 완료 화면에서 보조자가 1차 판독으로 들어갈 때, [onShowResult]는 미션이 끝났을 때 부른다.
+ * 비행 중에는 촬영에만 집중한다: 판독(검출 보기)은 [onShowResult]로 미션이 끝난 뒤 결과 화면에서 한다(2026-10-30 사용자 요청).
  */
 @Composable
 fun FlightScreen(
@@ -79,7 +79,6 @@ fun FlightScreen(
     dao: ProjectDao,
     onExit: () -> Unit,
     onShowResult: () -> Unit,
-    onReview: () -> Unit,
     onOpenSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -88,8 +87,6 @@ fun FlightScreen(
             dao, projectId, missionId, context.getExternalFilesDir(null), app.settings, app.rcButtons,
         ))
     val s by vm.state.collectAsStateWithLifecycle()
-    // 1차 판독 화면에서 돌아오면 판독 수를 다시 센다
-    LaunchedEffect(Unit) { vm.refreshSortieSummary() }
     // 비행 중에는 뒤로 가기로 화면을 떠나지 못하게 한다(떠나면 실행기가 멈춘다).
     BackHandler { if (s.canExit || s.error != null) onExit() }
 
@@ -102,7 +99,7 @@ fun FlightScreen(
                 OutlinedButton(onClick = onExit) { Text("나가기") }
             }
         }
-        else -> FlightContent(s, vm, onExit, onShowResult, onReview, onOpenSettings)
+        else -> FlightContent(s, vm, onExit, onShowResult, onOpenSettings)
     }
 }
 
@@ -119,52 +116,64 @@ private fun FlightContent(
     vm: FlightViewModel,
     onExit: () -> Unit,
     onShowResult: () -> Unit,
-    onReview: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val ui = s.exec
-    // DJI Pilot 2 카메라 뷰 배치(10장, 매뉴얼 54쪽): FPV 전체 화면, 위쪽 상단 바, 오른쪽 카메라 버튼, 아래 가운데 계기, 왼쪽 아래 지도. 지도를 누르면 자리를 바꾼다.
+    // DJI Pilot 2 카메라 뷰 배치(매뉴얼 54~55쪽): FPV 전체, 위쪽 상단 바, 왼쪽 위 경로 진행 알약, 오른쪽 카메라 버튼,
+    // 아래 가운데 내비게이션 디스플레이, 왼쪽 아래 지도. 지도를 누르면 자리를 바꾼다.
     var mapMain by rememberSaveable { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        // 큰 지도는 손으로 움직일 수 있고, 처음에는 왼쪽 모의 RC와 오른쪽 버튼을 피해 맞춘다
-        if (mapMain) FlightMap(s, interactive = true, pad = listOf(260.dp, 110.dp, 120.dp, 160.dp), Modifier.fillMaxSize())
-        else FpvView(s.simulated, Modifier.fillMaxSize())
-
-        // 미니맵은 버튼보다 먼저 그려 버튼을 가리지 않게 한다
-        Surface(
-            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp).size(240.dp, 135.dp),
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLowest,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        ) {
-            if (mapMain) FpvView(s.simulated, Modifier.fillMaxSize())
-            else FlightMap(s, interactive = false, pad = List(4) { 12.dp }, Modifier.fillMaxSize())
-            // 지도 뷰가 터치를 먹으므로 위에 투명한 누름 영역을 둔다
-            Box(Modifier.fillMaxSize().clickable(onClickLabel = "지도와 영상 자리 바꾸기") { mapMain = !mapMain })
+        val fpv: @Composable (Modifier) -> Unit = { m -> FpvView(s.simulated, m) }
+        if (mapMain) FlightMap(s, interactive = true, pad = listOf(200.dp, 90.dp, 90.dp, 130.dp), Modifier.fillMaxSize())
+        else fpv(Modifier.fillMaxSize())
+        MiniMap(mapMain, onSwap = { mapMain = !mapMain }, Modifier.align(Alignment.BottomStart)) { m ->
+            if (mapMain) fpv(m) else FlightMap(s, interactive = false, pad = List(4) { 8.dp }, m)
         }
 
         Column(Modifier.fillMaxWidth()) {
             TopBar(s, onExit, onOpenSettings)
-            if (ui.state != ExecState.SortieDone) ProgressPanel(s, Modifier.padding(start = 12.dp, top = 8.dp))
+            if (ui.state != ExecState.SortieDone) RoutePill(s, vm, Modifier.padding(start = 8.dp, top = 6.dp))
         }
 
-        // 오른쪽: Pilot 2처럼 위에 [RTH 길게], 가운데 세로로 렌즈·셔터·재생·짐벌(10장)
+        // 오른쪽 위: 일시정지 중 [건너뛰기]·[완료 처리], 비행 중 [RTH 길게]
         Column(
-            Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 12.dp),
+            Modifier.align(Alignment.TopEnd).padding(top = TOP_BAR_HEIGHT + 8.dp, end = 8.dp),
             horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) { SideControls(s, vm) }
-        CameraControls(s, vm, onReview, Modifier.align(Alignment.CenterEnd).padding(end = 12.dp, top = 40.dp))
+        CameraColumn(
+            lens = s.lens, onLens = vm::setLens,
+            shutterEnabled = ui.state == ExecState.Paused, onShutter = vm::manualCapture,
+            onGimbal = vm::toggleGimbal,
+            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp, top = TOP_BAR_HEIGHT),
+        )
 
-        if (s.simulated && ui.state != ExecState.SortieDone) MockRcControls(vm, Modifier.align(Alignment.CenterStart).padding(start = 12.dp, top = 40.dp))
+        if (s.simulated && ui.state != ExecState.SortieDone) MockRcControls(vm, Modifier.align(Alignment.CenterStart).padding(start = 8.dp, top = 60.dp))
 
-        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             BottomAction(s, vm, onShowResult)
-            s.telemetry?.let { NavDisplay(it, s.home, Modifier.padding(top = 8.dp)) }
+            s.telemetry?.let { NavDisplay(it, s.home, Modifier.padding(top = 6.dp)) }
         }
 
-        if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm, onReview)
+        if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
         s.preflight?.let { PreflightSheet(it, vm) }
+    }
+}
+
+internal val TOP_BAR_HEIGHT = 40.dp
+
+/** 왼쪽 아래 지도 미리보기(매뉴얼 54쪽 15번). 누르면 큰 화면과 자리를 바꾼다. */
+@Composable
+internal fun MiniMap(mapMain: Boolean, onSwap: () -> Unit, modifier: Modifier, content: @Composable (Modifier) -> Unit) {
+    Surface(
+        modifier = modifier.padding(8.dp).size(180.dp, 112.dp),
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.4f)),
+    ) {
+        content(Modifier.fillMaxSize())
+        // 지도 뷰가 터치를 먹으므로 위에 투명한 누름 영역을 둔다
+        Box(Modifier.fillMaxSize().clickable(onClickLabel = if (mapMain) "영상 크게" else "지도 크게", onClick = onSwap))
     }
 }
 
@@ -173,19 +182,20 @@ private fun FlightContent(
 private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
     val ok = items.all { it.ok }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
-        Card(Modifier.fillMaxWidth(0.6f), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("비행 전 점검", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Card(Modifier.fillMaxWidth(0.7f), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("비행 전 점검", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 // 화면 높이가 좁아 두 줄로 나눠 놓는다
-                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     items.chunked((items.size + 1) / 2).forEach { col ->
-                        Column(Modifier.weight(1f)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             col.forEach { c ->
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(if (c.ok) "●" else "▲", color = if (c.ok) PoleDone else PoleFailed)
-                                    Text(c.label, maxLines = 1)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(if (c.ok) "●" else "▲", color = if (c.ok) PoleDone else PoleFailed, style = MaterialTheme.typography.bodyMedium)
+                                    Text(c.label, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
                                     Text(
-                                        c.value, modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1,
+                                        c.value, modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyMedium,
                                         color = if (c.ok) MaterialTheme.colorScheme.onSurfaceVariant else PoleFailed,
                                     )
                                 }
@@ -194,7 +204,7 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
                     }
                 }
                 val connected = items.firstOrNull()?.ok == true
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                     if (ok) {
                         Button(onClick = { vm.confirmPreflight() }, modifier = Modifier.heightIn(min = 56.dp)) { Text("업로드 후 시작") }
                     } else {
@@ -206,7 +216,7 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
                         ) { Text("경고 확인하고 시작") }
                     }
                     OutlinedButton(onClick = vm::closePreflight, modifier = Modifier.heightIn(min = 56.dp)) { Text("취소") }
-                    if (!ok) Text("▲ ${items.count { !it.ok }}개 항목을 확인하세요", color = PoleFailed, maxLines = 1)
+                    if (!ok) Text("▲ ${items.count { !it.ok }}개 항목을 확인하세요", color = PoleFailed, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -218,66 +228,75 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
 private fun FpvView(simulated: Boolean, modifier: Modifier) {
     if (!simulated) return DjiFpvView(modifier.background(Color.Black))
     Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
-        Text(
-            if (simulated) "FPV 영상 (모의 기체: 영상 없음)" else "FPV 영상",
-            color = Color.White.copy(alpha = 0.35f),
-            style = MaterialTheme.typography.bodySmall,
-        )
+        Text("FPV 영상 (모의 기체: 영상 없음)", color = Color.White.copy(alpha = 0.35f), style = MaterialTheme.typography.bodySmall)
     }
 }
 
 /**
- * 상단 바(Pilot 2 순서, 매뉴얼 56쪽): 홈 ← · 시스템 상태 표시줄(상태색 바탕) · 비행 상태 · 배터리 바 ·
- * GNSS 위성 · 신호 · 배터리 % · 설정 ⚙. 시스템 상태 표시줄은 녹(정상)·주(주의)·빨(경고).
+ * 상단 바(Pilot 2 순서, 매뉴얼 56쪽): ← · 시스템 상태 표시줄(상태색) · 비행 상태 · GNSS 위성 · 신호 · 배터리 % · 설정 ⚙.
+ * 그 아래 화면 폭 전체에 배터리 바(남은 양, 노란 눈금은 복귀에 필요한 양). 시스템 상태 표시줄은 녹(정상)·주(주의)·빨(경고).
  */
 @Composable
 internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> Unit, label: String? = null, canExit: Boolean = s.canExit) {
     val t = s.telemetry
     val state = s.exec.state
+    val lost = state == ExecState.LinkLost || t?.connected == false
     val warn = s.exec.rthCountdownSec != null || (t != null && t.connected && t.gpsLevel < 3)
     val statusColor = when {
-        state == ExecState.LinkLost || t?.connected == false -> PoleFailed
+        lost -> PoleFailed
         warn || state == ExecState.Paused || state == ExecState.ReturningHome -> PolePending
         else -> PoleDone
     }
-    Row(
-        Modifier.fillMaxWidth().height(44.dp).background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        TextButton(onClick = onExit, enabled = canExit) { Text("←", fontSize = 22.sp) }
-        // 시스템 상태 표시줄: 지금 상태 또는 마지막 경고
-        Text(
-            s.exec.message?.takeIf { warn } ?: label ?: stateLabel(state),
-            modifier = Modifier.background(statusColor, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 2.dp),
-            color = Color.Black, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1,
-        )
-        if (s.simulated) Text("모의 기체 ×${FAKE_TIME_SCALE.toInt()}", color = MaterialTheme.colorScheme.primary)
-        if (t != null) {
-            BatteryBar(t.batteryPct, s.returnNeedPct, Modifier.weight(1f))
-            Text("GNSS ${t.satellites}", color = Color.White, style = MaterialTheme.typography.labelLarge)
-            Text("신호 ${signalDots(t.signalPct, t.connected)}", color = signalColor(t.signalPct, t.connected), style = MaterialTheme.typography.labelLarge)
-            Text("${t.batteryPct.toInt()}%", color = if (t.batteryPct < 30) PoleFailed else Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        } else {
-            Box(Modifier.weight(1f))
+    val status = when {
+        lost -> "연결 끊김"
+        warn -> s.exec.message ?: if (t != null && t.gpsLevel < 3) "GNSS 약함 · 주의해서 비행" else "주의"
+        t == null -> "기체 없음"
+        state == ExecState.Paused -> "일시정지"
+        state == ExecState.ReturningHome -> "복귀 중"
+        else -> "정상"
+    }
+    Column(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.6f))) {
+        Row(
+            Modifier.fillMaxWidth().height(TOP_BAR_HEIGHT - 3.dp).padding(end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            TextButton(onClick = onExit, enabled = canExit, modifier = Modifier.size(48.dp, TOP_BAR_HEIGHT - 3.dp)) {
+                Text("‹", style = MaterialTheme.typography.headlineSmall)
+            }
+            // 시스템 상태 표시줄(2번): 정상 또는 지금 경고
+            Text(
+                status,
+                modifier = Modifier.widthIn(min = 72.dp, max = 220.dp).background(statusColor, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 1.dp),
+                color = Color.Black, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            // 비행 상태(3번): 가운데
+            Text(
+                listOfNotNull(label ?: stateLabel(state), if (s.simulated) "모의 기체 ×${FAKE_TIME_SCALE.toInt()}" else null).joinToString(" · "),
+                color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            if (t != null) {
+                Text("GNSS ${t.satellites}", color = if (t.gpsLevel < 3) PolePending else Color.White, style = MaterialTheme.typography.labelLarge)
+                Text("RC ${signalDots(t.signalPct, t.connected)}", color = signalColor(t.signalPct, t.connected), style = MaterialTheme.typography.labelLarge)
+                Text("${t.batteryPct.toInt()}%", color = if (t.batteryPct < 30) PoleFailed else Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = onOpenSettings, modifier = Modifier.size(48.dp, TOP_BAR_HEIGHT - 3.dp)) { Text("⚙", style = MaterialTheme.typography.titleLarge) }
         }
-        TextButton(onClick = onOpenSettings) { Text("⚙", fontSize = 22.sp) }
+        BatteryBar(t?.batteryPct ?: 0.0, s.returnNeedPct, Modifier.fillMaxWidth())
     }
 }
 
-/** 배터리 바(Pilot 2): 남은 양을 막대로, 복귀에 필요한 양을 노란 눈금으로. */
+/** 배터리 바(Pilot 2 4번): 남은 양을 막대로, 복귀에 필요한 양을 노란 막대로. */
 @Composable
 private fun BatteryBar(pct: Double, returnNeed: Int, modifier: Modifier) {
-    Box(modifier.height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.2f))) {
-        Box(
-            Modifier.fillMaxWidth((pct / 100).toFloat().coerceIn(0f, 1f)).height(6.dp)
-                .background(if (pct < 30) PoleFailed else PoleDone),
-        )
-        Box(Modifier.fillMaxWidth((returnNeed / 100f).coerceIn(0f, 1f)).height(6.dp).background(Aircraft.copy(alpha = 0.8f)))
+    Box(modifier.height(3.dp).background(Color.White.copy(alpha = 0.15f))) {
+        Box(Modifier.fillMaxWidth((pct / 100).toFloat().coerceIn(0f, 1f)).height(3.dp).background(if (pct < 30) PoleFailed else PoleDone))
+        Box(Modifier.fillMaxWidth((returnNeed / 100f).coerceIn(0f, 1f)).height(3.dp).background(Aircraft))
     }
 }
 
-/** 신호 3점(Pilot 2): 흰 3점 강함, 노랑 2점 중간, 빨강 1점 약함. 품질값이 없으면 연결 여부만. */
+/** 신호 3점(Pilot 2 6번): 흰 3점 강함, 노랑 2점 중간, 빨강 1점 약함. 품질값이 없으면 연결 여부만. */
 private fun signalDots(q: Int?, connected: Boolean) = when {
     !connected -> "✕"
     q == null || q >= 60 -> "●●●"
@@ -292,80 +311,128 @@ private fun signalColor(q: Int?, connected: Boolean) = when {
     else -> PoleFailed
 }
 
-/** 카메라 버튼(Pilot 2 카메라 뷰 오른쪽): 렌즈 전환, 셔터(일시정지 중 수동 촬영), 재생(1차 판독), 짐벌 중앙/아래(C2). */
+/**
+ * 오른쪽 카메라 버튼(매뉴얼 54쪽 16·10·17번): 렌즈 전환, 셔터, 짐벌 중앙/아래(C2). 영상 양옆 검은 띠 위에 바탕 없이 둔다.
+ * [shotsLabel]은 셔터 아래 촬영 수(수동 비행).
+ */
 @Composable
-private fun CameraControls(s: FlightUiState, vm: FlightViewModel, onReview: () -> Unit, modifier: Modifier) {
-    val paused = s.exec.state == ExecState.Paused
+internal fun CameraColumn(
+    lens: Lens, onLens: (Lens) -> Unit, shutterEnabled: Boolean, onShutter: () -> Unit, onGimbal: () -> Unit,
+    modifier: Modifier, shotsLabel: String? = null,
+) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        val lensColors = ButtonDefaults.filledTonalButtonColors(containerColor = OverlayBg, contentColor = Color.White)
-        FilledTonalButton(onClick = { vm.setLens(if (s.lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE) }, colors = lensColors) {
-            Text(if (s.lens == Lens.WIDE) "광각" else "망원")
-        }
-        // 셔터: 자동 비행 중에는 미션이 찍으므로 일시정지 때만 누를 수 있다
+        CameraTextButton(if (lens == Lens.WIDE) "광각" else "망원", "렌즈 전환") { onLens(if (lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE) }
         Box(
-            Modifier.size(64.dp).clip(RoundedCornerShape(32.dp))
-                .background(if (paused) Color.White else Color.White.copy(alpha = 0.3f))
-                .clickable(enabled = paused, onClickLabel = "수동 촬영") { vm.manualCapture() },
+            Modifier.size(64.dp).clip(CircleShape).background(if (shutterEnabled) Color.White else Color.White.copy(alpha = 0.3f))
+                .clickable(enabled = shutterEnabled, onClickLabel = "촬영", onClick = onShutter),
             contentAlignment = Alignment.Center,
-        ) { Box(Modifier.size(52.dp).clip(RoundedCornerShape(26.dp)).background(if (paused) PoleFailed else Color.Gray)) }
-        FilledTonalButton(onClick = vm::toggleGimbal, colors = lensColors) { Text("짐벌 ⇅") }
-        FilledTonalButton(onClick = onReview, colors = lensColors) { Text("재생 ▶") }
+        ) { Box(Modifier.size(52.dp).clip(CircleShape).background(if (shutterEnabled) PoleFailed else Color.Gray)) }
+        shotsLabel?.let { Text(it, color = Color.White, style = MaterialTheme.typography.labelLarge) }
+        CameraTextButton("짐벌 ⇅", "짐벌 중앙/아래", onGimbal)
     }
 }
 
 @Composable
-private fun ProgressPanel(s: FlightUiState, modifier: Modifier) {
+private fun CameraTextButton(text: String, description: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(64.dp, 48.dp).clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = description, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1) }
+}
+
+/**
+ * 경로 진행 알약(매뉴얼 55쪽 "Executing flight route"): [Ⅱ 수동 비행] / [▶ 재개]와 소티·전주·처리 수.
+ * Ⅱ는 RC 일시정지 버튼과 같다(기체가 멈춰 호버링, 스틱으로 조종). 재개는 C1 또는 ▶.
+ */
+@Composable
+private fun RoutePill(s: FlightUiState, vm: FlightViewModel, modifier: Modifier) {
     val ui = s.exec
     val sortieVisits = ui.visits.filter { it.sortieIndex == ui.sortieIndex }
     val done = sortieVisits.count { it.status == VisitStatus.DONE || it.status == VisitStatus.SKIPPED || it.status == VisitStatus.FAILED }
     val target = ui.target?.let { "${it.pole.poleId} (${it.order + 1}/${sortieVisits.size})" } ?: "전주 ${sortieVisits.size}개"
-    Column(modifier.background(OverlayBg, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp)) {
-        Text("소티 ${ui.sortieIndex + 1}/${s.sortieCount} · $target · 처리 $done/${sortieVisits.size}", color = Color.White)
-        ui.countdownSec?.let { Text("다음 전주까지 ${it}s", color = Color.White, style = MaterialTheme.typography.titleLarge) }
-        if (ui.state == ExecState.Paused) Text("수동 조종 가능", color = Aircraft)
-        ui.rthCountdownSec?.let { Text("배터리 부족 — ${it}초 뒤 자동 RTH", color = MaterialTheme.colorScheme.error) }
-        ui.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-        ui.preflightFailures.forEach { Text("점검 실패: $it", color = MaterialTheme.colorScheme.error) }
+    val paused = ui.state == ExecState.Paused
+    val canPause = ui.state.airborne && !paused && ui.state != ExecState.ReturningHome
+    Column(modifier.widthIn(max = 340.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Surface(color = OverlayBg, shape = RoundedCornerShape(24.dp)) {
+            Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    paused -> PillButton("▶", "재개", PoleDone, vm::resume)
+                    canPause -> PillButton("Ⅱ", "수동 비행", Color.White, vm::pause)
+                    else -> Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { Text("✈", color = Color.White) }
+                }
+                Column(Modifier.padding(start = 8.dp, end = 12.dp)) {
+                    Text(
+                        if (paused) "수동 비행 중 · C1로 계속" else "소티 ${ui.sortieIndex + 1}/${s.sortieCount} · ${stateLabel(ui.state)}",
+                        color = if (paused) Aircraft else Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1,
+                    )
+                    Text("$target · 처리 $done/${sortieVisits.size}", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        // 경고·알림 줄(필요할 때만)
+        val lines = listOfNotNull(
+            ui.rthCountdownSec?.let { "배터리 부족 — ${it}초 뒤 자동 RTH" to MaterialTheme.colorScheme.error },
+            ui.message?.let { it to Color.White },
+        ) + ui.preflightFailures.map { "점검 실패: $it" to MaterialTheme.colorScheme.error }
+        lines.forEach { (text, color) ->
+            Text(
+                text, color = color, style = MaterialTheme.typography.labelMedium, maxLines = 2,
+                modifier = Modifier.background(OverlayBg, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+        }
     }
+}
+
+@Composable
+private fun PillButton(glyph: String, description: String, color: Color, onClick: () -> Unit) {
+    Box(
+        Modifier.size(48.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)).semantics { contentDescription = description }
+            .clickable(onClickLabel = description, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(glyph, color = color, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
 }
 
 @Composable
 private fun SideControls(s: FlightUiState, vm: FlightViewModel) {
     val state = s.exec.state
     if (state == ExecState.Paused) {
-        // 화면 높이(약 400dp)가 좁아 가로 한 줄로 둔다. 뒤 영상이 비치게 반투명. 촬영은 오른쪽 셔터로
-        val colors = ButtonDefaults.filledTonalButtonColors(containerColor = OverlayBg, contentColor = Color.White)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = vm::skip, modifier = Modifier.heightIn(min = 48.dp), colors = colors) { Text("건너뛰기") }
-            FilledTonalButton(onClick = vm::markDone, modifier = Modifier.heightIn(min = 48.dp), colors = colors) { Text("완료 처리") }
+        // 화면 높이(약 430dp)가 좁아 가로 한 줄로 둔다. 촬영은 오른쪽 셔터로
+        val colors = ButtonDefaults.outlinedButtonColors(containerColor = OverlayBg, contentColor = Color.White)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            OutlinedButton(onClick = vm::skip, modifier = Modifier.heightIn(min = 48.dp), colors = colors) { Text("건너뛰기") }
+            OutlinedButton(onClick = vm::markDone, modifier = Modifier.heightIn(min = 48.dp), colors = colors) { Text("완료 처리") }
         }
     }
-    if (state.airborne && state != ExecState.ReturningHome) RthButton(vm::returnHome)
+    // 실행기가 대기여도 기체가 떠 있으면(수동 비행 화면에서 넘어온 경우 등) RTH를 보인다
+    if ((state.airborne || s.telemetry?.isFlying == true) && state != ExecState.ReturningHome) RthButton(vm::returnHome)
 }
 
 /** 화면 아래 가운데의 큰 버튼: 비행 시작, 보조용 [재개](일시정지 때만, 초록), 미션 완료(10장). */
 @Composable
 private fun BottomAction(s: FlightUiState, vm: FlightViewModel, onShowResult: () -> Unit) {
-    if (s.telemetry?.landingConfirmNeeded == true) {
-        // 착륙 보호: 지면 바로 위에서 기체가 확인을 기다린다(Pilot 2 [착륙 확인]). RC 왼쪽 스틱을 내려도 된다
-        return Button(onClick = vm::confirmLanding, modifier = Modifier.size(240.dp, 80.dp), shape = RoundedCornerShape(16.dp)) {
-            Text("착륙 확인", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        }
-    }
+    if (s.telemetry?.landingConfirmNeeded == true) return LandingConfirmButton(vm::confirmLanding)
     when (s.exec.state) {
-        ExecState.Idle -> Button(onClick = vm::openPreflight, modifier = Modifier.size(240.dp, 64.dp)) {
-            Text("비행 시작", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        ExecState.Idle -> Button(onClick = vm::openPreflight, modifier = Modifier.size(200.dp, 56.dp)) {
+            Text("비행 시작", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
         ExecState.Paused -> Button(
             onClick = vm::resume,
-            modifier = Modifier.size(240.dp, 80.dp),
+            modifier = Modifier.size(220.dp, 64.dp),
             colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f), MaterialTheme.colorScheme.onTertiary),
             shape = RoundedCornerShape(16.dp),
-        ) { Text("▶ 재개 (C1)", fontSize = 28.sp, fontWeight = FontWeight.Bold) }
-        ExecState.MissionDone -> Button(onClick = onShowResult, modifier = Modifier.size(240.dp, 64.dp)) {
-            Text("미션 완료 · 결과 보기", fontWeight = FontWeight.Bold)
+        ) { Text("▶ 재개 (C1)", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        ExecState.MissionDone -> Button(onClick = onShowResult, modifier = Modifier.size(240.dp, 56.dp)) {
+            Text("미션 완료 · 결과·판독", fontWeight = FontWeight.Bold)
         }
         else -> Unit
+    }
+}
+
+/** 착륙 보호: 지면 바로 위에서 기체가 확인을 기다린다(Pilot 2 [착륙 확인]). RC 왼쪽 스틱을 내려도 된다. */
+@Composable
+internal fun LandingConfirmButton(onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = Modifier.size(220.dp, 64.dp), shape = RoundedCornerShape(16.dp)) {
+        Text("착륙 확인", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -373,7 +440,7 @@ private fun BottomAction(s: FlightUiState, vm: FlightViewModel, onShowResult: ()
 @Composable
 private fun MockRcControls(vm: FlightViewModel, modifier: Modifier) {
     val colors = ButtonDefaults.outlinedButtonColors(containerColor = OverlayBg, contentColor = Color.White)
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text("모의 RC", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
         OutlinedButton(onClick = { vm.rcPause() }, colors = colors) { Text("RC 일시정지") }
         OutlinedButton(onClick = { vm.rcResume() }, colors = colors) { Text("RC 재개") }
@@ -382,44 +449,25 @@ private fun MockRcControls(vm: FlightViewModel, modifier: Modifier) {
 }
 
 /**
- * 소티 완료 화면(10장 2인 운용). 왼쪽은 조종사(배터리 교체 확인 → 다음 소티), 오른쪽은 보조자(1차 판독).
- * 확인 항목을 모두 체크해야 [다음 소티 시작]이 켜진다. 판독은 비행과 독립이라 다음 소티를 막지 않는다.
+ * 소티 완료 화면(10장): 조종사 확인만 둔다. 배터리 교체·기체 확인을 체크해야 [다음 소티 시작]이 켜진다.
+ * 판독은 미션이 끝난 뒤 결과 화면에서 한다(2026-10-30 사용자 요청).
  */
 @Composable
-private fun SortieDonePanel(s: FlightUiState, vm: FlightViewModel, onReview: () -> Unit) {
+private fun SortieDonePanel(s: FlightUiState, vm: FlightViewModel) {
     val ui = s.exec
     val remaining = ui.visits.count { it.status == VisitStatus.PENDING }
     var battery by rememberSaveable(ui.sortieIndex) { mutableStateOf(false) }
     var props by rememberSaveable(ui.sortieIndex) { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.8f)), contentAlignment = Alignment.Center) {
-        Column(Modifier.fillMaxWidth(0.8f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("소티 ${ui.sortieIndex + 1}/${s.sortieCount} 완료", style = MaterialTheme.typography.headlineSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Card(Modifier.weight(1f), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("조종사", style = MaterialTheme.typography.titleMedium)
-                        CheckRow("배터리 교체", battery) { battery = it }
-                        CheckRow("프로펠러·기체 확인", props) { props = it }
-                        Text("남은 전주 $remaining", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                            Button(onClick = vm::nextSortie, enabled = battery && props, modifier = Modifier.heightIn(min = 56.dp)) {
-                                Text("다음 소티 시작")
-                            }
-                            OutlinedButton(onClick = vm::endMission, modifier = Modifier.heightIn(min = 56.dp)) { Text("미션 종료") }
-                        }
-                    }
-                }
-                Card(Modifier.weight(1f), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("보조자 · 1차 판독", style = MaterialTheme.typography.titleMedium)
-                        val sum = s.sortieSummary
-                        if (sum == null) Text("집계 중입니다")
-                        else {
-                            Text("이번 소티 전주 ${sum.poles} · 검출 ${sum.detected} · 판독 ${sum.reviewed}/${sum.poles}")
-                            Text("배터리를 바꾸는 동안 검출 전주부터 판독합니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Button(onClick = onReview, modifier = Modifier.padding(top = 8.dp).heightIn(min = 56.dp)) { Text("1차 판독 시작") }
-                    }
+        Card(Modifier.widthIn(max = 420.dp), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("소티 ${ui.sortieIndex + 1}/${s.sortieCount} 완료", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("남은 전주 $remaining", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                CheckRow("배터리 교체", battery) { battery = it }
+                CheckRow("프로펠러·기체 확인", props) { props = it }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    Button(onClick = vm::nextSortie, enabled = battery && props, modifier = Modifier.heightIn(min = 56.dp)) { Text("다음 소티 시작") }
+                    OutlinedButton(onClick = vm::endMission, modifier = Modifier.heightIn(min = 56.dp)) { Text("미션 종료") }
                 }
             }
         }
@@ -430,7 +478,7 @@ private fun SortieDonePanel(s: FlightUiState, vm: FlightViewModel, onReview: () 
 private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     // 줄 전체를 눌러 체크한다(장갑 낀 손가락, MD3 체크박스 목록)
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(checked, role = Role.Checkbox, onValueChange = onChange),
+        Modifier.fillMaxWidth().heightIn(min = 52.dp).toggleable(checked, role = Role.Checkbox, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked, onCheckedChange = null)
@@ -442,14 +490,14 @@ private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Uni
 @Composable
 internal fun RthButton(onLongPress: () -> Unit) {
     Box(
-        Modifier.size(width = 180.dp, height = 56.dp).clip(RoundedCornerShape(28.dp)).background(MaterialTheme.colorScheme.error.copy(alpha = 0.75f))
+        Modifier.size(width = 132.dp, height = 48.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.error.copy(alpha = 0.75f))
             .semantics { contentDescription = "RTH 길게 누르기" }
             .pointerInput(Unit) { detectTapGestures(onLongPress = { onLongPress() }) },
         contentAlignment = Alignment.Center,
     ) { Text("RTH (길게)", color = MaterialTheme.colorScheme.onError, fontWeight = FontWeight.Bold) }
 }
 
-private fun stateLabel(s: ExecState) = when (s) {
+internal fun stateLabel(s: ExecState) = when (s) {
     ExecState.Idle -> "비행 대기"
     ExecState.PreflightCheck -> "비행 전 점검"
     ExecState.Takeoff -> "이륙 중"
@@ -460,7 +508,7 @@ private fun stateLabel(s: ExecState) = when (s) {
     ExecState.Downloading -> "다운로드 중"
     ExecState.Analyzing -> "분석 중"
     ExecState.Waiting -> "대기"
-    ExecState.Paused -> "일시정지됨"
+    ExecState.Paused -> "수동 비행(일시정지)"
     ExecState.LinkLost -> "연결 끊김"
     ExecState.ReturningHome -> "복귀 중"
     ExecState.SortieDone -> "소티 완료"

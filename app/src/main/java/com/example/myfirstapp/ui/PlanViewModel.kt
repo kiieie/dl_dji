@@ -1,8 +1,6 @@
 package com.example.myfirstapp.ui
 
 import com.example.myfirstapp.data.OpLog
-import android.content.ContentResolver
-import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,7 +19,6 @@ import com.example.myfirstapp.data.PoleEntity
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.SortieDraft
-import com.example.myfirstapp.data.copyMbtiles
 import com.example.myfirstapp.data.listMbtiles
 import com.example.myfirstapp.data.onlineSatelliteTilesRetrying
 import com.example.myfirstapp.data.toJson
@@ -29,7 +26,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,11 +61,17 @@ data class PlanUiState(
     val excluded: Set<String> = emptySet(),
     /** 지금 [plan]을 저장한 미션 번호. 계획이 바뀌면 null이 되어 [비행 시작]이 [계획 저장]으로 돌아간다. */
     val savedMissionId: Long? = null,
+    /** [수행]으로 저장한 미션. 화면이 받아 비행 화면을 열고 [PlanViewModel.onFlightOpened]로 지운다(한 번만 열리게). */
+    val flyMissionId: Long? = null,
+    /** 미션을 저장하는 중. 장갑으로 두 번 눌러도 한 번만 저장한다. */
+    val saving: Boolean = false,
 ) {
     val paramErrors: List<String> get() = params.validate()
-    val inArea: List<PoleEntity>
-        get() = if (vertices.size < 3) emptyList() else Polygon(vertices).let { area -> poles.orEmpty().filter { area.contains(GeoPoint(it.lat, it.lon)) } }
-    val canPlan get() = home != null && inArea.size > excluded.size && paramErrors.isEmpty() && !planning
+    /** 영역 안 전주. 상태 하나에 한 번만 계산한다(화면·canPlan·경로 계산이 여러 번 읽음, 전주 1,000개 이상). */
+    val inArea: List<PoleEntity> by lazy {
+        if (vertices.size < 3) emptyList() else Polygon(vertices).let { area -> poles.orEmpty().filter { area.contains(GeoPoint(it.lat, it.lon)) } }
+    }
+    val canPlan get() = home != null && inArea.size > excluded.size && paramErrors.isEmpty()
     val excludedPoints get() = poles.orEmpty().filter { it.poleId in excluded }.map { GeoPoint(it.lat, it.lon) }
 }
 
@@ -76,7 +84,6 @@ class PlanViewModel(
     private val projectId: Long,
     private val replanFrom: Long?,
     private val mapsDir: File,
-    private val resolver: ContentResolver,
     private val settings: SettingsStore,
     /** 지금 위치(기체 GPS → 조종기 GPS). 새 계획의 이륙 지점과 지도 초기 위치가 된다. */
     private val currentLocation: suspend () -> GeoPoint? = { null },
@@ -94,7 +101,24 @@ class PlanViewModel(
         replanFrom?.let { viewModelScope.launch { seedReplan(it) } }
         viewModelScope.launch { currentLocation()?.let(::seedHome) }
         viewModelScope.launch { onlineSatelliteTilesRetrying().let { urls -> _state.update { it.copy(onlineTiles = urls) } } }
+        // Pilot 2처럼 영역·이륙 지점·설정·제외가 바뀌면 경로를 바로 다시 계산한다. 연달아 바꾸면 마지막 것만 계산한다.
+        // 영역·이륙 지점을 찍는 동안은 계산하지 않고, 도구만 바꾼 것(이륙 → 취소)은 입력이 같아 저장한 계획을 그대로 둔다.
+        viewModelScope.launch {
+            _state.filter { it.tool == Tool.NONE }
+                .map { PlanInput(it.poles, it.vertices, it.home, it.params, it.excluded) }
+                .distinctUntilChanged()
+                .collectLatest {
+                    // 기다리는 동안 안내가 "전주가 없습니다"로 깜박이지 않게 먼저 "계산 중"으로 둔다
+                    _state.update { s -> s.copy(planning = s.canPlan) }
+                    delay(300)
+                    computePlan()
+                }
+        }
     }
+
+    private data class PlanInput(
+        val poles: List<PoleEntity>?, val vertices: List<GeoPoint>, val home: GeoPoint?, val params: FlightParams, val excluded: Set<String>,
+    )
 
     /** 이륙 지점이 아직 없으면 지금 위치로 두고, 그 둘레 약 500m로 지도를 옮긴다. */
     private fun seedHome(p: GeoPoint) = _state.update {
@@ -138,24 +162,25 @@ class PlanViewModel(
 
     fun startArea() = OpLog.log("plan", "startArea").let { _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, selected = null, tool = Tool.AREA) } }
     fun finishArea() = _state.update { it.copy(tool = Tool.NONE, focus = it.vertices) }.also { OpLog.log("plan", "finishArea", mapOf("vertices" to _state.value.vertices.size)) }
-    fun undoVertex() = _state.update { it.copy(vertices = it.vertices.dropLast(1)) }
+    fun undoVertex() = _state.update { it.copy(vertices = it.vertices.dropLast(1), plan = null) }
+    /** 영역과 제외를 모두 지운다(Pilot 2 웨이포인트 지우기). */
+    fun clearArea() = OpLog.log("plan", "clearArea").let { _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, tool = Tool.NONE) } }
     fun startHome() = OpLog.log("plan", "startHome").let { _state.update { it.copy(selected = null, tool = Tool.HOME) } }
     fun cancelTool() = _state.update { it.copy(tool = Tool.NONE) }
     fun updateParams(p: FlightParams) = _state.update { it.copy(params = p, plan = null) }.also { OpLog.log("plan", "params", mapOf("params" to p.toJson())) }
-    fun resetPlan() = _state.update { it.copy(plan = null) }
 
     /** F-06: 영역 안 전주만 개별로 빼거나 다시 넣는다. */
     fun toggleExcluded(poleId: String) = _state.update {
         it.copy(excluded = if (poleId in it.excluded) it.excluded - poleId else it.excluded + poleId, plan = null)
     }
 
-    fun computePlan() {
-        OpLog.log("plan", "compute", mapOf("project" to projectId, "home" to _state.value.home?.toString(), "inArea" to _state.value.inArea.size))
+    private suspend fun computePlan() {
         val s = _state.value
-        val start = s.home ?: return
-        if (!s.canPlan) return
+        val start = s.home
+        if (start == null || !s.canPlan) return _state.update { it.copy(plan = null, planning = false) }
+        OpLog.log("plan", "compute", mapOf("project" to projectId, "home" to start.toString(), "inArea" to s.inArea.size))
         _state.update { it.copy(planning = true) }
-        viewModelScope.launch {
+        try {
             val t0 = System.nanoTime()
             val inArea = s.inArea
             val targets = inArea.filter { it.poleId !in s.excluded }.map { it.toPole() }
@@ -173,13 +198,20 @@ class PlanViewModel(
                     "vlos=${result.unreachable.count { it.reason == UnreachablePole.Reason.VLOS_EXCEEDED }} " +
                     "battery=${result.unreachable.count { it.reason == UnreachablePole.Reason.BATTERY_EXCEEDED }} ms=$ms",
             )
+        } finally {
+            // 입력이 바뀌어 계산이 취소돼도 "계산 중"이 남지 않게
+            _state.update { it.copy(planning = false) }
         }
     }
 
-    fun savePlan() {
-        OpLog.log("plan", "save", mapOf("project" to projectId, "sorties" to _state.value.plan?.sorties?.size))
+    /** [fly]면 저장 뒤 비행 화면을 연다(Pilot 2 [수행]). 이미 저장한 계획이면 저장 없이 연다. */
+    fun savePlan(fly: Boolean = false) {
+        _state.value.savedMissionId?.let { id -> if (fly) _state.update { it.copy(flyMissionId = id) }; return }
         val s = _state.value
+        if (s.saving) return
         val p = s.plan ?: return
+        OpLog.log("plan", "save", mapOf("project" to projectId, "sorties" to p.sorties.size))
+        _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             val rowIds = s.poles.orEmpty().associate { it.poleId to it.id }
             val mission = MissionEntity(
@@ -187,35 +219,29 @@ class PlanViewModel(
                 homeLat = p.home.lat, homeLon = p.home.lon, flightParams = s.params.toJson(), modelVersion = null, status = "PLANNED",
             )
             val sorties = p.sorties.map { so -> SortieDraft(so.estDistanceM, so.estBatteryPct, so.poles.map { rowIds.getValue(it.poleId) }) }
-            runCatching { dao.saveMission(mission, sorties) }
+            runCatching { dao.saveMission(mission, sorties).also { id -> replanFrom?.let { old -> dao.setMissionStatus(old, "PARTIAL") } } }
                 .onSuccess { id ->
-                    replanFrom?.let { old -> dao.setMissionStatus(old, "PARTIAL") }
                     // 저장하는 사이 계획이 바뀌었으면 [비행 시작]을 켜지 않는다
                     _state.update {
                         it.copy(
                             savedMissionId = id.takeIf { _ -> it.plan === p },
+                            flyMissionId = id.takeIf { _ -> fly && it.plan === p },
                             message = "계획을 저장했습니다: 미션 #$id (소티 ${sorties.size}개, 전주 ${sorties.sumOf { so -> so.poleRowIds.size }}개)",
                         )
                     }
                     Log.i("RoutePlan", "saved mission=$id")
                 }
                 .onFailure { e -> _state.update { it.copy(message = "계획을 저장하지 못했습니다: ${e.message}") } }
+            _state.update { it.copy(saving = false) }
         }
     }
 
-    fun onMapFilePicked(uri: Uri) {
-        _state.update { it.copy(message = "지도 파일을 복사하는 중입니다") }
-        viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { copyMbtiles(resolver, uri, mapsDir) } }
-                .onSuccess { name -> _state.update { it.copy(mapFiles = listMbtiles(mapsDir), message = "지도를 추가했습니다: $name") } }
-                .onFailure { e -> _state.update { it.copy(message = "지도를 추가하지 못했습니다: ${e.message}") } }
-        }
-    }
+    fun onFlightOpened() = _state.update { it.copy(flyMissionId = null) }
 
     companion object {
         fun factory(
-            dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, resolver: ContentResolver, settings: SettingsStore,
+            dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, settings: SettingsStore,
             currentLocation: suspend () -> GeoPoint?,
-        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, resolver, settings, currentLocation) } }
+        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, currentLocation) } }
     }
 }

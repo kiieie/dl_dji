@@ -37,7 +37,7 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, modifier: Modifier = Modifier) {
     val homeDist = if (t.position != null && home != null) LocalProjection.distanceM(t.position!!, home) else null
     val homeBearing = if (t.position != null && home != null && homeDist!! > 1) Viewpoints.bearing(t.position!!, home) else null
     Row(
-        modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier.background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -45,7 +45,7 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, modifier: Modifier = Modifier) {
             Value("H.S", "%.1f m/s".format(t.speedMps))
             Value("V.S", "%.1f m/s".format(if (kotlin.math.abs(t.verticalSpeedMps) < 0.05) 0.0 else t.verticalSpeedMps))
         }
-        Canvas(Modifier.size(96.dp)) {
+        Canvas(Modifier.size(80.dp)) {
             val r = min(size.width, size.height) / 2 - 4
             val c = Offset(size.width / 2, size.height / 2)
             drawCircle(Color.White.copy(alpha = 0.6f), r, c, style = Stroke(1.5f))

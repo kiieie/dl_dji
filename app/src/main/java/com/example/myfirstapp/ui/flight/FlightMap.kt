@@ -73,7 +73,7 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
                 )
                 style.addLayer(
                     CircleLayer("home-point", "home").withProperties(
-                        circleColor("#212529"), circleRadius(6f), circleStrokeColor("#FFFFFF"), circleStrokeWidth(2f),
+                        circleColor("#FFC400"), circleRadius(6f), circleStrokeColor("#212529"), circleStrokeWidth(2f),
                     ),
                 )
                 style.addLayer(

@@ -1,6 +1,9 @@
 package com.example.myfirstapp
 
 import android.view.KeyEvent
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.DisposableEffect
 import android.view.MotionEvent
 import com.example.myfirstapp.data.OpLog
@@ -50,6 +53,12 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    /** 파일 선택 창 등 다른 창에서 돌아오면 시스템 바를 다시 숨긴다. */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
+    }
+
     override fun onDestroy() {
         if (isFinishing) OpLog.markCleanExit()
         super.onDestroy()
@@ -63,6 +72,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pilot 2처럼 전체 화면(10.0): 상태바·내비바를 숨기고, 가장자리를 쓸면 잠깐 나온다
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         val dao = (application as InspectionApp).database.projectDao()
         setContent {
             MyFirstAppTheme {
@@ -123,8 +137,18 @@ class MainActivity : ComponentActivity() {
                     onVerification = { nav.navigate("verify") },
                 )
             }
-            // 수동 비행 카메라 뷰(Pilot 2 카메라 뷰): 미션 없이 조종사가 스틱으로 난다
-            composable("camera") { ManualFlightScreen(onExit = { nav.popBackStack() }, onOpenSettings = { nav.navigate("settings") }) }
+            // 수동 비행 카메라 뷰(Pilot 2 카메라 뷰): 미션 없이 조종사가 스틱으로 난다. 경로 알약을 누르면 최근 미션 비행 화면으로
+            composable("camera") {
+                ManualFlightScreen(
+                    dao,
+                    onExit = { nav.popBackStack() },
+                    onOpenSettings = { nav.navigate("settings") },
+                    onOpenMission = { m ->
+                        nav.navigate("missions/${m.projectId}") { popUpTo("home") }
+                        nav.navigate("flight/${m.projectId}/${m.missionId}")
+                    },
+                )
+            }
             composable("projects") {
                 ProjectScreen(
                     dao,
@@ -162,8 +186,6 @@ class MainActivity : ComponentActivity() {
                     onExit = { nav.popBackStack() },
                     // 미션이 끝나면 비행 화면을 스택에서 빼고 결과로 간다(뒤로 가면 계획 화면)
                     onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}") { inclusive = true } } },
-                    // 소티 완료 뒤 1차 판독은 검출 전주부터 연다(뒤로 가면 비행 화면)
-                    onReview = { nav.navigate("result/$pid/$mid?filter=DETECTED") },
                     onOpenSettings = { nav.navigate("settings") },
                 )
             }

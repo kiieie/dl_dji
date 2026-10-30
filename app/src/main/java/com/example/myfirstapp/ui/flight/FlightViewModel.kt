@@ -65,9 +65,6 @@ const val FAKE_TIME_SCALE = 5.0
 /** 조종기 쪽 저장 공간 기준(6.5). SD 여유 기준(6.7)과 같게 1GB로 둔다. */
 private const val MIN_FREE_BYTES = 1L shl 30
 
-/** 소티 완료 화면(10장 2인 운용)의 보조자 칸: 방금 끝난 소티의 전주·검출·1차 판독 수. */
-data class SortieSummary(val sortieNo: Int, val poles: Int, val detected: Int, val reviewed: Int)
-
 data class FlightUiState(
     val loading: Boolean = true,
     /** 미션을 열 수 없는 이유(없는 미션, 남은 전주 없음). */
@@ -84,7 +81,6 @@ data class FlightUiState(
     /** 모의 기체면 true: 모의 RC 조작 줄을 보여 준다. */
     val simulated: Boolean = false,
     val modelVersion: String? = null,
-    val sortieSummary: SortieSummary? = null,
     /** FPV 렌즈(Pilot 2 카메라 뷰 전환). */
     val lens: Lens = Lens.WIDE,
     /** 비행 전 점검 체크리스트(Pilot 2): [비행 시작]을 누르면 채워지고, 확인하면 비운다. */
@@ -98,7 +94,7 @@ data class FlightUiState(
 
 /**
  * 비행 화면 ④(10장). 저장한 `MISSION`에서 남은(PENDING·IN_PROGRESS) 방문만 읽어 소티를 만들고 실행기를 돌린다.
- * 실행기는 [viewModelScope]에서 돌아 소티 완료 뒤 1차 판독 화면에 다녀와도 이어진다.
+ * 실행기는 [viewModelScope]에서 돌아 설정 화면에 다녀와도 이어진다. 판독은 미션이 끝난 뒤 결과 화면에서 한다(10장).
  * 기체는 [droneFactory]로 받는다. 기체 연동 전에는 [FakeDroneGateway]이고, 연동하면 `DjiDroneGateway`로 바꾼다.
  */
 class FlightViewModel(
@@ -216,9 +212,7 @@ class FlightViewModel(
         }
         combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->
             val need = energy.move(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
-            val entered = ui.state == ExecState.SortieDone && _state.value.exec.state != ExecState.SortieDone
             _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need) }
-            if (entered) refreshSortieSummary()
         }
     }
 
@@ -234,19 +228,6 @@ class FlightViewModel(
         fresh.forEach { dao.insertCapture(it.toEntity(v.id, CaptureSource.AUTO)) }
         val done = fresh.isNotEmpty() || db.any { it.visitId == v.id }
         dao.setVisitStatus(v.id, if (done) "DONE" else "PENDING", null)
-    }
-
-    /** 소티 완료 화면의 검출·판독 수를 DB에서 다시 센다. 1차 판독 화면에서 돌아올 때도 부른다. */
-    fun refreshSortieSummary() {
-        val s = _state.value.exec
-        if (s.state != ExecState.SortieDone) return
-        val ids = sortieVisits.getOrNull(s.sortieIndex)?.toSet() ?: return
-        viewModelScope.launch {
-            // 이 소티 계획에서 이미 처리한(대기 아닌) 전주만 센다. 배터리 부족으로 돌아오면 일부만 처리된다
-            val rows = dao.resultRows(missionId).filter { it.visitId in ids && it.status != "PENDING" }
-            val reviewed = dao.latestReviews(missionId).count { it.visitId in ids }
-            _state.update { it.copy(sortieSummary = SortieSummary(s.sortieIndex + 1, rows.size, rows.count { r -> r.detectCount > 0 }, reviewed)) }
-        }
     }
 
     fun start() = send(Command.Start)
@@ -282,10 +263,27 @@ class FlightViewModel(
 
     fun endMission() = send(Command.EndMission)
     fun resume() = send(Command.Resume)
+
+    /** 화면 [Ⅱ 수동 비행](Pilot 2 55쪽 경로 알약): RC 일시정지 버튼과 같다. 기체가 멈춰 호버링하고 스틱으로 조종한다. */
+    fun pause() = send(Command.Pause)
     fun manualCapture() = send(Command.ManualCapture)
     fun skip() = send(Command.Skip())
     fun markDone() = send(Command.MarkDone)
-    fun returnHome() = send(Command.ReturnHome)
+    /**
+     * [RTH 길게]: 미션 중이면 실행기가 처리한다(방문 정리 포함). 실행기는 대기인데 기체가 떠 있으면
+     * (수동 비행에서 넘어옴, 소티·미션 완료, 재시작 복구) 기체에 바로 RTH를 보낸다.
+     */
+    fun returnHome() {
+        if (_state.value.exec.state.airborne) {
+            send(Command.ReturnHome)
+            return
+        }
+        val d = drone ?: return
+        OpLog.log("flight", "rthDirect")
+        viewModelScope.launch {
+            d.returnHome().onFailure { e -> _state.update { it.copy(exec = it.exec.copy(message = "RTH 실패: ${e.message}")) } }
+        }
+    }
 
     /** FPV 렌즈 전환(Pilot 2 카메라 뷰 전환). */
     fun setLens(lens: Lens) {

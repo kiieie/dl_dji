@@ -4,6 +4,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.ui.text.font.FontWeight
 import java.io.File
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
+import com.example.myfirstapp.ui.FullscreenAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -92,14 +97,18 @@ private fun MissionListContent(
     onResult: (Long) -> Unit,
 ) {
     Scaffold(
+        // 얇은 머리글(Pilot 2 비행경로 라이브러리, 매뉴얼 56쪽): 프로젝트 이름 · 미션 수 · [+ 새 계획]
         topBar = {
-            TopAppBar(
-                title = { Text(s.projectName) },
-                navigationIcon = {
-                    onBack?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "나가기") } }
-                },
-                actions = { Button(onClick = onNewPlan, modifier = Modifier.padding(end = 16.dp).heightIn(min = 48.dp)) { Text("+ 새 계획") } },
-            )
+            Row(
+                Modifier.fillMaxWidth().height(56.dp).padding(start = if (onBack == null) 16.dp else 4.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                onBack?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "나가기") } }
+                Text(s.projectName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("미션 ${s.missions.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Button(onClick = onNewPlan, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("+ 새 계획") }
+            }
         },
     ) { padding ->
         when {
@@ -109,15 +118,15 @@ private fun MissionListContent(
             }
             else -> LazyColumn(
                 Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(s.missions, key = { it.id }) { m -> MissionCard(m, onFly = { vm.fly(m) }, onResult = { onResult(m.id) }, onDelete = { vm.askDelete(m) }) }
             }
         }
     }
     s.deleting?.let { m ->
-        AlertDialog(
+        FullscreenAlertDialog(
             onDismissRequest = vm::dismissDelete,
             title = { Text("미션 #${m.id} 삭제") },
             text = { Text("계획(소티 ${m.sortieCount}개, 전주 ${m.poleCount}개)과 사진 ${m.doneCount}개 전주의 기록·판독을 모두 지웁니다. 되돌릴 수 없습니다. 필요하면 먼저 결과를 내보내세요.") },
@@ -128,7 +137,7 @@ private fun MissionListContent(
         )
     }
     s.confirm?.let { m ->
-        AlertDialog(
+        FullscreenAlertDialog(
             onDismissRequest = vm::dismissConfirm,
             title = { Text("마지막 비행이 오늘이 아닙니다") },
             text = {
@@ -148,36 +157,55 @@ private fun MissionListContent(
     }
 }
 
-/** 미션 카드: 위에 상태·진행, 아래에 버튼(자주 쓰는 비행이 가장 크고, 삭제는 작게 오른쪽 끝). */
+/** 버튼은 보이는 높이 36dp로 통일한다(누르는 영역은 Material3가 48dp로 잡아 준다, 10.1 장갑 조작). */
+internal val COMPACT_BUTTON = 36.dp
+internal val COMPACT_PADDING = PaddingValues(horizontal = 14.dp)
+
+/**
+ * 미션 카드(Pilot 2 비행경로 라이브러리 카드, 매뉴얼 56쪽): 왼쪽에 이름·상태·시각과 진행 한 줄·얇은 막대,
+ * 오른쪽에 작은 버튼(비행이 강조, 결과, 삭제는 흐리게).
+ */
 @Composable
 private fun MissionCard(m: MissionSummary, onFly: () -> Unit, onResult: () -> Unit, onDelete: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("미션 #${m.id}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(STATUS_TITLE[m.status] ?: m.status, color = MaterialTheme.colorScheme.primary)
-                Text(
-                    m.lastFlightAt?.let { "마지막 비행 ${time(it)}" } ?: "계획 ${time(m.createdAt)}",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                    modifier = Modifier.weight(1f),
-                )
-                Text("검출 ${m.detectedCount}", color = if (m.detectedCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Text("판독 ${m.reviewedCount}/${m.doneCount}", maxLines = 1)
-            }
-            Text(
-                listOfNotNull("완료 ${m.doneCount}/${m.poleCount}", "남은 ${m.remainingCount}".takeIf { m.remainingCount > 0 && m.status != "PARTIAL" }, "소티 ${m.sortieCount}")
-                    .joinToString(" · "),
-                maxLines = 1,
-            )
-            LinearProgressIndicator(progress = { if (m.poleCount == 0) 0f else m.doneCount.toFloat() / m.poleCount }, modifier = Modifier.fillMaxWidth())
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                when {
-                    m.status == "PLANNED" -> Button(onClick = onFly, modifier = Modifier.heightIn(min = 52.dp)) { Text("비행 시작") }
-                    m.remainingCount > 0 && m.status != "PARTIAL" -> Button(onClick = onFly, modifier = Modifier.heightIn(min = 52.dp)) { Text("이어하기") }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(10.dp)) {
+        Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("미션 #${m.id}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(
+                        STATUS_TITLE[m.status] ?: m.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                    Text(
+                        m.lastFlightAt?.let { "비행 ${time(it)}" } ?: "계획 ${time(m.createdAt)}",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                    )
                 }
-                if (m.doneCount > 0) OutlinedButton(onClick = onResult, modifier = Modifier.heightIn(min = 52.dp)) { Text("결과·판독") }
-                Box(Modifier.weight(1f))
-                TextButton(onClick = onDelete, modifier = Modifier.heightIn(min = 48.dp)) { Text("삭제", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Text(
+                    listOfNotNull(
+                        "전주 ${m.doneCount}/${m.poleCount}",
+                        "남은 ${m.remainingCount}".takeIf { m.remainingCount > 0 && m.status != "PARTIAL" },
+                        "소티 ${m.sortieCount}",
+                        "검출 ${m.detectedCount}",
+                        "판독 ${m.reviewedCount}/${m.doneCount}",
+                    ).joinToString("  ·  "),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                LinearProgressIndicator(
+                    progress = { if (m.poleCount == 0) 0f else m.doneCount.toFloat() / m.poleCount },
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                    drawStopIndicator = {},
+                )
+            }
+            Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                when {
+                    m.status == "PLANNED" -> Button(onClick = onFly, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("▶ 비행") }
+                    m.remainingCount > 0 && m.status != "PARTIAL" -> Button(onClick = onFly, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("▶ 이어하기") }
+                }
+                if (m.doneCount > 0) OutlinedButton(onClick = onResult, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("결과") }
+                TextButton(onClick = onDelete, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) {
+                    Text("삭제", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }

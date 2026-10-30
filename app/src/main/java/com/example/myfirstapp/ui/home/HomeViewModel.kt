@@ -13,9 +13,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 홈에서 [카메라 뷰로 들어가기]·[앨범]이 여는 가장 최근 미션. */
+/** 홈 [이어서 비행]·[앨범]과 수동 비행 화면의 경로 알약이 여는 가장 최근 미션. */
 data class LatestMission(val projectId: Long, val missionId: Long, val projectName: String, val done: Int, val total: Int) {
     val remaining get() = total - done
+}
+
+/** 가장 최근 미션과 진행 수. 미션이 없으면 null. */
+suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
+    val m = dao.latestMission() ?: return null
+    val visits = dao.missionVisits(m.id)
+    val done = visits.count { it.status != "PENDING" && it.status != "IN_PROGRESS" }
+    return LatestMission(m.projectId, m.id, dao.projectName(m.projectId).orEmpty(), done, visits.size)
 }
 
 data class HomeUiState(val aircraft: AircraftStatus = AircraftStatus(), val latest: LatestMission? = null)
@@ -41,10 +49,8 @@ class HomeViewModel(
     /** 다른 화면에서 돌아올 때 최근 미션을 다시 읽는다. */
     fun refresh() {
         viewModelScope.launch {
-            val m = dao.latestMission() ?: return@launch _state.update { it.copy(latest = null) }
-            val visits = dao.missionVisits(m.id)
-            val done = visits.count { it.status != "PENDING" && it.status != "IN_PROGRESS" }
-            _state.update { it.copy(latest = LatestMission(m.projectId, m.id, dao.projectName(m.projectId).orEmpty(), done, visits.size)) }
+            val latest = loadLatestMission(dao)
+            _state.update { it.copy(latest = latest) }
         }
     }
 

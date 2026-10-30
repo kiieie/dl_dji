@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,20 +10,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import com.example.myfirstapp.ui.FullscreenAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,6 +34,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -52,28 +55,39 @@ fun SettingsHub(onBack: () -> Unit) {
     var tab by rememberSaveable { mutableIntStateOf(vm.tabs.size) }
 
     Row(Modifier.fillMaxSize()) {
-        Column(Modifier.width(220.dp).fillMaxHeight().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("← 설정") }
-            (vm.tabs.map { it.first } + "일반").forEachIndexed { i, name ->
-                NavigationDrawerItem(
-                    label = { Text(name) },
-                    selected = tab == i,
-                    onClick = {
-                        tab = i
-                        if (i < vm.tabs.size) vm.openTab(i)
-                    },
-                )
+        // 왼쪽 탭 줄(Pilot 2 설정 탭, 매뉴얼 57쪽 8번): 화면 높이(432dp)에 다 들어가지 않을 수 있어 스크롤한다
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.width(168.dp).fillMaxHeight()) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) {
+                TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                    Text("‹ 설정", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+                }
+                (vm.tabs.map { it.first } + "일반").forEachIndexed { i, name ->
+                    val selected = tab == i
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                            .selectable(selected, role = Role.Tab) {
+                                tab = i
+                                if (i < vm.tabs.size) vm.openTab(i)
+                            }
+                            .wrapContentHeight().padding(horizontal = 16.dp),
+                    )
+                }
             }
         }
         if (tab >= vm.tabs.size) {
-            SettingsScreen(onBack = onBack)
+            SettingsScreen(Modifier.weight(1f))
         } else {
             AircraftTab(vm.tabs[tab].second, s, vm, Modifier.weight(1f))
         }
     }
 
     s.confirming?.let { c ->
-        AlertDialog(
+        FullscreenAlertDialog(
             onDismissRequest = vm::dismiss,
             title = { Text(c.label) },
             text = { Text((c.kind as AircraftSetting.Kind.Action).confirm.orEmpty()) },
@@ -85,19 +99,19 @@ fun SettingsHub(onBack: () -> Unit) {
 
 @Composable
 private fun AircraftTab(items: List<AircraftSetting>, s: AircraftSettingsUiState, vm: AircraftSettingsViewModel, modifier: Modifier) {
-    Column(modifier.fillMaxHeight().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (s.loading) "기체에서 읽는 중…" else "기체 값", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            s.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+            Text(
+                if (s.loading) "기체에서 읽는 중…" else "기체 값", style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
+            )
+            s.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, maxLines = 1) }
             OutlinedButton(onClick = vm::reload) { Text("다시 읽기") }
         }
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items.forEachIndexed { i, item ->
-                    if (i > 0) HorizontalDivider()
-                    SettingRow(item, s.values[item.label], vm)
-                }
-            }
+        // Pilot 2 설정 목록: 한 줄에 이름·값, 줄 사이 구분선
+        items.forEach { item ->
+            HorizontalDivider()
+            SettingRow(item, s.values[item.label], vm)
         }
     }
 }
@@ -105,15 +119,18 @@ private fun AircraftTab(items: List<AircraftSetting>, s: AircraftSettingsUiState
 /** 값을 못 읽으면(기체 미연결, 지원 안 함) "--"로 두고 바꿀 수 없게 한다. */
 @Composable
 private fun SettingRow(item: AircraftSetting, value: Any?, vm: AircraftSettingsViewModel) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Column(Modifier.weight(1f)) {
-            Text(item.label, style = MaterialTheme.typography.titleSmall)
+            Text(item.label, style = MaterialTheme.typography.bodyLarge)
             item.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         when (val k = item.kind) {
             is AircraftSetting.Kind.Number -> {
                 val v = value as? Int
-                Stepper("", v?.let { "$it${k.unit}" } ?: "--", Modifier.width(220.dp)) { d ->
+                Stepper("", v?.let { "$it${k.unit}" } ?: "--", Modifier.width(200.dp)) { d ->
                     if (v != null) vm.change(item, (v + d * k.step).coerceIn(k.range))
                 }
             }

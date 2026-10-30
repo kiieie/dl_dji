@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,8 +37,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -47,7 +46,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,6 +75,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -124,27 +123,26 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(s.message) { s.message?.let { snackbar.showSnackbar(it); vm.messageShown() } }
     Scaffold(
+        // 한 줄 머리글(Pilot 2 앨범·상단 바처럼 얇게, 768×432dp 화면): ‹ · 제목 · 집계 · [내보내기]
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("결과 — 미션 #${s.missionId}")
-                        if (!s.loading) {
-                            Text(
-                                listOf("완료", "건너뜀", "실패", "미점검").joinToString(" · ") { "$it ${s.statusCounts[it] ?: 0}" } +
-                                    " · 검출 ${s.count(ResultFilter.DETECTED)} · 판독 ${s.reviews.size}/${s.statusCounts["완료"] ?: 0}" +
-                                    " · 모델 ${s.modelVersion ?: "없음"}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "나가기") }
-                },
-                actions = { FilledTonalButton(onClick = vm::export, enabled = !s.loading, modifier = Modifier.padding(end = 16.dp)) { Text("내보내기") } },
-            )
+            Row(
+                Modifier.fillMaxWidth().height(48.dp).background(MaterialTheme.colorScheme.surfaceContainerLow).padding(end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "나가기") }
+                Text("결과·판독 · 미션 #${s.missionId}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(
+                    if (s.loading) "" else listOf("완료", "건너뜀", "실패", "미점검").joinToString(" · ") { "$it ${s.statusCounts[it] ?: 0}" } +
+                        " · 검출 ${s.count(ResultFilter.DETECTED)} · 판독 ${s.reviews.size}/${s.statusCounts["완료"] ?: 0}" +
+                        " · 모델 ${s.modelVersion ?: "없음"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                FilledTonalButton(onClick = vm::export, enabled = !s.loading) { Text("내보내기") }
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -199,30 +197,38 @@ private fun PoleList(s: ResultUiState, vm: ResultViewModel, modifier: Modifier) 
         if (i >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == i }) listState.animateScrollToItem(i)
     }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // 필터는 한 줄(가로로 밀어 본다)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             ResultFilter.entries.forEach { f ->
-                FilterChip(s.filter == f, { vm.setFilter(f) }, label = { Text("${f.title} ${s.count(f)}") })
+                FilterChip(s.filter == f, { vm.setFilter(f) }, label = { Text("${f.title} ${s.count(f)}", maxLines = 1) })
             }
         }
-        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(3.dp)) {
             items(s.shown, key = { it.visitId }) { r ->
                 val selected = r.visitId == s.selected?.visitId
                 val review = s.reviews[r.visitId]?.let { ReviewVerdict.valueOf(it.verdict).title }
-                Card(
-                    onClick = { vm.select(r.visitId) },
-                    colors = CardDefaults.cardColors(
-                        if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.08f),
-                    ),
+                // 한 줄 56dp: 번호·상태·사진 수 / 전주번호, 오른쪽에 검출·판독
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.06f),
+                            RoundedCornerShape(8.dp),
+                        )
+                        .clickable { vm.select(r.visitId) }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ListItem(
-                        headlineContent = { Text(r.poleId) },
-                        overlineContent = { Text("${r.seq}-${r.order} · ${ResultUiState.STATUS_TITLE[r.status] ?: r.status} · 사진 ${r.photoCount}") },
-                        supportingContent = review?.let { { Text("판독: $it") } },
-                        trailingContent = if (r.detectCount > 0) {
-                            { Text("검출 ${r.detectCount}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge) }
-                        } else null,
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "${r.seq}-${r.order} · ${ResultUiState.STATUS_TITLE[r.status] ?: r.status} · 사진 ${r.photoCount}",
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                        )
+                        Text(r.poleId, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (r.detectCount > 0) Text("검출 ${r.detectCount}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
+                        review?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                    }
                 }
             }
         }

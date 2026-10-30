@@ -503,11 +503,12 @@ class InspectionExecutorTest {
     }
 
     @Test
-    fun `방식 A - 경고 탐지는 경고음`() = runTest {
+    fun `방식 A - 탐지는 뒤에서 저장만 하고 비행 중 경고음은 내지 않는다`() = runTest {
         val h = harness(config = sortieMode, detector = FixedDetector(listOf(Detection("nest", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true))))
         h.send(Command.Start)
         h.awaitState(ExecState.MissionDone)
-        h.awaitUntil { h.sounds.count { it == Sound.ANOMALY } == 3 }
+        h.awaitUntil { h.recorder.detections.size == 3 }
+        assertEquals(0, h.sounds.count { it == Sound.ANOMALY })
     }
 
     @Test

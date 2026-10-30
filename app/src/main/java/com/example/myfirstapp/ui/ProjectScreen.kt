@@ -2,6 +2,12 @@ package com.example.myfirstapp.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,7 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
+import com.example.myfirstapp.ui.FullscreenAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -71,16 +77,19 @@ fun ProjectScreen(
     val selected = s.projects.firstOrNull { it.id == selectedId } ?: s.projects.firstOrNull()
 
     Row(Modifier.fillMaxSize()) {
-        Column(Modifier.width(300.dp).fillMaxHeight().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) { Text("←") }
-                Text("비행경로", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = { importing = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("+ 전주 파일") }
+        Column(Modifier.width(260.dp).fillMaxHeight().padding(start = 4.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.height(56.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text("‹", style = MaterialTheme.typography.headlineSmall) }
+                Text("비행경로", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = { importing = true }, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("+ 전주 파일") }
             }
-            if (s.projects.isEmpty()) Text("프로젝트가 없습니다. [+ 전주 파일]로 전주 CSV를 가져오세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (s.projects.isEmpty()) Text(
+                "프로젝트가 없습니다. [+ 전주 파일]로 전주 CSV를 가져오세요.", style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp),
+            )
             val listState = rememberLazyListState()
             LaunchedEffect(s.projects.firstOrNull()?.id) { listState.scrollToItem(0) }
-            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(state = listState, modifier = Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(s.projects, key = { it.id }) { p -> ProjectRow(p, p.id == selected?.id, onClick = { selectedId = p.id }, onDelete = { vm.askDelete(p) }) }
             }
         }
@@ -110,7 +119,7 @@ fun ProjectScreen(
     }
 
     s.deleting?.let { project ->
-        AlertDialog(
+        FullscreenAlertDialog(
             onDismissRequest = vm::dismissDelete,
             title = { Text("프로젝트 삭제") },
             text = { Text("${project.name} 프로젝트와 전주 ${project.poleCount}개를 삭제합니다. 되돌릴 수 없습니다.") },
@@ -124,19 +133,23 @@ fun ProjectScreen(
 
 @Composable
 private fun ProjectRow(p: ProjectSummary, selected: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
-    Card(
-        onClick = onClick, modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh),
+    // 고른 프로젝트는 왼쪽 강조 막대와 밝은 바탕(Pilot 2 라이브러리의 선택 카드 테두리 자리)
+    Surface(
+        onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)) else null,
     ) {
-        Row(Modifier.padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "전주 ${p.poleCount}개 · ${DateFormat.getDateInstance(DateFormat.SHORT).format(Date(p.createdAt))}",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                 )
             }
-            TextButton(onClick = onDelete, modifier = Modifier.heightIn(min = 48.dp)) { Text("삭제", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            TextButton(onClick = onDelete, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 10.dp)) {
+                Text("삭제", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
@@ -144,7 +157,7 @@ private fun ProjectRow(p: ProjectSummary, selected: Boolean, onClick: () -> Unit
 /** 전주 파일 가져오기(F-01): 파일 고르기 → 미리보기·이름 → 저장. 저장하면 닫힌다. */
 @Composable
 private fun ImportDialog(s: ProjectUiState, vm: ProjectViewModel, onPick: () -> Unit, onClose: () -> Unit) {
-    AlertDialog(
+    FullscreenAlertDialog(
         onDismissRequest = onClose,
         title = { Text("전주 파일 가져오기") },
         text = {

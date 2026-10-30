@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import com.example.myfirstapp.ui.FullscreenAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -50,7 +50,7 @@ import com.example.myfirstapp.ui.flight.PolePending
  * 홈(Pilot 2 홈페이지, 10.0 사용성 원칙): 자주 쓰는 것은 크게.
  * 위: 앱 이름, 기체 상태 칩(누르면 세부), 작은 [설정] [연동 검증].
  * 왼쪽: 최근 미션 카드와 큰 [이어서 비행]/[비행 시작](자동 점검 비행), [결과·판독].
- * 오른쪽: 큰 [카메라 뷰로 들어가기](미션 없는 수동 비행), 중간 [비행경로] [앨범].
+ * 오른쪽: 큰 [수동 비행](Pilot 2 카메라 뷰, 미션 없이 스틱으로), 중간 [비행경로] [앨범].
  */
 @Composable
 fun HomeScreen(
@@ -104,13 +104,13 @@ fun HomeScreen(
                             if (latest.remaining > 0) {
                                 Button(
                                     onClick = { onFlight(latest.projectId, latest.missionId) },
-                                    modifier = Modifier.weight(1f).height(72.dp), shape = RoundedCornerShape(12.dp),
-                                ) { Text(if (latest.done == 0) "비행 시작" else "이어서 비행", fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+                                    modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(12.dp),
+                                ) { Text(if (latest.done == 0) "비행 시작" else "이어서 비행", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                             }
                             FilledTonalButton(
                                 onClick = { onAlbum(latest.projectId, latest.missionId) }, enabled = latest.done > 0,
-                                modifier = Modifier.height(72.dp), shape = RoundedCornerShape(12.dp),
-                            ) { Text("결과·판독", fontSize = 18.sp) }
+                                modifier = Modifier.height(64.dp), shape = RoundedCornerShape(12.dp),
+                            ) { Text("결과·판독", fontSize = 16.sp) }
                         }
                     }
                 }
@@ -122,18 +122,18 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(12.dp),
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("카메라 뷰로 들어가기", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text("수동 비행 · 촬영", fontSize = 15.sp)
+                        Text("수동 비행", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Text("카메라 뷰 · 언제든 촬영 · 이어서 비행", fontSize = 13.sp)
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    FilledTonalButton(onClick = onRoutes, modifier = Modifier.weight(1f).height(72.dp), shape = RoundedCornerShape(12.dp)) {
-                        Text("비행경로", fontSize = 18.sp)
+                    FilledTonalButton(onClick = onRoutes, modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(12.dp)) {
+                        Text("비행경로", fontSize = 16.sp)
                     }
                     FilledTonalButton(
                         onClick = { latest?.let { onAlbum(it.projectId, it.missionId) } }, enabled = latest != null,
-                        modifier = Modifier.weight(1f).height(72.dp), shape = RoundedCornerShape(12.dp),
-                    ) { Text("앨범", fontSize = 18.sp) }
+                        modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(12.dp),
+                    ) { Text("앨범", fontSize = 16.sp) }
                 }
             }
         }
@@ -169,7 +169,7 @@ private fun statusOf(a: AircraftStatus) = when (a.level) {
 @Composable
 private fun AircraftDialog(a: AircraftStatus, onClose: () -> Unit) {
     val (color, label) = statusOf(a)
-    AlertDialog(
+    FullscreenAlertDialog(
         onDismissRequest = onClose,
         title = { Text(a.model ?: "기체 연결 안 됨") },
         text = {
