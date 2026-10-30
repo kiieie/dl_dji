@@ -205,7 +205,7 @@ private fun ProjectRow(
         )
         Box {
             IconButton(onClick = { onMenu(true) }, modifier = Modifier.size(36.dp).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
-            DropdownMenu(menuOpen, onDismissRequest = { onMenu(false) }) {
+            DropdownMenu(menuOpen, onDismissRequest = { onMenu(false) }, properties = MENU_PROPERTIES) {
                 DropdownMenuItem(text = { Text("전주 파일로 속성 갱신") }, onClick = onAttrUpdate)
                 DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { onMenu(false); onDelete() })
             }

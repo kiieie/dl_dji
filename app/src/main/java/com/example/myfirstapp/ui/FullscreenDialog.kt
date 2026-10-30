@@ -55,3 +55,9 @@ private fun HideSystemBarsInDialog() {
         onDispose { view.viewTreeObserver.removeOnWindowFocusChangeListener(listener) }
     }
 }
+
+/**
+ * ⋯ 메뉴(DropdownMenu) 팝업: 포커스를 가져가는 팝업 창이 뜨면 숨긴 시스템 바가 나타나 화면이 밀린다(2026-10-31 RC 캡처).
+ * 포커스를 가져가지 않게 해 바를 숨긴 채로 둔다. 바깥을 누르면 닫히고, 열린 동안 5D는 각 화면이 막는다.
+ */
+val MENU_PROPERTIES = androidx.compose.ui.window.PopupProperties(focusable = false)

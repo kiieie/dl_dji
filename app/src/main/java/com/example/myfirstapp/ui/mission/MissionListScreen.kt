@@ -55,6 +55,7 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.perPole
+import com.example.myfirstapp.ui.MENU_PROPERTIES
 import com.example.myfirstapp.ui.scrollbar
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.TextSoft
@@ -262,7 +263,7 @@ private fun MissionRow(
 private fun MoreMenu(showResult: Boolean, open: Boolean, onOpen: (Boolean) -> Unit, onResult: () -> Unit, onDelete: () -> Unit) {
     Box {
         IconButton(onClick = { onOpen(true) }, modifier = Modifier.size(36.dp).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
-        DropdownMenu(open, onDismissRequest = { onOpen(false) }) {
+        DropdownMenu(open, onDismissRequest = { onOpen(false) }, properties = MENU_PROPERTIES) {
             if (showResult) DropdownMenuItem(text = { Text("결과") }, onClick = { onOpen(false); onResult() })
             DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { onOpen(false); onDelete() })
         }
