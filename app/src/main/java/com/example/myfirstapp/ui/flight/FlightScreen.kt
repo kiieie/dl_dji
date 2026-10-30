@@ -101,7 +101,7 @@ fun FlightScreen(
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
     val vm: FlightViewModel = viewModel(factory = FlightViewModel.factory(
-            dao, projectId, missionId, context.getExternalFilesDir(null), app.settings, app.rcButtons,
+            dao, projectId, missionId, context.getExternalFilesDir(null), app.settings, app.rcButtons, app.djiReady,
         ))
     val s by vm.state.collectAsStateWithLifecycle()
     // 비행 중에는 뒤로 가기로 화면을 떠나지 못하게 한다(떠나면 실행기가 멈춘다).

@@ -223,7 +223,7 @@ class InspectionExecutor(
                 StepResult.ManualCaptured(info, image)
             }
             Command.EndMission -> if (state == SortieDone) enter(MissionDone, "운용자 미션 종료")
-            Command.FlyTakeoffHeight -> if (state == Paused && terrainFallbackAsk) {
+            Command.FlyTakeoffHeight -> if (state == Paused && terrainFallbackAsk && batteryAllowsNext()) {
                 terrainFallbackAsk = false
                 params = params.copy(terrainFollow = false)
                 message = "이륙 지점 기준으로 다시 올립니다."
@@ -273,7 +273,7 @@ class InspectionExecutor(
                         enter(ReturningHome, "재연결: 기체 RTH 중")
                     }
                     FlightMode.ON_GROUND -> enter(SortieDone, "재연결: 착륙 상태")
-                    else -> enter(Paused, "재연결")
+                    else -> pauseRunningMission("재연결")
                 }
             }
         }
@@ -378,14 +378,31 @@ class InspectionExecutor(
                 message = "앱이 다시 시작되었습니다. 기체 연결을 기다립니다."
                 enter(LinkLost, "앱 재시작 복구: 연결 없음")
             }
+            // 앱이 죽은 동안 기체가 미션을 끝내고(또는 저전압으로) 복귀 중이면 끊지 않고 복귀로 둔다
+            t.flightMode == FlightMode.GO_HOME || t.flightMode == FlightMode.LANDING -> {
+                appInitiatedRth = false
+                enter(ReturningHome, "앱 재시작 복구: 기체 RTH 중")
+            }
             t.isFlying -> {
-                if (t.flightMode == FlightMode.MISSION) drone.pauseMission()
-                stopMissionBeforeLeg = true
                 message = "앱이 다시 시작되었습니다. 기체 위치를 확인하고 재개하세요."
-                enter(Paused, "앱 재시작 복구")
+                pauseRunningMission("앱 재시작 복구")
             }
             else -> enter(SortieDone, "앱 재시작 복구: 착륙 상태")
         }
+    }
+
+    /**
+     * 앱이 모르는 사이(재시작·연결 끊김) 기체가 소티 미션을 날고 있으면 멈추고 일시정지로 둔다.
+     * 이 실행에서 올린 미션이면(잠깐 끊김) 재개할 때 기체 미션을 이어 가고, 앱이 다시 시작되어 지점 정보를 잃었으면
+     * 옛 미션을 끝내고 남은 전주로 새로 올린다.
+     */
+    private suspend fun pauseRunningMission(reason: String) {
+        if (drone.telemetry.value.flightMode == FlightMode.MISSION) drone.pauseMission()
+        if (missionPoints.isEmpty()) {
+            missionActive = false
+            stopMissionBeforeLeg = true
+        }
+        enter(Paused, reason)
     }
 
     /** 다음 미점검 전주: 현재 목표가 아직 미점검이면 그 전주, 아니면 소티 순서상 첫 미점검 전주(6.4). */
@@ -419,6 +436,16 @@ class InspectionExecutor(
         }
     }
 
+    /** 지금 자리에서 다음 전주를 찍고 돌아올 배터리가 있는지(5.5). 없으면 알리고 false. */
+    private fun batteryAllowsNext(): Boolean {
+        val next = nextTarget() ?: return true
+        val t = drone.telemetry.value
+        if (energy.canProceed(t.batteryPct, distance(t.position, next.pole.position), distance(next.pole.position, homePoint()))) return true
+        message = "배터리 부족 — 재개할 수 없습니다. RTH 하세요."
+        notifier.play(Sound.BATTERY_WARNING)
+        return false
+    }
+
     private suspend fun pauseWithWarning(reason: String) {
         message = reason
         notifier.play(Sound.ERROR)
@@ -432,12 +459,7 @@ class InspectionExecutor(
             startRth("재개: 이 소티에 남은 전주 없음")
             return
         }
-        val pos = drone.telemetry.value.position
-        if (!energy.canProceed(drone.telemetry.value.batteryPct, distance(pos, next.pole.position), distance(next.pole.position, homePoint()))) {
-            message = "배터리 부족 — 재개할 수 없습니다. RTH 하세요."
-            notifier.play(Sound.BATTERY_WARNING)
-            return
-        }
+        if (!batteryAllowsNext()) return
         notifier.play(Sound.RESUMED)
         if (config.sortieMission && missionActive) {
             // 방식 A: 기체에 남은 미션을 이어 간다(멈춘 지점으로 돌아간 뒤 계속, 6.1)

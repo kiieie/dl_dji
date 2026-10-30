@@ -66,3 +66,9 @@ javap -c -p com/dji/wpmzsdk/manager/WPMZManager.class        # init: copyAssetsD
 grep -aoE "https?://[A-Za-z0-9./_-]+" jni/arm64-v8a/libwpmz_jni.so jni/arm64-v8a/libPPAL.so   # XML 네임스페이스뿐
 grep -ac "curl_easy" jni/arm64-v8a/libPPAL.so              # 0
 ```
+
+## 5. 후속 조치(같은 날 메인 작업)
+
+- A-1: `android:allowBackup="false"`로 바꿈(앱 데이터가 Google 백업으로 나가지 않음).
+- D-3: 비행 전 점검에서 LDM이 꺼져 있으면 경고를 확인해도 시작할 수 없게 함(`PreflightEvaluator` 막는 항목). 앱 등록은 그대로.
+- C-4(온라인 배경 끄기)는 설계 변경이라 사용자 결정 대기. 현장 배포 APK는 `secrets/cesium.properties` 없이 빌드하면 온라인 요청이 없다.

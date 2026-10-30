@@ -214,10 +214,12 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     }
 
     private fun onConnection(connected: Boolean) {
+        val was = _telemetry.value.connected
         _telemetry.update { it.copy(connected = connected) }
         if (connected) {
             lostJob?.cancel()
-            if (lost) {
+            // 끊김 판정(3초) 전에 다시 붙어도, 처음부터 연결 없이 시작했다 붙어도 알린다(실행기는 연결 끊김 상태일 때만 받음)
+            if (lost || !was) {
                 lost = false
                 _events.tryEmit(DroneEvent.ConnectionRestored)
             }
@@ -314,7 +316,13 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         Unit
     }.onFailure { missionName = null; Log.w(TAG, "소티 미션 실패: ${it.message}"); OpLog.log("error", "startSortie", mapOf("message" to it.message)) }
 
-    override suspend fun pauseMission(): Result<Unit> = runCatching { djiDone { missions.pauseMission(it) } }
+    /** 앱 재시작으로 이름을 잃은 채 멈춘 옛 미션(마지막 KMZ 이름). 다음 [stopMission]이 기체 모드와 상관없이 이 이름으로 끝낸다. */
+    @Volatile private var recoveredMission: String? = null
+
+    override suspend fun pauseMission(): Result<Unit> = runCatching {
+        if (missionName == null) recoveredMission = lastKmzName()
+        djiDone { missions.pauseMission(it) }
+    }
 
     override suspend fun resumeMission(): Result<Unit> = runCatching {
         check(missionName != null) { "올린 미션 없음" }
@@ -323,8 +331,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     override suspend fun stopMission(): Result<Unit> {
         // 앱이 다시 시작되면 이름을 잃는다: 기체가 미션 중이면 마지막으로 올린 KMZ 이름으로 멈춘다(6.4 복구)
-        val name = missionName ?: lastKmzName()?.takeIf { _telemetry.value.flightMode == AppFlightMode.MISSION } ?: return Result.success(Unit)
+        val name = missionName ?: recoveredMission ?: lastKmzName()?.takeIf { _telemetry.value.flightMode == AppFlightMode.MISSION }
+            ?: return Result.success(Unit)
         missionName = null
+        recoveredMission = null
         // 멈추기 직전 지점에서 찍힌 사진이 늦게 와도 지점 사진으로 받는다(RTH·재업로드 때, 미션 완료와 같은 5초)
         photoGraceUntil = System.currentTimeMillis() + 5_000
         return runCatching { djiDone { missions.stopMission(name, it) } }
@@ -446,8 +456,11 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     /** 마지막으로 만든 소티 KMZ의 미션 이름(`sortie_<시각>`). */
     private fun lastKmzName(): String? = kmzDir.listFiles { f -> f.name.startsWith("sortie_") && f.extension == "kmz" }?.maxByOrNull { it.lastModified() }?.nameWithoutExtension
 
-    /** DJI 파일 이름 끝의 렌즈(`DJI_..._0001_W.JPG`). 모르면 null. */
-    private fun lensOfName(name: String?): Lens? = when (name?.substringBeforeLast('.')?.substringAfterLast('_')?.uppercase()) {
+    /**
+     * DJI 파일 이름의 렌즈 글자(`DJI_..._0001_W.JPG`, 웨이라인 `fileSuffix`가 붙으면 `..._0001_W_<접미>.JPG`일 수 있음). 모르면 null.
+     * ponytail: 실기체 SD 이름으로 확인 전. 렌즈 글자 뒤 접미가 W/Z/T 한 글자로 시작하는 조각이면 잘못 읽을 수 있다.
+     */
+    private fun lensOfName(name: String?): Lens? = when (name?.let { Regex("_([WZT])(?=[_.])", RegexOption.IGNORE_CASE).find(it) }?.groupValues?.get(1)?.uppercase()) {
         "W" -> Lens.WIDE
         "Z" -> Lens.ZOOM
         "T" -> Lens.THERMAL

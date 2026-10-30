@@ -26,4 +26,12 @@ class EnergyModelTest {
         assertTrue(overhead.canProceed(pct, 400.0, 400.0))
         assertFalse(diagonal.canProceed(pct, 400.0, 400.0))
     }
+
+    @Test
+    fun `설치기기 전주는 설비 조준 촬영만큼 더 쓴다`() {
+        val bank = com.example.myfirstapp.core.model.Pole("P", com.example.myfirstapp.core.model.GeoPoint(36.0, 127.0), equipment = "개폐기")
+        assertEquals(4, diagonal.equipmentShots(listOf(bank)))
+        assertEquals(0, overhead.equipmentShots(listOf(bank)))
+        assertTrue(diagonal.sortieCost(1000.0, 1, 0, 4) > diagonal.sortieCost(1000.0, 1))
+    }
 }

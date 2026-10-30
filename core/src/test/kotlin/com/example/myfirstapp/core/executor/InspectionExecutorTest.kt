@@ -441,6 +441,30 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `앱 재시작 복구 - 기체가 복귀 중이면 끊지 않고 복귀로 둔다`() = runTest {
+        val h = harness(
+            config = sortieMode, recoverSortie = 0,
+            droneConfig = FakeDroneGateway.Config(airborneAt = threePoles[0].position, airborneMode = FlightMode.GO_HOME),
+        )
+        assertEquals(ExecState.ReturningHome, h.state)
+        assertTrue(h.drone.calls.none { it == "pauseMission" || it == "returnHome" })
+    }
+
+    @Test
+    fun `앱 재시작 복구 - 연결 없이 켜졌다가 붙었을 때 기체가 미션 중이면 멈춘다`() = runTest {
+        val h = harness(
+            config = sortieMode, recoverSortie = 0,
+            droneConfig = FakeDroneGateway.Config(airborneAt = threePoles[0].position, airborneMode = FlightMode.MISSION),
+            prepare = { it.simulateLinkLost() },
+        )
+        assertEquals(ExecState.LinkLost, h.state)
+        h.drone.simulateLinkRestored()
+        h.scope.runCurrent()
+        assertEquals(ExecState.Paused, h.state)
+        assertEquals(listOf("pauseMission"), h.drone.calls)
+    }
+
+    @Test
     fun `앱 재시작 복구 - 착륙 상태면 소티를 닫고 남은 전주는 다음 소티로 남긴다`() = runTest {
         val h = harness(recoverSortie = 0)
         assertEquals(ExecState.SortieDone, h.state)

@@ -14,6 +14,7 @@ import com.example.myfirstapp.data.TelemetrySampleEntity
 import com.example.myfirstapp.drone.DjiDroneGateway
 import com.example.myfirstapp.drone.djiAircraftConnected
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -69,6 +70,9 @@ const val FAKE_TIME_SCALE = 5.0
 /** 조종기 쪽 저장 공간 기준(6.5). SD 여유 기준(6.7)과 같게 1GB로 둔다. */
 private const val MIN_FREE_BYTES = 1L shl 30
 
+/** 앱 재시작 복구 때 SDK 등록·기체 연결을 기다리는 시간(6.4). */
+private const val RECOVER_CONNECT_MS = 20_000L
+
 data class FlightUiState(
     val loading: Boolean = true,
     /** 미션을 열 수 없는 이유(없는 미션, 남은 전주 없음). */
@@ -116,7 +120,7 @@ class FlightViewModel(
     private val appFilesDir: File?,
     private val settings: SettingsStore,
     /** (scope, 이륙 지점, 앱 폴더, 복구 위치). 복구 위치는 모의 기체가 떠 있는 상태로 시작할 곳이고 실제 기체는 쓰지 않는다. */
-    private val droneFactory: (CoroutineScope, GeoPoint, File?, GeoPoint?) -> DroneGateway = ::fakeDrone,
+    private val droneFactory: suspend (CoroutineScope, GeoPoint, File?, GeoPoint?) -> DroneGateway = { s, h, d, a -> fakeDrone(s, h, d, a) },
     /** RC 하드웨어 버튼 누름. 화면 버튼과 같은 동작에 매핑한다(10장). */
     private val rcButtons: Flow<RcButton> = emptyFlow(),
 ) : ViewModel() {
@@ -188,7 +192,8 @@ class FlightViewModel(
             val homeLegs = if (poles.isEmpty()) 0.0 else LocalProjection.distanceM(home, poles.first().position) + LocalProjection.distanceM(poles.last().position, home)
             val dist = energy.pathM(homeLegs, legs.sum(), poles.size)
             val jumps = energy.longJumps(legs)
-            SortiePlan(poles, dist, energy.sortieCost(dist, poles.size, jumps), energy.sortieDurationSec(dist, poles.size, jumps))
+            val extra = energy.equipmentShots(poles)
+            SortiePlan(poles, dist, energy.sortieCost(dist, poles.size, jumps, extra), energy.sortieDurationSec(dist, poles.size, jumps, extra))
         }
         plans = sorties
         val recorder = RoomRecorder(
@@ -366,13 +371,19 @@ class FlightViewModel(
 
     companion object {
         /** 기체가 연결돼 있으면 실제 기체([DjiDroneGateway]), 아니면 모의 기체. 올린 KMZ는 미션 폴더 `kmz/`에 남는다(4.3). */
-        fun factory(dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore, rcButtons: Flow<RcButton>) =
+        fun factory(
+            dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore, rcButtons: Flow<RcButton>,
+            sdkReady: StateFlow<Boolean>,
+        ) =
             viewModelFactory {
                 initializer {
                     FlightViewModel(
                         dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons,
                         droneFactory = { scope, home, dir, airborneAt ->
-                            if (djiAircraftConnected()) DjiDroneGateway(scope, File(dir, "projects/$projectId/missions/$missionId/kmz"))
+                            // 앱 재시작 복구(열린 소티, [airborneAt] 있음): 앱이 막 켜져 SDK 등록·기체 연결 전일 수 있으니 기다린다(6.4).
+                            // 실제 RC(SDK 등록됨)에서는 연결이 안 돼도 모의 기체로 가지 않는다 — 실행기가 연결 끊김으로 두고 붙으면 맞춘다
+                            if (airborneAt != null) withTimeoutOrNull(RECOVER_CONNECT_MS) { while (!(sdkReady.value && djiAircraftConnected())) delay(500) }
+                            if (djiAircraftConnected() || (airborneAt != null && sdkReady.value)) DjiDroneGateway(scope, File(dir, "projects/$projectId/missions/$missionId/kmz"))
                             else fakeDrone(scope, home, dir, airborneAt)
                         },
                     )

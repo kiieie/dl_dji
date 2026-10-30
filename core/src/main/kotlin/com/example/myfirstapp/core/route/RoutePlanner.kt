@@ -51,6 +51,8 @@ class RoutePlanner(
 
         // 3) Split(동적 계획법): V[j] = min_i V[i-1] + cost(i, j), cost ≤ 예산
         val n = ordered.size
+        // 설비 조준 추가 촬영 누적(앞에서 k개 전주까지)
+        val extra = IntArray(n + 1).also { e -> for (k in 1..n) e[k] = e[k - 1] + energy.equipmentShots(listOf(ordered[k - 1])) }
         val v = DoubleArray(n + 1) { Double.POSITIVE_INFINITY }.also { it[0] = 0.0 }
         val from = IntArray(n + 1)
         for (i in 1..n) {
@@ -64,7 +66,7 @@ class RoutePlanner(
                     if (d > energy.flight.transitLegThresholdM) jumps++
                 }
                 val dist = energy.pathM(enu[i - 1].distanceTo(origin) + enu[j - 1].distanceTo(origin), inner, j - i + 1)
-                val cost = energy.sortieCost(dist, j - i + 1, jumps)
+                val cost = energy.sortieCost(dist, j - i + 1, jumps, extra[j] - extra[i - 1])
                 if (cost > budget) break // 전주를 더할수록 비용이 줄지 않으므로(삼각 부등식) 중단
                 if (v[i - 1] + cost < v[j]) {
                     v[j] = v[i - 1] + cost
@@ -80,12 +82,13 @@ class RoutePlanner(
             val (seq, dist) = reoptimize((i - 1 until j).toList(), enu, origin)
             val count = j - i + 1
             val jumps = energy.longJumps(seq.zipWithNext { a, b -> enu[a].distanceTo(enu[b]) })
+            val shots = extra[j] - extra[i - 1]
             sorties.addFirst(
                 SortiePlan(
                     poles = seq.map { ordered[it] },
                     estDistanceM = dist,
-                    estBatteryPct = energy.sortieCost(dist, count, jumps),
-                    estDurationSec = energy.sortieDurationSec(dist, count, jumps),
+                    estBatteryPct = energy.sortieCost(dist, count, jumps, shots),
+                    estDurationSec = energy.sortieDurationSec(dist, count, jumps, shots),
                 ),
             )
             j = i - 1

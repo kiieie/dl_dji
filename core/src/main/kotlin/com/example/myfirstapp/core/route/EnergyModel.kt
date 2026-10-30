@@ -1,6 +1,7 @@
 package com.example.myfirstapp.core.route
 
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.ShotMode
 
 /** 에너지 모델 파라미터(5.5). 초기값은 보수적으로 잡았고 필드 테스트로 보정한다. */
@@ -59,15 +60,23 @@ class EnergyModel(val params: EnergyParams, val flight: FlightParams) {
     fun transitClimbSec(longJumps: Int): Double =
         (longJumps + 1) * 2 * maxOf(0.0, flight.transitAltitudeM - flight.shotAltitudeM) / params.verticalSpeedMps
 
-    /** 경로 길이 [distanceM]([pathM]), 방문 [visits]개, 이동 고도로 넘는 전주 사이 구간 [longJumps]개인 소티의 예상 소모량. */
-    fun sortieCost(distanceM: Double, visits: Int, longJumps: Int = 0): Double =
-        move(distanceM) + visits * perVisit + takeoffLanding + transitClimbSec(longJumps) * params.hoverPctPerSec
+    /**
+     * 경로 길이 [distanceM]([pathM]), 방문 [visits]개, 이동 고도로 넘는 전주 사이 구간 [longJumps]개,
+     * 설비 조준 추가 촬영 [extraShots]번(5.6, [equipmentShots])인 소티의 예상 소모량.
+     */
+    fun sortieCost(distanceM: Double, visits: Int, longJumps: Int = 0, extraShots: Int = 0): Double =
+        move(distanceM) + visits * perVisit + extraShots * params.shotSec * params.hoverPctPerSec + takeoffLanding +
+            transitClimbSec(longJumps) * params.hoverPctPerSec
 
-    fun sortieDurationSec(distanceM: Double, visits: Int, longJumps: Int = 0): Double =
+    fun sortieDurationSec(distanceM: Double, visits: Int, longJumps: Int = 0, extraShots: Int = 0): Double =
         distanceM / flight.speedMps +
-            visits * shots * params.shotSec +
+            (visits * shots + extraShots) * params.shotSec +
             2 * flight.transitAltitudeM / params.verticalSpeedMps +
             transitClimbSec(longJumps)
+
+    /** 설비 조준 추가 촬영 수(5.6): 사선에서 설치기기가 있는 전주마다 지점 수(4)만큼. */
+    fun equipmentShots(poles: List<Pole>): Int =
+        if (flight.shotMode != ShotMode.DIAGONAL4) 0 else poles.count { Viewpoints.equipmentDropM(it, flight) != null } * shots
 
     /** 전주 사이 구간 [legsM] 중 이동 고도로 넘는 것의 수(5.6). ponytail: 전주 중심 거리로 센다. 사선 지점 간격(d)만큼 어긋날 수 있다. */
     fun longJumps(legsM: List<Double>): Int = legsM.count { it > flight.transitLegThresholdM }
