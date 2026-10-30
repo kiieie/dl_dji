@@ -1,5 +1,6 @@
 package com.example.myfirstapp
 
+import com.example.myfirstapp.drone.startDjiInputLog
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -106,6 +107,7 @@ class InspectionApp : Application() {
             SDKManager.getInstance().init(this, object : SDKManagerCallback {
                 override fun onRegisterSuccess() {
                     setDjiStatus("✅ DJI SDK 등록 성공")
+                    runCatching { startDjiInputLog() }.onFailure { OpLog.log("error", "inputLog", mapOf("message" to it.message)) }
                     djiRegistered.value = true
                 }
 

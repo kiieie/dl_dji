@@ -1,5 +1,6 @@
 package com.example.myfirstapp
 
+import android.view.KeyEvent
 import androidx.compose.runtime.DisposableEffect
 import android.view.MotionEvent
 import com.example.myfirstapp.data.OpLog
@@ -41,6 +42,17 @@ import java.io.File
 import java.nio.ByteBuffer
 
 class MainActivity : ComponentActivity() {
+
+    /** 운용 로그(4.4): 안드로이드 키 입력(볼륨, 뒤로, 게임패드 등). RC Pro 전용 버튼은 SDK로 따로 받는다(drone/DjiInputLog.kt). */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) OpLog.log("key", KeyEvent.keyCodeToString(event.keyCode), mapOf("repeat" to event.repeatCount))
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) OpLog.markCleanExit()
+        super.onDestroy()
+    }
 
     /** 운용 로그(4.4): 화면을 누른 위치(손가락을 뗄 때). 어떤 버튼인지는 각 화면 동작 로그로 남는다. */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {

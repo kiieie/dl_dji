@@ -22,9 +22,11 @@ object OpLog {
     fun init(context: Context) {
         val d = File(context.getExternalFilesDir(null), "logs").apply { mkdirs() }
         dir = d
+        watchCrashes(d)
+        checkLastSession(d)
         writer.execute {
             val cutoff = System.currentTimeMillis() - KEEP_DAYS * 24L * 3600 * 1000
-            d.listFiles { f -> f.name.startsWith("ops-") && f.lastModified() < cutoff }?.forEach { it.delete() }
+            d.listFiles { f -> f.name != "running" && f.lastModified() < cutoff }?.forEach { it.delete() }
         }
     }
 
@@ -39,7 +41,49 @@ object OpLog {
         writer.execute { runCatching { File(d, "ops-${day.format(Date(now))}.jsonl").appendText(line + "\n") } }
     }
 
+    /**
+     * 처리되지 않은 예외: 프로세스가 곧 죽으므로 그 자리에서 바로 `crash-시각.txt`에 쓰고, 원래 처리기(시스템 종료 창)로 넘긴다.
+     */
+    private fun watchCrashes(d: File) {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            runCatching {
+                val now = System.currentTimeMillis()
+                File(d, "crash-$now.txt").writeText("시각 $now\n스레드 ${thread.name}\n${Log.getStackTraceString(e)}")
+                File(d, "ops-${day.format(Date(now))}.jsonl")
+                    .appendText(JSONObject().put("t", now).put("type", "crash").put("what", e.toString()).toString() + "\n")
+            }
+            previous?.uncaughtException(thread, e)
+        }
+    }
+
+    /**
+     * 갑자기 꺼짐 대비: 실행 중 표시 파일을 두고 정상 종료([markCleanExit]) 때 지운다. 시작할 때 남아 있으면 이전 실행이 강제 종료·ANR·
+     * 메모리 부족 등으로 끝난 것이므로, 앱 자신의 logcat(같은 앱 기록만 읽힘)을 `logcat-시각.txt`로 남긴다.
+     */
+    private fun checkLastSession(d: File) {
+        val marker = File(d, "running")
+        val lastStart = marker.takeIf { it.exists() }?.readText()
+        marker.writeText(System.currentTimeMillis().toString())
+        if (lastStart == null) return
+        writer.execute {
+            runCatching {
+                val now = System.currentTimeMillis()
+                val out = File(d, "logcat-$now.txt")
+                // 마지막 5,000줄(DJI SDK 로그가 많아 크기를 제한)
+                ProcessBuilder("logcat", "-d", "-t", "5000", "-v", "threadtime").redirectErrorStream(true).redirectOutput(out).start().waitFor()
+                log("crash", "previousSessionAbnormal", mapOf("logcat" to out.name, "startedAt" to lastStart))
+            }
+        }
+    }
+
+    /** 사용자가 앱을 정상으로 닫을 때(액티비티가 끝날 때) 부른다. */
+    fun markCleanExit() {
+        dir?.let { File(it, "running").delete() }
+        log("app", "exit")
+    }
+
     /** 내보내기(4.3)용: [fromMs] 이후 로그 파일들. */
     fun files(fromMs: Long): List<File> =
-        dir?.listFiles { f -> f.name.startsWith("ops-") && f.lastModified() >= fromMs }?.sortedBy { it.name }.orEmpty()
+        dir?.listFiles { f -> f.name.endsWith(".jsonl") || f.name.endsWith(".txt") }?.filter { it.lastModified() >= fromMs }?.sortedBy { it.name }.orEmpty()
 }
