@@ -568,13 +568,19 @@ class InspectionExecutor(
         target = v
     }
 
-    /** 미션 동작으로 찍힌 사진: 바로 기록하고(사진이 있으므로 그 전주는 완료 가능) 처리 줄에 넣는다. */
+    /**
+     * 미션 동작으로 찍힌 사진: 바로 기록하고(사진이 있으므로 그 전주는 완료 가능) 처리 줄에 넣는다.
+     * 다음 지점으로 넘어간 뒤 늦게 온 사진이면(이미 사진 없음 실패로 정리했거나 복귀 중이면) 그 전주를 완료로 고친다.
+     */
     private suspend fun onPhoto(index: Int, info: CaptureInfo) {
         val v = missionVisits.getOrNull(index) ?: return
         val capture = info.copy(viewpoint = missionPoints[index].index)
         val id = saveCapture(v, capture, CaptureSource.AUTO)
         v.captureCount++
-        if (v.status == VisitStatus.PENDING) setStatus(v, VisitStatus.IN_PROGRESS)
+        when {
+            v.status == VisitStatus.FAILED -> setStatus(v, VisitStatus.DONE)
+            v.status == VisitStatus.PENDING -> setStatus(v, if (missionActive) VisitStatus.IN_PROGRESS else VisitStatus.DONE)
+        }
         photosInProgress++
         photoQueue.send(id to capture)
     }

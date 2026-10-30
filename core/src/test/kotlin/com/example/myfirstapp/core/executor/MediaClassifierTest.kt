@@ -76,4 +76,37 @@ class MediaClassifierTest {
         c.sortieStarted()
         assertEquals(WAYPOINT, c.classify(600, shot = 0)) // 새 소티의 0번 지점 사진(비우지 않으면 셔터로 봄)
     }
+
+    @Test
+    fun `광각·망원 두 파일은 같은 지점의 0·1번째 파일`() {
+        val c = MediaClassifier().apply { sortieStarted(filesPerShot = 2) }
+        c.shotReached(0, 0)
+        assertEquals(WAYPOINT to WaypointFile(0, 0), c.classifyFile(3_000, shot = 0))
+        assertEquals(WAYPOINT to WaypointFile(0, 1), c.classifyFile(3_200, shot = 0))
+        c.shotReached(1, 10_000)
+        assertEquals(WAYPOINT to WaypointFile(1, 0), c.classifyFile(13_000, shot = 1))
+    }
+
+    @Test
+    fun `다음 지점에 막 도착했을 때 온 파일은 앞 지점의 늦은 파일`() {
+        val c = MediaClassifier().apply { sortieStarted(filesPerShot = 2) }
+        c.shotReached(0, 0)
+        c.shotReached(1, 10_000) // 0번 사진이 아직 안 옴
+        assertEquals(WaypointFile(0, 0), c.classifyFile(10_300, shot = 1).second)
+        assertEquals(WaypointFile(0, 1), c.classifyFile(10_400, shot = 1).second)
+        assertEquals(WaypointFile(1, 0), c.classifyFile(13_000, shot = 1).second) // 1번 지점에서 찍은 것
+        assertEquals(WaypointFile(1, 1), c.classifyFile(13_100, shot = 1).second)
+    }
+
+    @Test
+    fun `한 지점이 통째로 안 찍혀도 뒤 지점은 밀리지 않는다`() {
+        val c = MediaClassifier().apply { sortieStarted(filesPerShot = 1) }
+        c.shotReached(0, 0)
+        assertEquals(WaypointFile(0, 0), c.classifyFile(3_000, shot = 0).second)
+        c.shotReached(1, 10_000) // 1번 실패
+        c.shotReached(2, 20_000)
+        assertEquals(WaypointFile(2, 0), c.classifyFile(23_000, shot = 2).second)
+        c.shotReached(3, 30_000)
+        assertEquals(WaypointFile(3, 0), c.classifyFile(33_000, shot = 3).second)
+    }
 }

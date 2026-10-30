@@ -559,6 +559,17 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `방식 A - 다음 지점에 도착한 뒤 늦게 온 사진도 그 지점 전주에 붙고 실패를 완료로 고친다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly) { it.lateNextPhotoMs = 20_000 } // A 사진이 B 도착 뒤에 옴
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("A").status == VisitStatus.FAILED } // B에 도착하며 사진 없는 A를 정리
+        h.awaitUntil { h.visit("A").status == VisitStatus.DONE }
+        h.awaitState(ExecState.MissionDone)
+        assertEquals(listOf(0, 1, 2), h.recorder.captures.map { it.first }.sorted()) // 사진마다 제 전주(순서)
+        h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+    }
+
+    @Test
     fun `방식 A - 탐지는 뒤에서 저장만 하고 비행 중 경고음은 내지 않는다`() = runTest {
         val h = harness(config = sortieMode, params = wideOnly, detector = FixedDetector(listOf(Detection("nest", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true))))
         h.send(Command.Start)

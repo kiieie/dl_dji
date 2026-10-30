@@ -83,6 +83,9 @@ class FakeDroneGateway(
     /** 지형 추적 미션 시작을 거절한다(2026-10-30 시뮬레이터에서 본 동작). */
     var rejectTerrainStarts = false
     var failNextCaptures = 0
+
+    /** 다음 지점 사진을 이만큼 늦게 알린다(다음 지점에 도착한 뒤 오는 사진, 6.4 사진 순서). */
+    var lateNextPhotoMs = 0L
     var failNextDownloads = 0
 
     /** 호출 기록(테스트 확인용). */
@@ -152,11 +155,12 @@ class FakeDroneGateway(
                 } else {
                     // 한 번 찍으면 렌즈마다 파일 하나(광각+망원 동시, 5.6)
                     val t = _telemetry.value
-                    params.lenses.forEach { lens ->
-                        val info = CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, p.gimbalPitchDeg, p.headingDeg, System.currentTimeMillis())
-                        sdCard += info
-                        _events.emit(DroneEvent.PhotoTaken(i, info))
+                    val infos = params.lenses.map { lens ->
+                        CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, p.gimbalPitchDeg, p.headingDeg, System.currentTimeMillis()).also { sdCard += it }
                     }
+                    val late = lateNextPhotoMs.also { lateNextPhotoMs = 0 }
+                    if (late > 0) scope.launch { delay(late); infos.forEach { _events.emit(DroneEvent.PhotoTaken(i, it)) } }
+                    else infos.forEach { _events.emit(DroneEvent.PhotoTaken(i, it)) }
                 }
             }
             _events.emit(DroneEvent.MissionFinished)

@@ -106,9 +106,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     /** 기체가 FINISHED를 마지막 사진보다 먼저 알린다(2026-10-30 확인). 그 뒤 잠깐 들어온 사진도 미션 사진으로 넘긴다. */
     @Volatile private var photoGraceUntil = 0L
 
-    /** 소티 미션의 촬영 렌즈(KMZ `payloadLensIndex` 순서)와 촬영 지점마다 받은 파일 수: 한 번 찍으면 렌즈마다 파일이 하나씩 온다(5.6). */
+    /** 소티 미션의 촬영 렌즈(KMZ `payloadLensIndex` 순서): 한 번 찍으면 렌즈마다 파일이 하나씩 온다(5.6). */
     @Volatile private var sortieLenses: List<Lens> = listOf(Lens.WIDE)
-    private val shotFiles = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private var mediaEnabled = false
 
     private val stateListener = WaypointMissionExecuteStateListener { s ->
@@ -129,7 +128,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             if (missionName != null && info.currentWaypointIndex != waypoint) {
                 waypoint = info.currentWaypointIndex
                 // 이동 고도 지점은 알리지 않는다. 실행기는 촬영 지점 번호만 안다
-                kmzWaypoints.getOrNull(waypoint)?.shot?.let { _events.tryEmit(DroneEvent.WaypointReached(it)) }
+                kmzWaypoints.getOrNull(waypoint)?.shot?.let {
+                    owners.shotReached(it, System.currentTimeMillis())
+                    _events.tryEmit(DroneEvent.WaypointReached(it))
+                }
             }
         }
 
@@ -181,15 +183,14 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             )
             val inMission = missionName != null || now < photoGraceUntil
             val shot = if (inMission) WpmlWriter.shotIndex(kmzWaypoints, waypoint) else null
-            val owner = owners.classify(now, shot)
+            val (owner, file) = owners.classifyFile(now, shot)
             Log.i(TAG, "사진 #${info.index} 지점 $waypoint → $owner")
-            OpLog.log("media", owner.name, mapOf("media" to info.index, "waypoint" to waypoint, "shot" to shot))
+            OpLog.log("media", owner.name, mapOf("media" to info.index, "waypoint" to waypoint, "shot" to shot, "file" to file?.toString()))
             when (owner) {
                 MediaOwner.SCREEN -> newPhotos.tryEmit(capture)
-                MediaOwner.WAYPOINT -> {
-                    // 같은 지점의 n번째 파일 = KMZ 렌즈 순서의 n번째(광각 → 망원). 실제 렌즈는 받을 때 파일 이름(_W/_Z)으로 다시 본다
-                    val n = shotFiles.merge(shot!!, 1, Int::plus)!!
-                    _events.tryEmit(DroneEvent.PhotoTaken(shot, capture.copy(lens = sortieLenses.getOrElse(n - 1) { sortieLenses.last() })))
+                // 같은 지점의 n번째 파일 = KMZ 렌즈 순서의 n번째(광각 → 망원). 실제 렌즈는 받을 때 파일 이름(_W/_Z)으로 다시 본다
+                MediaOwner.WAYPOINT -> file?.let { f ->
+                    _events.tryEmit(DroneEvent.PhotoTaken(f.shot, capture.copy(lens = sortieLenses[f.ordinal % sortieLenses.size])))
                 }
                 MediaOwner.SHUTTER -> _events.tryEmit(DroneEvent.ShutterPhoto(capture))
                 MediaOwner.NONE -> Unit
@@ -299,10 +300,9 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         waypoint = -1
         kmzWaypoints = wps
         sortieLenses = params.lenses.distinct().ifEmpty { listOf(Lens.WIDE) }
-        shotFiles.clear()
         // 망원 사진 배율(기본 7배, 10-30 사용자 결정). 실패해도 미션은 간다(망원은 지금 배율로 찍힘)
         if (Lens.ZOOM in sortieLenses) setZoom(params.zoomRatio).onFailure { OpLog.log("error", "sortieZoom", mapOf("message" to it.message)) }
-        owners.sortieStarted()
+        owners.sortieStarted(filesPerShot = sortieLenses.size)
         missionName = name
         // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
         runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected("미션 시작 거절: ${it.message}", it) }
@@ -320,6 +320,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     override suspend fun stopMission(): Result<Unit> {
         val name = missionName ?: return Result.success(Unit)
         missionName = null
+        // 멈추기 직전 지점에서 찍힌 사진이 늦게 와도 지점 사진으로 받는다(RTH·재업로드 때, 미션 완료와 같은 5초)
+        photoGraceUntil = System.currentTimeMillis() + 5_000
         return runCatching { djiDone { missions.stopMission(name, it) } }
     }
 
