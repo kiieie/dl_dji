@@ -89,6 +89,15 @@ class WpmlTransitTest {
     }
 
     @Test
+    fun `촬영 지점은 설정한 렌즈로 한 번에 찍는다(기본 광각+망원)`() {
+        val v = Viewpoints.expand(poles, overhead, home)
+        val both = files(v, overhead, null).getValue("wpmz/waylines.wpml")
+        assertEquals(3, Regex("<wpml:payloadLensIndex>wide,zoom</wpml:payloadLensIndex>").findAll(both).count())
+        val wideOnly = files(v, overhead.copy(lenses = listOf(com.example.myfirstapp.core.model.Lens.WIDE)), null).getValue("wpmz/template.kml")
+        assertTrue("<wpml:payloadLensIndex>wide</wpml:payloadLensIndex>" in wideOnly && "zoom</wpml:payloadLensIndex>" !in wideOnly)
+    }
+
+    @Test
     fun `에너지 - 긴 구간마다 오르내림을 더한다`() {
         val e = EnergyModel(EnergyParams(), overhead)
         // (50 − 30) × 2 / 3m/s: 첫·복귀 한 번 + 긴 구간 2개

@@ -149,10 +149,13 @@ class FakeDroneGateway(
                 if (failNextCaptures > 0) {
                     failNextCaptures--
                 } else {
+                    // 한 번 찍으면 렌즈마다 파일 하나(광각+망원 동시, 5.6)
                     val t = _telemetry.value
-                    val info = CaptureInfo("FAKE_${++mediaSeq}", Lens.WIDE, t.position, t.altitudeM, p.gimbalPitchDeg, p.headingDeg, System.currentTimeMillis())
-                    sdCard += info
-                    _events.emit(DroneEvent.PhotoTaken(i, info))
+                    params.lenses.forEach { lens ->
+                        val info = CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, p.gimbalPitchDeg, p.headingDeg, System.currentTimeMillis())
+                        sdCard += info
+                        _events.emit(DroneEvent.PhotoTaken(i, info))
+                    }
                 }
             }
             _events.emit(DroneEvent.MissionFinished)

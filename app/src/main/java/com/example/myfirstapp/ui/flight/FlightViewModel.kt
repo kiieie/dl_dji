@@ -282,6 +282,7 @@ class FlightViewModel(
     fun resume() {
         viewModelScope.launch {
             camera.backToPhotoAndWait()
+            flightParams?.takeIf { Lens.ZOOM in it.lenses }?.let { camera.restoreZoom(it.zoomRatio) }
             send(Command.Resume)
         }
     }

@@ -441,6 +441,9 @@ class InspectionExecutorTest {
 
     private val sortieMode = ExecutorConfig(sortieMission = true)
 
+    /** 광각만(사진 수를 지점 수로 세는 테스트). 기본은 광각+망원 동시라 지점마다 파일 2개. */
+    private val wideOnly = FlightParams(shotMode = ShotMode.OVERHEAD, lenses = listOf(Lens.WIDE))
+
     @Test
     fun `방식 A - 소티 미션 하나로 날며 지점마다 찍힌 사진을 처리하고 복귀`() = runTest {
         val h = harness(config = sortieMode)
@@ -450,16 +453,17 @@ class InspectionExecutorTest {
         h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
         assertEquals(listOf("startSortie:3"), h.drone.calls.filter { it.startsWith("start") })
         assertTrue(h.drone.calls.none { it.startsWith("capture") }) // 미션 동작이 찍는다
-        assertEquals(3, h.recorder.captures.size)
-        h.awaitUntil { h.recorder.images.size == 3 } // 다운로드·탐지는 비행과 병렬, 착륙 뒤에도 끝까지
-        assertEquals(3, h.recorder.detections.size)
+        assertEquals(6, h.recorder.captures.size) // 지점마다 광각+망원 2개
+        assertEquals(listOf(2, 2, 2), h.executor.uiState.value.visits.map { it.captureCount })
+        h.awaitUntil { h.recorder.images.size == 6 } // 다운로드·탐지는 비행과 병렬, 착륙 뒤에도 끝까지
+        assertEquals(6, h.recorder.detections.size)
         assertEquals(3, h.sounds.count { it == Sound.ARRIVED })
         assertTrue("returnHome" !in h.drone.calls) // 완료 동작 RTH는 기체가 한다
     }
 
     @Test
     fun `방식 A - 4방향 사선은 전주마다 4장`() = runTest {
-        val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.DIAGONAL4))
+        val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.DIAGONAL4, lenses = listOf(Lens.WIDE)))
         h.send(Command.Start)
         h.awaitState(ExecState.MissionDone)
         assertTrue("startSortie:12" in h.drone.calls)
@@ -532,7 +536,7 @@ class InspectionExecutorTest {
 
     @Test
     fun `방식 A - 사진이 안 찍힌 전주는 지나가면 실패로 남는다`() = runTest {
-        val h = harness(config = sortieMode) { it.failNextCaptures = 1 }
+        val h = harness(config = sortieMode, params = wideOnly) { it.failNextCaptures = 1 }
         h.send(Command.Start)
         h.awaitState(ExecState.MissionDone)
         assertEquals(VisitStatus.FAILED, h.visit("A").status)
@@ -542,7 +546,7 @@ class InspectionExecutorTest {
 
     @Test
     fun `방식 A - 탐지는 뒤에서 저장만 하고 비행 중 경고음은 내지 않는다`() = runTest {
-        val h = harness(config = sortieMode, detector = FixedDetector(listOf(Detection("nest", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true))))
+        val h = harness(config = sortieMode, params = wideOnly, detector = FixedDetector(listOf(Detection("nest", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true))))
         h.send(Command.Start)
         h.awaitState(ExecState.MissionDone)
         h.awaitUntil { h.recorder.detections.size == 3 }
@@ -551,7 +555,7 @@ class InspectionExecutorTest {
 
     @Test
     fun `방식 A - RC 셔터 사진은 가까운 전주의 수동 사진이 되고 자동 사진과 섞이지 않는다`() = runTest {
-        val h = harness(config = sortieMode)
+        val h = harness(config = sortieMode, params = wideOnly)
         h.send(Command.Start)
         h.awaitUntil { h.visit("B").captureCount == 1 } // B 상공에서 자동 사진을 찍은 직후
         val shot = h.drone.pressRcShutter()
@@ -583,7 +587,7 @@ class InspectionExecutorTest {
 
     @Test
     fun `RC 셔터 - 전주에서 20m 넘게 떨어져 찍으면 전주에 붙이지 않는다`() = runTest {
-        val h = harness(config = sortieMode)
+        val h = harness(config = sortieMode, params = wideOnly)
         h.send(Command.Start)
         h.awaitUntil { h.visit("A").captureCount == 1 }
         // A(100,0)와 B(100,100) 사이, 어느 전주에서도 20m 넘게 떨어진 곳

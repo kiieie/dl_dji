@@ -76,6 +76,13 @@ internal class CameraControl(
         }
     }
 
+    /** 재개 전용: 일시정지 중 바꾼 망원 배율을 미션 사진 배율로 되돌린다(지점 망원 사진이 그 배율로 찍힘). */
+    suspend fun restoreZoom(ratio: Double) = lock.withLock {
+        if (get().zoomRatio == ratio) return@withLock
+        set { it.copy(zoomRatio = ratio) }
+        drone()?.setZoom(ratio)?.onFailure { e -> Log.w("Camera", "줌 되돌림 실패: ${e.message}") }
+    }
+
     /** 카메라 명령 차례(공정한 [Mutex]라 누른 순서대로). */
     private val lock = Mutex()
 

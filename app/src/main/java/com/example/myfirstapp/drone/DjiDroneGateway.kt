@@ -105,6 +105,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     private val mediaLock = Mutex()
     /** 기체가 FINISHED를 마지막 사진보다 먼저 알린다(2026-10-30 확인). 그 뒤 잠깐 들어온 사진도 미션 사진으로 넘긴다. */
     @Volatile private var photoGraceUntil = 0L
+
+    /** 소티 미션의 촬영 렌즈(KMZ `payloadLensIndex` 순서)와 촬영 지점마다 받은 파일 수: 한 번 찍으면 렌즈마다 파일이 하나씩 온다(5.6). */
+    @Volatile private var sortieLenses: List<Lens> = listOf(Lens.WIDE)
+    private val shotFiles = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private var mediaEnabled = false
 
     private val stateListener = WaypointMissionExecuteStateListener { s ->
@@ -182,7 +186,11 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             OpLog.log("media", owner.name, mapOf("media" to info.index, "waypoint" to waypoint, "shot" to shot))
             when (owner) {
                 MediaOwner.SCREEN -> newPhotos.tryEmit(capture)
-                MediaOwner.WAYPOINT -> _events.tryEmit(DroneEvent.PhotoTaken(shot!!, capture))
+                MediaOwner.WAYPOINT -> {
+                    // 같은 지점의 n번째 파일 = KMZ 렌즈 순서의 n번째(광각 → 망원). 실제 렌즈는 받을 때 파일 이름(_W/_Z)으로 다시 본다
+                    val n = shotFiles.merge(shot!!, 1, Int::plus)!!
+                    _events.tryEmit(DroneEvent.PhotoTaken(shot, capture.copy(lens = sortieLenses.getOrElse(n - 1) { sortieLenses.last() })))
+                }
                 MediaOwner.SHUTTER -> _events.tryEmit(DroneEvent.ShutterPhoto(capture))
                 MediaOwner.NONE -> Unit
             }
@@ -290,6 +298,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         }
         waypoint = -1
         kmzWaypoints = wps
+        sortieLenses = params.lenses.distinct().ifEmpty { listOf(Lens.WIDE) }
+        shotFiles.clear()
+        // 망원 사진 배율(기본 7배, 10-30 사용자 결정). 실패해도 미션은 간다(망원은 지금 배율로 찍힘)
+        if (Lens.ZOOM in sortieLenses) setZoom(params.zoomRatio).onFailure { OpLog.log("error", "sortieZoom", mapOf("message" to it.message)) }
         owners.sortieStarted()
         missionName = name
         // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
@@ -334,7 +346,12 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
                     if (file == null) delay(1_000)
                 }
             }
-            val f = file ?: error("SD에서 사진 #$index 못 찾음")
+            // 같은 번호에 렌즈별 파일이 여럿이면 파일 이름 끝(_W/_Z/_T)으로 고른다
+            val same = media.mediaFileListData.data.filter { it.fileIndex == index }
+            val f = same.firstOrNull { lensOfName(it.fileName) == capture.lens } ?: file ?: error("SD에서 사진 #$index 못 찾음")
+            val named = lensOfName(f.fileName)
+            OpLog.log("media", "download", mapOf("media" to index, "name" to f.fileName, "lens" to capture.lens.name, "same" to same.size))
+            if (named != null && named != capture.lens) Log.w(TAG, "렌즈 불일치 #$index ${f.fileName}: 기록 ${capture.lens}")
             if (mode == DownloadMode.PREVIEW) {
                 val bmp = djiValue<android.graphics.Bitmap> { f.pullPreviewFromCamera(it) }
                 ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
@@ -418,6 +435,14 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         set(d.year, d.month - 1, d.day, d.hour, d.minute, d.second)
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
+
+    /** DJI 파일 이름 끝의 렌즈(`DJI_..._0001_W.JPG`). 모르면 null. */
+    private fun lensOfName(name: String?): Lens? = when (name?.substringBeforeLast('.')?.substringAfterLast('_')?.uppercase()) {
+        "W" -> Lens.WIDE
+        "Z" -> Lens.ZOOM
+        "T" -> Lens.THERMAL
+        else -> null
+    }
 
     companion object {
         const val TAG = "DjiDrone"
