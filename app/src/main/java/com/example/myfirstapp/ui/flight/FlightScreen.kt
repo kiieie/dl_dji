@@ -45,12 +45,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.executor.ExecState
+import com.example.myfirstapp.core.executor.PreflightCheck
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.data.ProjectDao
@@ -162,6 +164,42 @@ private fun FlightContent(
         }
 
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm, onReview)
+        s.preflight?.let { PreflightSheet(it, vm) }
+    }
+}
+
+/** 비행 전 점검(Pilot 2 체크리스트, 매뉴얼 68쪽 [수행]): 항목·값·통과를 보여 주고 확인하면 업로드·시작. */
+@Composable
+private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
+    val ok = items.all { it.ok }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
+        Card(Modifier.fillMaxWidth(0.6f), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("비행 전 점검", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                // 화면 높이가 좁아 두 줄로 나눠 놓는다
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    items.chunked((items.size + 1) / 2).forEach { col ->
+                        Column(Modifier.weight(1f)) {
+                            col.forEach { c ->
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(if (c.ok) "●" else "▲", color = if (c.ok) PoleDone else PoleFailed)
+                                    Text(c.label, maxLines = 1)
+                                    Text(
+                                        c.value, modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1,
+                                        color = if (c.ok) MaterialTheme.colorScheme.onSurfaceVariant else PoleFailed,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 12.dp)) {
+                    Button(onClick = vm::confirmPreflight, enabled = ok, modifier = Modifier.heightIn(min = 56.dp)) { Text("업로드 후 시작") }
+                    OutlinedButton(onClick = vm::closePreflight, modifier = Modifier.heightIn(min = 56.dp)) { Text("취소") }
+                    if (!ok) Text("▲ 항목을 해결하세요", color = PoleFailed, modifier = Modifier.align(Alignment.CenterVertically))
+                }
+            }
+        }
     }
 }
 
@@ -305,7 +343,7 @@ private fun BottomAction(s: FlightUiState, vm: FlightViewModel, onShowResult: ()
         }
     }
     when (s.exec.state) {
-        ExecState.Idle -> Button(onClick = vm::start, modifier = Modifier.size(240.dp, 64.dp)) {
+        ExecState.Idle -> Button(onClick = vm::openPreflight, modifier = Modifier.size(240.dp, 64.dp)) {
             Text("비행 시작", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         ExecState.Paused -> Button(

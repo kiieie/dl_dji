@@ -1,5 +1,9 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.core.model.VisitStatus
+import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.executor.PreflightEvaluator
+import com.example.myfirstapp.core.executor.PreflightCheck
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.executor.ExecutorConfig
 import com.example.myfirstapp.data.TelemetrySampleEntity
@@ -82,6 +86,8 @@ data class FlightUiState(
     val sortieSummary: SortieSummary? = null,
     /** FPV 렌즈(Pilot 2 카메라 뷰 전환). */
     val lens: Lens = Lens.WIDE,
+    /** 비행 전 점검 체크리스트(Pilot 2): [비행 시작]을 누르면 채워지고, 확인하면 비운다. */
+    val preflight: List<PreflightCheck>? = null,
 ) {
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.SortieDone, ExecState.MissionDone)
     val sortieCount get() = (exec.visits.maxOfOrNull { it.sortieIndex } ?: 0) + 1
@@ -111,6 +117,8 @@ class FlightViewModel(
     private var executor: InspectionExecutor? = null
     private var drone: DroneGateway? = null
     private var energy: EnergyModel? = null
+    private var plans: List<SortiePlan> = emptyList()
+    private var flightParams: FlightParams? = null
     /** 실행기 소티 순번 → 그 소티의 방문 id. */
     private var sortieVisits: List<List<Long>> = emptyList()
 
@@ -156,12 +164,14 @@ class FlightViewModel(
         // 복구할 소티는 남은 전주가 없어도 넣는다(착륙·소티 종료를 그 소티에 기록해야 한다)
         val groups = dbSorties.filter { it.id in bySortie || it.id == open?.id }.map { it.id to bySortie[it.id].orEmpty() }
         sortieVisits = groups.map { (_, g) -> g.map { it.visitId } }
+        flightParams = params
         val sorties = groups.map { (_, g) ->
             val poles = g.map { Pole(it.poleId, GeoPoint(it.lat, it.lon), it.lineName, it.note) }
             val route = listOf(home) + poles.map { it.position } + home
             val dist = route.zipWithNext { a, b -> LocalProjection.distanceM(a, b) }.sum()
             SortiePlan(poles, dist, energy.sortieCost(dist, poles.size), energy.sortieDurationSec(dist, poles.size))
         }
+        plans = sorties
         val recorder = RoomRecorder(
             dao, missionId,
             groups.map { (id, g) -> RecorderSortie(id, g.map { it.visitId to it.poleId }) },
@@ -237,6 +247,28 @@ class FlightViewModel(
     }
 
     fun start() = send(Command.Start)
+
+    /** [비행 시작]: Pilot 2처럼 먼저 비행 전 점검 체크리스트를 보여 준다(판정은 실행기도 다시 한다, 6.7). */
+    fun openPreflight() {
+        val d = drone ?: return
+        val p = flightParams ?: return
+        viewModelScope.launch {
+            val ui = _state.value.exec
+            val index = plans.indices.firstOrNull { i -> ui.visits.any { it.sortieIndex == i && it.status == VisitStatus.PENDING } } ?: ui.sortieIndex
+            val plan = plans.getOrNull(index)
+            val first = ui.visits.firstOrNull { it.sortieIndex == index && it.status == VisitStatus.PENDING }?.pole?.position
+            val list = PreflightEvaluator.checklist(d.preflight(), p, plan?.estBatteryPct ?: 0.0, first)
+            _state.update { it.copy(preflight = list) }
+        }
+    }
+
+    fun closePreflight() = _state.update { it.copy(preflight = null) }
+
+    /** 체크리스트 확인 → 업로드·시작. */
+    fun confirmPreflight() {
+        closePreflight()
+        start()
+    }
 
     /** 배터리를 교체했다고 보고 다음 소티를 시작한다(모의 기체는 배터리를 100%로 채운다). */
     fun nextSortie() {
