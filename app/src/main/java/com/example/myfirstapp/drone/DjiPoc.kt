@@ -3,6 +3,7 @@ package com.example.myfirstapp.drone
 import android.util.Log
 import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.value.camera.CameraStorageLocation
@@ -169,6 +170,20 @@ object DjiPoc {
                 if (error != null) log("미션 중단 이유: ${error.errorCode()} ${error.description()}")
             }
         })
+        // 사진이 생길 때마다 그 순간의 위치·기수·짐벌을 남긴다(촬영 지점 대조용, 5.6)
+        val keys = KeyManager.getInstance()
+        keys.listen(KeyTools.createKey(GimbalKey.KeyGimbalAttitude), this) { _, _ -> }
+        keys.listen(KeyTools.createKey(CameraKey.KeyNewlyGeneratedMediaFile, camera), this) { _, info ->
+            if (info == null) return@listen
+            val p = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D))
+            val heading = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyCompassHeading))
+            val gimbal = keys.getValue(KeyTools.createKey(GimbalKey.KeyGimbalAttitude))
+            log(
+                "사진 #${info.index} 웨이포인트 $lastWaypoint 위치 %.6f, %.6f 고도 %.1f 기수 %.0f 짐벌 %.1f".format(
+                    p?.latitude ?: 0.0, p?.longitude ?: 0.0, p?.altitude ?: 0.0, heading ?: 0.0, gimbal?.pitch ?: 0.0,
+                ),
+            )
+        }
     }
 
     /** PoC ①: KMZ 업로드 시간. */
