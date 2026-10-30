@@ -58,7 +58,7 @@ class RoutePlanner(
             var inner = 0.0
             for (j in i..n) {
                 if (j > i) inner += enu[j - 2].distanceTo(enu[j - 1])
-                val dist = enu[i - 1].distanceTo(origin) + inner + enu[j - 1].distanceTo(origin)
+                val dist = energy.pathM(enu[i - 1].distanceTo(origin) + enu[j - 1].distanceTo(origin), inner)
                 val cost = energy.sortieCost(dist, j - i + 1)
                 if (cost > budget) break // 전주를 더할수록 비용이 줄지 않으므로(삼각 부등식) 중단
                 if (v[i - 1] + cost < v[j]) {
@@ -87,9 +87,12 @@ class RoutePlanner(
         return RoutePlan(home, sorties.toList(), unreachable)
     }
 
-    /** 소티 재최적화(5.4): 이륙 지점 + 소티 전주로 TSP를 다시 풀어 더 짧으면 그 순서를 쓴다. (순서, 닫힌 경로 길이)를 돌려준다. */
+    /** 소티 재최적화(5.4): 이륙 지점 + 소티 전주로 TSP를 다시 풀어 더 짧으면 그 순서를 쓴다. (순서, 경로 길이 [EnergyModel.pathM])를 돌려준다. */
     private fun reoptimize(seg: List<Int>, enu: List<Enu>, origin: Enu): Pair<List<Int>, Double> {
-        fun length(s: List<Int>) = (listOf(origin) + s.map { enu[it] } + origin).zipWithNext { a, b -> a.distanceTo(b) }.sum()
+        fun length(s: List<Int>) = energy.pathM(
+            enu[s.first()].distanceTo(origin) + enu[s.last()].distanceTo(origin),
+            s.zipWithNext { a, b -> enu[a].distanceTo(enu[b]) }.sum(),
+        )
         val solved = tsp.solve(listOf(origin) + seg.map { enu[it] }).map { seg[it - 1] }
         return listOf(seg, solved).map { it to length(it) }.minBy { it.second }
     }

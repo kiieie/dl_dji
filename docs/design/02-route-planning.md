@@ -50,7 +50,7 @@ V[j] = min_{i ≤ j} { V[i-1] + cost(i, j) }   단, cost(i, j) ≤ 배터리 예
 ```
 E_move(d)   = d / v_cruise × r_cruise      (%/s)
 E_leg_ovh   = t_leg_overhead × r_hover               (구간 KMZ 생성·업로드·시작 대기, 6.1 방식 B)
-E_visit     = (t_capture + t_download + t_analyze + t_wait) × r_hover + E_climb_descent
+E_visit     = (t_capture + t_download + t_analyze + t_wait) × r_hover + E_climb_descent   (방식 B. 방식 A 기본은 촬영 지점 수 × t_shot(6초) × r_hover, 다운로드·분석은 비행과 병렬)
 E_climb_descent   = 2 × (이동 고도 − 점검 고도) / v_vertical × r_hover
 E_takeoff_landing = 2 × 이동 고도 / v_vertical × r_hover
 예산         = 시작 배터리%(기본 100) − 예비율(기본 30%) − RTH 여유(기본 5%)
@@ -87,7 +87,7 @@ E_takeoff_landing = 2 × 이동 고도 / v_vertical × r_hover
 - 짐벌 피치: `-atan((비행 고도 − 조준 높이) / d)`.
 - 기본값: 비행 고도 27m(이륙 지점 기준), `d` 10m, 조준 높이 17.5m(전주 머리 15~20m의 가운데) → 피치 약 -44°. 현장 계산표의 추천(25m, -45°)과 실제 비행(27m, -55°) 사이 값이다.
 - 방문 순서는 **4패스**(현장 방식, 2026-10-30 변경): 선로 한쪽 평행선을 따라 가며 전주 뒤쪽 대각선에서 찍고, 같은 쪽으로 돌아오며 앞쪽 대각선에서 찍은 뒤, 반대쪽을 같은 식으로 오간다. 한 패스 안에서 기수가 선로 쪽 45°로 일정하고, 전선은 패스 2 → 3에서 한 번만 넘는다. 이륙 지점에서 가까운 끝·가까운 쪽부터 시작한다. (처음 구현은 전주마다 네 곳을 한 바퀴 돌아 전선을 두 번씩 넘고 기수가 90°씩 돌아 바꿨다.)
-- 에너지(5.5): 이동 거리와 방문을 4배로 잡는다(4패스·4장, 이륙 지점 왕복까지 4배라 보수적). 계획·비행 지도에는 실제 촬영 지점 경로를 그린다.
+- 에너지(5.5): 전주 사이 구간만 4번 지나고(이륙 지점 왕복은 한 번), 사진은 전주마다 4장으로 잡는다(`EnergyModel.pathM`, `shots`). 방식 A의 지점 처리 시간 `shotSec`은 6초(시뮬레이터 실측). 계획·비행 지도에는 실제 촬영 지점 경로를 그린다.
 - 결과는 촬영 지점마다 `CAPTURE.viewpoint`(0~3)로 남긴다(4.2). 1차 판독·내보내기는 전주 단위로 묶고, 사진은 방향별로 본다.
 
 **안전 규칙**

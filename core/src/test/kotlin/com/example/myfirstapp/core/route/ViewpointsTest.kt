@@ -98,9 +98,12 @@ class ViewpointsTest {
     }
 
     @Test
-    fun `4방향 사선은 배터리 예측을 4패스·4장으로 잡는다`() {
+    fun `4방향 사선은 배터리 예측에서 전주 사이 구간만 4번, 사진은 4장으로 잡는다`() {
         val over = EnergyModel(EnergyParams(), FlightParams())
         val diag = EnergyModel(EnergyParams(), diagonal)
-        assertTrue(diag.sortieCost(1000.0, 10) > 3 * over.sortieCost(1000.0, 10) - 3 * over.takeoffLanding)
+        // 이륙 지점 왕복(200m)은 한 번, 전주 사이(1,000m)만 4번
+        assertEquals(1200.0, over.pathM(200.0, 1000.0), 0.0)
+        assertEquals(4200.0, diag.pathM(200.0, 1000.0), 0.0)
+        assertEquals(4 * over.perVisit, diag.perVisit, 1e-9)
     }
 }

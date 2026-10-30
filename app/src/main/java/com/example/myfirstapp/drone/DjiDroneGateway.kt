@@ -128,7 +128,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         }
         on(FlightControllerKey.KeyConnection) { onConnection(it == true) }
         on(FlightControllerKey.KeyAircraftLocation3D) { p ->
-            _telemetry.update { t -> if (p == null || (p.latitude == 0.0 && p.longitude == 0.0)) t else t.copy(position = GeoPoint(p.latitude, p.longitude), altitudeM = p.altitude) }
+            _telemetry.update { t -> if (p == null || !validGeo(p.latitude, p.longitude)) t else t.copy(position = GeoPoint(p.latitude, p.longitude), altitudeM = p.altitude) }
         }
         on(FlightControllerKey.KeyAircraftVelocity) { v ->
             // 속도는 북·동·아래(NED) 성분이라 수직 속도는 부호를 바꾼다
@@ -139,7 +139,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(BatteryKey.KeyChargeRemainingInPercent) { b -> _telemetry.update { it.copy(batteryPct = (b ?: 0).toDouble()) } }
         on(FlightControllerKey.KeyGPSSignalLevel) { g -> _telemetry.update { it.copy(gpsLevel = gpsLevel(g)) } }
         on(FlightControllerKey.KeyHomeLocation) { h ->
-            _telemetry.update { it.copy(home = h?.takeIf { h.latitude != 0.0 || h.longitude != 0.0 }?.let { GeoPoint(h.latitude, h.longitude) }) }
+            _telemetry.update { it.copy(home = h?.takeIf { validGeo(h.latitude, h.longitude) }?.let { GeoPoint(h.latitude, h.longitude) }) }
         }
         on(FlightControllerKey.KeyFlightMode) { m -> onFlightMode(m) }
         on(FlightControllerKey.KeyIsLandingConfirmationNeeded) { n -> _telemetry.update { it.copy(landingConfirmNeeded = n == true) } }
@@ -223,7 +223,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     override suspend fun preflight(): PreflightReport {
         val t = _telemetry.value
-        val home = read(FlightControllerKey.KeyHomeLocation)?.takeIf { it.latitude != 0.0 || it.longitude != 0.0 }
+        val home = read(FlightControllerKey.KeyHomeLocation)?.takeIf { validGeo(it.latitude, it.longitude) }
         return PreflightReport(
             connected = t.connected,
             gpsSatellites = read(FlightControllerKey.KeyGPSSatelliteCount) ?: 0,
