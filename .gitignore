@@ -43,3 +43,7 @@ secrets/
 # design-sync 산출물(.design-sync/build.mjs로 재생성)
 ds-bundle/
 .design-sync/.cache/
+
+# 현장 시험 자료(실제 전주 좌표, 공개 저장소에 올리지 않음)
+docs/drone_dl_test/
+docs/drone_dl_test.zip
