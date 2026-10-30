@@ -472,6 +472,10 @@ class InspectionExecutorTest {
         )
         assertEquals(ExecState.LinkLost, h.state) // 땅으로 보고 소티를 닫거나 일시정지로 들어가지 않음
         assertTrue(h.drone.calls.isEmpty())
+        // 값이 늦게 오면(알림을 놓쳐도) 그 값으로 맞춘다: 떠 있으면 일시정지
+        h.drone.simulateFlightModeArrives(FlightMode.MANUAL)
+        h.scope.runCurrent()
+        assertEquals(ExecState.Paused, h.state)
     }
 
     @Test

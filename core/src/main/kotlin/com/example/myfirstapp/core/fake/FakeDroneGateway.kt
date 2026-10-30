@@ -282,6 +282,9 @@ class FakeDroneGateway(
         _events.tryEmit(DroneEvent.ConnectionLost)
     }
 
+    /** 앱 재시작 직후처럼 비행 모드 값이 늦게 온다(재연결 알림 없이). */
+    fun simulateFlightModeArrives(mode: FlightMode) = _telemetry.update { it.copy(flightMode = mode) }
+
     fun simulateLinkRestored() {
         _telemetry.update { it.copy(connected = true) }
         _events.tryEmit(DroneEvent.ConnectionRestored)

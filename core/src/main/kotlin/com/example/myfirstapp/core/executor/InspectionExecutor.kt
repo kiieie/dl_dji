@@ -279,21 +279,25 @@ class InspectionExecutor(
                 notifier.play(Sound.ERROR)
                 enter(LinkLost, "기체 연결 끊김")
             }
-            DroneEvent.ConnectionRestored -> if (state == LinkLost) {
-                // 재연결 시 기체 비행 모드로 상태를 다시 맞춘다(6.4)
-                when (drone.telemetry.value.flightMode) {
-                    FlightMode.GO_HOME, FlightMode.LANDING -> {
-                        appInitiatedRth = false
-                        enter(ReturningHome, "재연결: 기체 RTH 중")
-                    }
-                    FlightMode.ON_GROUND -> enter(SortieDone, "재연결: 착륙 상태")
-                    else -> pauseRunningMission("재연결")
-                }
-            }
+            DroneEvent.ConnectionRestored -> if (state == LinkLost) onRestored()
         }
     }
 
-    private fun onTelemetry(t: Telemetry) {
+    /** 재연결(6.4): 기체 비행 모드로 상태를 다시 맞춘다. 알림을 놓쳐도 텔레메트리로 한 번 더 본다([onTelemetry]). */
+    private suspend fun onRestored() {
+        when (drone.telemetry.value.flightMode) {
+            FlightMode.GO_HOME, FlightMode.LANDING -> {
+                appInitiatedRth = false
+                enter(ReturningHome, "재연결: 기체 RTH 중")
+            }
+            FlightMode.ON_GROUND -> enter(SortieDone, "재연결: 착륙 상태")
+            else -> pauseRunningMission("재연결")
+        }
+    }
+
+    private suspend fun onTelemetry(t: Telemetry) {
+        // 실행기가 구독하기 전에 재연결 알림이 지나갔어도 연결·비행 모드가 정해지면 맞춘다
+        if (state == LinkLost && t.connected && t.flightMode != FlightMode.UNKNOWN) return onRestored()
         // 구간 비행 중 감시(5.5): 복귀에 필요한 배터리 + 20% 아래면 RTH 권고
         if (state == FlyingLeg && rthJob == null && energy.mustReturn(t.batteryPct, distance(t.position, homePoint()))) {
             promptRth("배터리 부족 — 복귀 권고")

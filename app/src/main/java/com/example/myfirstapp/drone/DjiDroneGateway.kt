@@ -26,6 +26,7 @@ import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.RemoteControllerKey
 import dji.sdk.keyvalue.value.camera.CameraMode
+import dji.sdk.keyvalue.value.camera.CameraStreamSettingsInfo
 import dji.sdk.keyvalue.value.camera.CameraStorageLocation
 import dji.sdk.keyvalue.value.camera.MediaFileType
 import dji.sdk.keyvalue.value.common.CameraLensType
@@ -168,9 +169,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(FlightControllerKey.KeyIsLandingConfirmationNeeded) { n -> _telemetry.update { it.copy(landingConfirmNeeded = n == true) } }
         on(FlightControllerKey.KeyIsFlying) { flying ->
             val was = _telemetry.value.isFlying
-            if (flying == false) _telemetry.update { it.copy(flightMode = AppFlightMode.ON_GROUND) }
-            // 비행 모드가 이륙 판정보다 먼저 오면 땅으로 굳으므로 떠오르면 다시 계산한다
-            if (flying == true) onFlightMode(keys.getValue(KeyTools.createKey(FlightControllerKey.KeyFlightMode)))
+            // 비행 모드는 이륙 판정과 함께 정한다(어느 쪽이 먼저 와도 다시 계산)
+            if (flying != null) onFlightMode(keys.getValue(KeyTools.createKey(FlightControllerKey.KeyFlightMode)))
             if (was && flying == false) _events.tryEmit(DroneEvent.Landed)
         }
         on(GimbalKey.KeyGimbalAttitude) { g -> _telemetry.update { it.copy(gimbalPitchDeg = g?.pitch ?: 0.0) } }
@@ -247,7 +247,12 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             DjiFlightMode.GO_HOME -> AppFlightMode.GO_HOME
             DjiFlightMode.AUTO_TAKE_OFF -> AppFlightMode.TAKING_OFF
             DjiFlightMode.AUTO_LANDING, DjiFlightMode.FORCE_LANDING, DjiFlightMode.ATTI_LANDING -> AppFlightMode.LANDING
-            else -> if (keys.getValue(KeyTools.createKey(FlightControllerKey.KeyIsFlying), false)) AppFlightMode.MANUAL else AppFlightMode.ON_GROUND
+            // 앱을 막 다시 켜면 SDK 값이 아직 없다: 이륙 여부를 모르면 땅으로 보지 않고 UNKNOWN(2026-10-31 시뮬레이터, 떠 있는데 소티를 닫음)
+            else -> when (keys.getValue(KeyTools.createKey(FlightControllerKey.KeyIsFlying))) {
+                true -> AppFlightMode.MANUAL
+                false -> AppFlightMode.ON_GROUND
+                null -> AppFlightMode.UNKNOWN
+            }
         }
         val before = _telemetry.value.flightMode
         _telemetry.update { it.copy(flightMode = mode) }
@@ -321,6 +326,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         sortieLenses = params.lenses.distinct().ifEmpty { listOf(Lens.WIDE) }
         // 망원 사진 배율(기본 7배, 10-30 사용자 결정). 실패해도 미션은 간다(망원은 지금 배율로 찍힘)
         if (Lens.ZOOM in sortieLenses) setZoom(params.zoomRatio).onFailure { OpLog.log("error", "sortieZoom", mapOf("message" to it.message)) }
+        setCaptureLenses(sortieLenses)
         // 지점마다 오는 파일 수: 렌즈 수, 설비 조준 사진이 있으면 두 번(5.6)
         val lensCount = sortieLenses.size
         owners.sortieStarted { shot -> lensCount * (if (points.getOrNull(shot)?.equipmentPitchDeg != null) 2 else 1) }
@@ -468,6 +474,24 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
 
+    /**
+     * 사진을 저장할 렌즈(Pilot 2 "사진 저장" 설정, `KeyCaptureCameraStreamSettings`). 2026-10-31 시뮬레이터에서 KMZ `wide,zoom`만으로는
+     * 지점마다 파일 1개(`_V`)만 생겨 카메라 쪽 설정도 맞춘다. 실패해도 미션은 간다(그때는 카메라 설정대로 찍힘). 앞뒤 값을 로그에 남긴다.
+     */
+    private suspend fun setCaptureLenses(lenses: List<Lens>) {
+        val key = KeyTools.createKey(CameraKey.KeyCaptureCameraStreamSettings, camera)
+        val before = runCatching { keys.getValue(key)?.toJson()?.toString() }.getOrNull()
+        val sources = lenses.mapNotNull {
+            when (it) {
+                Lens.WIDE -> CameraVideoStreamSourceType.WIDE_CAMERA
+                Lens.ZOOM -> CameraVideoStreamSourceType.ZOOM_CAMERA
+                Lens.THERMAL -> CameraVideoStreamSourceType.INFRARED_CAMERA
+            }
+        }
+        val result = runCatching { djiDone { keys.setValue(key, CameraStreamSettingsInfo(false, sources), it) } }
+        OpLog.log("camera", "captureLenses", mapOf("before" to before, "set" to sources.joinToString { it.name }, "ok" to result.isSuccess, "error" to result.exceptionOrNull()?.message))
+    }
+
     /** 마지막으로 만든 소티 KMZ의 미션 이름(`sortie_<시각>`). */
     private fun lastKmzName(): String? = kmzDir.listFiles { f -> f.name.startsWith("sortie_") && f.extension == "kmz" }?.maxByOrNull { it.lastModified() }?.nameWithoutExtension
 
@@ -478,7 +502,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     private fun lensOfName(name: String?): Lens? = when (name?.let { Regex("_([WZT])(?=[_.])", RegexOption.IGNORE_CASE).find(it) }?.groupValues?.get(1)?.uppercase()) {
         "W" -> Lens.WIDE
         "Z" -> Lens.ZOOM
-        "T" -> Lens.THERMAL
+        // M3T는 _T가 열화상, M3E는 망원이 _T일 수 있다(현장 확인 전): 열화상을 찍는 소티가 아니면 망원으로 본다
+        "T" -> if (Lens.THERMAL in sortieLenses) Lens.THERMAL else Lens.ZOOM
         else -> null
     }
 
