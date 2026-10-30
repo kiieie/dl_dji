@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +46,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,7 +66,7 @@ import com.example.myfirstapp.ui.theme.numberStyle
 
 /**
  * 비행경로(10.4.3 시안): 머리글 아래 왼쪽 프로젝트 목록(216dp, 최신순 한 줄), 오른쪽 고른 프로젝트의 미션 표.
- * 전주 파일 가져오기는 자주 쓰지 않으므로 [전주 파일] 대화상자로 둔다. 프로젝트 삭제는 줄을 길게 누른다.
+ * 전주 파일 가져오기는 자주 쓰지 않으므로 [전주 파일] 대화상자로 둔다. 속성 갱신·삭제는 줄의 ⋯ 메뉴(삭제는 길게 누르기도).
  */
 @Composable
 fun ProjectScreen(
@@ -79,6 +83,7 @@ fun ProjectScreen(
     val vm: ProjectViewModel = viewModel(factory = ProjectViewModel.factory(dao, resolver))
     val s by vm.state.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::onCsvPicked) }
+    val attrPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::onAttrFilePicked) }
     var selectedId by rememberSaveable { mutableStateOf(initialProjectId) }
     // 새로 가져온 프로젝트(전에 없던 id가 맨 위)면 그것을 고른다. 처음 읽을 때, 다른 화면에서 돌아올 때, 맨 위를 지울 때는 고른 것을 둔다
     var knownIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
@@ -120,7 +125,12 @@ fun ProjectScreen(
                         contentPadding = PaddingValues(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        items(s.projects, key = { it.id }) { p -> ProjectRow(p, p.id == selected?.id, onClick = { selectedId = p.id }, onDelete = { vm.askDelete(p) }) }
+                        items(s.projects, key = { it.id }) { p ->
+                            ProjectRow(
+                                p, p.id == selected?.id, menuOpen = s.menuFor == p.id, onClick = { selectedId = p.id },
+                                onMenu = { vm.openMenu(if (it) p.id else null) }, onAttrUpdate = { vm.openAttrUpdate(p) }, onDelete = { vm.askDelete(p) },
+                            )
+                        }
                     }
                 }
             }
@@ -131,7 +141,7 @@ fun ProjectScreen(
                         onFlight = { onFlight(selected.id, it) },
                         onReplan = { onReplan(selected.id, it) },
                         onResult = { onResult(selected.id, it) },
-                        enabled5d = !s.importing && s.deleting == null,
+                        enabled5d = !s.overlayOpen,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -140,6 +150,7 @@ fun ProjectScreen(
     }
 
     if (s.importing) ImportDialog(s, vm, onPick = { picker.launch(arrayOf("*/*")) }, onClose = vm::cancelImport)
+    s.attrTarget?.let { AttrUpdateDialog(it, s, vm, onPick = { attrPicker.launch(arrayOf("*/*")) }) }
 
     s.deleting?.let { project ->
         FullscreenAlertDialog(
@@ -168,9 +179,15 @@ private fun HeaderButton(icon: Int, label: String, enabled: Boolean = true, onCl
     }
 }
 
-/** 프로젝트 한 줄(36dp): 이름과 전주 수. 고른 줄은 #2A2A2A + 왼쪽 3dp 파랑 막대. 길게 누르면 삭제를 묻는다. */
+/**
+ * 프로젝트 한 줄(36dp): 이름, 전주 수, ⋯ 메뉴([전주 파일로 속성 갱신] [삭제]). 고른 줄은 #2A2A2A + 왼쪽 3dp 파랑 막대.
+ * 길게 눌러도 삭제를 묻는다. 메뉴 열림은 ViewModel이 들고 있어 열린 동안 5D를 받지 않는다.
+ */
 @Composable
-private fun ProjectRow(p: ProjectSummary, selected: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun ProjectRow(
+    p: ProjectSummary, selected: Boolean, menuOpen: Boolean, onClick: () -> Unit,
+    onMenu: (Boolean) -> Unit, onAttrUpdate: () -> Unit, onDelete: () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(4.dp))
             .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
@@ -183,10 +200,42 @@ private fun ProjectRow(p: ProjectSummary, selected: Boolean, onClick: () -> Unit
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Color.White else TextSoft,
         )
         Text(
-            "${p.poleCount}", Modifier.padding(start = 8.dp, end = 8.dp), style = numberStyle(13.sp, FontWeight.Medium),
+            "${p.poleCount}", Modifier.padding(start = 8.dp), style = numberStyle(13.sp, FontWeight.Medium),
             color = if (selected) TextSoft else MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Box {
+            IconButton(onClick = { onMenu(true) }, modifier = Modifier.size(36.dp).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
+            DropdownMenu(menuOpen, onDismissRequest = { onMenu(false) }) {
+                DropdownMenuItem(text = { Text("전주 파일로 속성 갱신") }, onClick = onAttrUpdate)
+                DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { onMenu(false); onDelete() })
+            }
+        }
     }
+}
+
+/** 전주 속성 갱신(4.5.7): 파일 고르기 → 바뀔·새·없는 전주 수 미리보기 → [갱신]. 좌표·미션·사진·판독은 그대로 둔다. */
+@Composable
+private fun AttrUpdateDialog(p: ProjectSummary, s: ProjectUiState, vm: ProjectViewModel, onPick: () -> Unit) {
+    FullscreenAlertDialog(
+        onDismissRequest = vm::closeAttrUpdate,
+        title = { Text("${p.name} 속성 갱신") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPick, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("엑셀·CSV 파일 선택") }
+                s.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                when (val d = s.attrDiff) {
+                    null -> Text("전산화번호로 전주를 맞춰 고/저압·설치기기·규격 등 속성만 바꿉니다. 좌표·미션·사진·판독은 그대로입니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> {
+                        Text("바뀔 전주 ${d.changed.size}개")
+                        Text("파일에만 있는 새 전주 ${d.newInFile}개(추가하지 않음)", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("파일에 없는 전주 ${d.missingInFile}개(그대로 둠)", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        },
+        confirmButton = { Button(enabled = !s.attrDiff?.changed.isNullOrEmpty(), onClick = vm::confirmAttrUpdate) { Text("갱신") } },
+        dismissButton = { TextButton(onClick = vm::closeAttrUpdate) { Text("닫기") } },
+    )
 }
 
 /** 전주 파일 가져오기(F-01): 파일 고르기 → 미리보기·이름 → 저장. 저장하면 닫힌다. */

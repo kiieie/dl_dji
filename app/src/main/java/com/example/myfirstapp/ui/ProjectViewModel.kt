@@ -9,7 +9,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.core.csv.CsvImportResult
+import com.example.myfirstapp.core.csv.PoleAttrDiff
 import com.example.myfirstapp.core.csv.PoleCsvParser
+import com.example.myfirstapp.core.csv.diffPoleAttributes
+import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.ProjectSummary
 import kotlinx.coroutines.Dispatchers
@@ -30,8 +33,18 @@ data class ProjectUiState(
     val message: String? = null,
     /** 삭제 확인 대화상자를 띄울 프로젝트. */
     val deleting: ProjectSummary? = null,
+    /** ⋯ 메뉴가 열린 프로젝트 id. */
+    val menuFor: Long? = null,
+    /** 속성 갱신(4.5.7) 대화상자를 띄울 프로젝트. */
+    val attrTarget: ProjectSummary? = null,
+    /** 고른 파일로 계산한 속성 갱신 미리보기와 그때 읽은 전주. */
+    val attrDiff: PoleAttrDiff? = null,
+    val attrPoles: List<Pole> = emptyList(),
 ) {
     val canSave get() = (result as? CsvImportResult.Success)?.poles?.isNotEmpty() == true && projectName.isNotBlank()
+
+    /** 메뉴·대화상자가 떠 있음(미션 표 5D를 막는다). */
+    val overlayOpen get() = importing || deleting != null || menuFor != null || attrTarget != null
 }
 
 /** 프로젝트 목록 ①과 CSV 가져오기 ②(10장). 파일 읽기·파싱·저장·삭제를 맡는다. */
@@ -75,6 +88,39 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
         val p = _state.value.deleting ?: return
         _state.update { it.copy(deleting = null) }
         viewModelScope.launch { dao.deleteProject(p.id) }
+    }
+
+    fun openMenu(id: Long?) = _state.update { it.copy(menuFor = id) }
+
+    fun openAttrUpdate(p: ProjectSummary) = _state.update { it.copy(menuFor = null, attrTarget = p, attrDiff = null, attrPoles = emptyList(), message = null) }
+    fun closeAttrUpdate() = _state.update { it.copy(attrTarget = null, attrDiff = null, attrPoles = emptyList(), message = null) }
+
+    /** 속성 갱신 파일: 파싱하고 기존 전주와 전산화번호로 맞춰 미리보기를 만든다. */
+    fun onAttrFilePicked(uri: Uri) = viewModelScope.launch {
+        val p = _state.value.attrTarget ?: return@launch
+        _state.update { it.copy(attrDiff = null, attrPoles = emptyList(), message = null) }
+        runCatching {
+            withContext(Dispatchers.IO) {
+                when (val r = readCsv(uri).second) {
+                    is CsvImportResult.HeaderError -> error("필수 열을 찾지 못했습니다(${r.missing.joinToString()})")
+                    is CsvImportResult.Success -> r.poles to diffPoleAttributes(dao.polesOf(p.id).map { it.toPole() }, r.poles)
+                }
+            }
+        }
+            .onSuccess { (poles, diff) -> _state.update { it.copy(attrPoles = poles, attrDiff = diff) } }
+            .onFailure { e -> _state.update { it.copy(message = "파일을 읽지 못했습니다: ${e.message}") } }
+    }
+
+    fun confirmAttrUpdate() {
+        val s = _state.value
+        val p = s.attrTarget ?: return
+        if (s.attrDiff?.changed.isNullOrEmpty()) return
+        OpLog.log("project", "attrUpdate", mapOf("project" to p.id, "changed" to s.attrDiff?.changed?.size))
+        viewModelScope.launch {
+            runCatching { dao.updatePoleAttributes(p.id, s.attrPoles) }
+                .onSuccess { closeAttrUpdate() }
+                .onFailure { e -> _state.update { it.copy(message = "갱신하지 못했습니다: ${e.message}") } }
+        }
     }
 
     /** SAF로 고른 파일을 읽어 파싱한다. 파일 이름은 프로젝트 이름 기본값으로 쓴다. */
