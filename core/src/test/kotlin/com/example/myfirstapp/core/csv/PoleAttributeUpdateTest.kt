@@ -36,9 +36,12 @@ class PoleAttributeUpdateTest {
     }
 
     @Test
-    fun `지선주는 파일 값을 따른다`() {
-        val d = diffPoleAttributes(listOf(Pole("P1", here, guy = true)), listOf(Pole("P1", here, guy = false)))
-        assertEquals(false, d.changed.single().guy)
+    fun `지선주는 파일에 지선주가 있을 때만 파일 값을 따른다`() {
+        val existing = listOf(Pole("P1", here, guy = true), Pole("P2", here))
+        val d = diffPoleAttributes(existing, listOf(Pole("P1", here, guy = false), Pole("P2", here, guy = true)))
+        assertEquals(listOf(false, true), d.changed.map { it.guy })
+        // 전주형태 열이 없는 CSV(지선주 0개): 지선주 표시를 풀지 않는다
+        assertTrue(diffPoleAttributes(existing, listOf(Pole("P1", here, guy = false))).changed.isEmpty())
     }
 
     @Test

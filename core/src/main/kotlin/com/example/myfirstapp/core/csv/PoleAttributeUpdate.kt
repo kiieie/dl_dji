@@ -10,10 +10,13 @@ data class PoleAttrDiff(val changed: List<Pole>, val newInFile: Int, val missing
 
 /**
  * 파일 전주를 기존 전주와 전산화번호([Pole.poleId])로 맞춰 속성만 바꾼다. 좌표는 기존 값을 둔다.
- * 파일 칸이 비어 있으면(null) 기존 값을 두고, 지선주([Pole.guy])는 파일 값을 따른다.
+ * 파일 칸이 비어 있으면(null) 기존 값을 둔다. 지선주([Pole.guy])는 파일에 지선주가 하나라도 있을 때만 파일 값을 따른다
+ * (전주형태 열이 없는 CSV로 갱신해 지선주 표시가 모두 풀리지 않게).
+ * ponytail: 열이 있는데 지선주가 하나도 없는 파일은 지선주를 풀지 못한다. 필요하면 파서가 열 유무를 함께 돌려준다.
  */
 fun diffPoleAttributes(existing: List<Pole>, file: List<Pole>): PoleAttrDiff {
     val byId = file.associateBy { it.poleId }
+    val fileKnowsGuy = file.any { it.guy }
     val changed = existing.mapNotNull { old ->
         val f = byId[old.poleId] ?: return@mapNotNull null
         old.copy(
@@ -22,7 +25,7 @@ fun diffPoleAttributes(existing: List<Pole>, file: List<Pole>): PoleAttrDiff {
             lineNo = f.lineNo ?: old.lineNo,
             lengthM = f.lengthM ?: old.lengthM,
             equipment = f.equipment ?: old.equipment,
-            guy = f.guy,
+            guy = if (fileKnowsGuy) f.guy else old.guy,
             installedYm = f.installedYm ?: old.installedYm,
             voltage = f.voltage ?: old.voltage,
         ).takeIf { it != old }
