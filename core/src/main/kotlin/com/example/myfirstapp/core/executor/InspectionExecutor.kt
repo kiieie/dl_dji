@@ -514,10 +514,10 @@ class InspectionExecutor(
 
     // ---------------------------------------------------------------- 방식 A(소티 미션)
 
-    /** 지점 도착: 새 전주면 진행 중으로 두고, 지나온 전주는 사진 유무로 마무리한다. */
+    /** 지점 도착: 새 전주면 진행 중으로 두고, 마지막 지점까지 지나온 전주는 사진 유무로 마무리한다(4패스는 한 전주를 네 번 지난다). */
     private suspend fun onWaypoint(index: Int) {
         val v = missionVisits.getOrNull(index) ?: return
-        missionVisits.take(index).distinct().filter { it !== v }.forEach { settle(it) }
+        missionVisits.take(index).distinct().filter { it !== v && missionVisits.lastIndexOf(it) < index }.forEach { settle(it) }
         if (v.status == VisitStatus.PENDING) {
             setStatus(v, VisitStatus.IN_PROGRESS)
             recorder.recordTransition(sortieIndex, state.name, Arrived.name, "지점 도착", v.pole.poleId) // VISIT.arrivedAt

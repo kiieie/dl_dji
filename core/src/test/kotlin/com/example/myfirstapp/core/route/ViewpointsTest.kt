@@ -44,12 +44,23 @@ class ViewpointsTest {
     }
 
     @Test
-    fun `4방향 사선은 직전 지점에서 가까운 대각선부터 시계 방향으로 돈다`() {
+    fun `4방향 사선은 4패스 - 한쪽을 갔다 오고 반대쪽을 갔다 온다`() {
         val v = Viewpoints.expand(poles, diagonal, home)
-        val first = v.take(4)
-        // 선로 방향 90°에서 번호 0~3은 135°, 225°, 315°, 45°. 이륙 지점이 서쪽이므로 서쪽 두 지점(번호 1, 2) 중 하나로 들어간다
-        assertTrue(first[0].index in setOf(1, 2))
-        first.zipWithNext().forEach { (a, b) -> assertEquals((a.index + 1) % 4, b.index) }
+        // 이륙 지점이 서쪽 끝이므로 P0부터, 갈 때 P0→P2, 올 때 P2→P0
+        assertEquals(listOf("P0", "P1", "P2", "P2", "P1", "P0", "P0", "P1", "P2", "P2", "P1", "P0"), v.map { it.pole.poleId })
+        // 선로 방향 90°: 1=뒤-오른쪽(225°), 0=앞-오른쪽(135°), 2=뒤-왼쪽(315°), 3=앞-왼쪽(45°). 이륙 지점(서쪽, 선로 위)에서 같은 거리면 오른쪽부터
+        assertEquals(listOf(1, 1, 1, 0, 0, 0, 2, 2, 2, 3, 3, 3), v.map { it.index })
+        // 한 패스 안에서는 기수가 같다(선로 쪽 45°를 유지)
+        v.chunked(3).forEach { pass -> assertEquals(1, pass.map { it.headingDeg.toInt() }.distinct().size) }
+        // 전선(선로, y=0)을 넘는 것은 패스 2 → 3 한 번뿐
+        val side = v.map { Math.signum(LocalProjection(home).toEnu(it.position).y) }
+        assertEquals(1, side.zipWithNext().count { (a, b) -> a != b })
+    }
+
+    @Test
+    fun `4방향 사선은 이륙 지점에서 가까운 끝부터 시작한다`() {
+        val east = LocalProjection(home).toGeo(Enu(300.0, 0.0))
+        assertEquals("P2", Viewpoints.expand(poles, diagonal, east).first().pole.poleId)
     }
 
     @Test
@@ -84,5 +95,12 @@ class ViewpointsTest {
         val wpml = ZipInputStream(bytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name.endsWith("wpml") }.let { z.readBytes().decodeToString() } }
         assertEquals(2, Regex("<Placemark>").findAll(wpml).count())
         assertEquals(1, Regex("takePhoto").findAll(wpml).count())
+    }
+
+    @Test
+    fun `4방향 사선은 배터리 예측을 4패스·4장으로 잡는다`() {
+        val over = EnergyModel(EnergyParams(), FlightParams())
+        val diag = EnergyModel(EnergyParams(), diagonal)
+        assertTrue(diag.sortieCost(1000.0, 10) > 3 * over.sortieCost(1000.0, 10) - 3 * over.takeoffLanding)
     }
 }

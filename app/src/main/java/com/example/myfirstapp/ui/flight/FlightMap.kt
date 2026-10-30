@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.core.route.Viewpoints
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -105,12 +106,15 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
                     },
                 ),
             )
-            // 소티마다 이륙 지점 → 전주 순서 → 이륙 지점
+            // 소티마다 이륙 지점 → 실제 촬영 지점(5.6, 4방향이면 4패스) → 이륙 지점
             val home = s.home?.toPoint()
             style.getSourceAs<GeoJsonSource>("route")?.setGeoJson(
                 FeatureCollection.fromFeatures(
                     s.exec.visits.groupBy { it.sortieIndex }.values.map { v ->
-                        val pts = v.sortedBy { it.order }.map { it.pole.position.toPoint() }
+                        val poles = v.sortedBy { it.order }.map { it.pole }
+                        val p = s.params
+                        val pts = (if (p != null && s.home != null) Viewpoints.expand(poles, p, s.home).map { it.position } else poles.map { it.position })
+                            .map { it.toPoint() }
                         Feature.fromGeometry(LineString.fromLngLats(listOfNotNull(home) + pts + listOfNotNull(home)))
                     },
                 ),

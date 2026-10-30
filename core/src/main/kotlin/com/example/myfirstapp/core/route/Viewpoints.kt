@@ -39,20 +39,28 @@ object Viewpoints {
         }
     }
 
-    /** 전주마다 대각선 4곳. 들어가는 지점은 직전 지점에서 가장 가까운 곳이고, 거기서 시계 방향으로 돈다. */
+    /**
+     * 4패스(현장 대평선 비행 방법): 선로 한쪽 평행선을 따라 갔다 오고, 반대쪽을 따라 갔다 온다. 지나가며 전주마다 대각선에서 한 장씩.
+     * - 갈 때는 전주 뒤쪽 대각선(앞을 45° 보고), 올 때는 앞쪽 대각선에서 찍는다. 기수가 선로 쪽 45°로 유지되어 크게 돌지 않는다.
+     * - 이륙 지점에서 가까운 끝·가까운 쪽부터 시작한다. 전선은 패스 2 → 3에서 한 번만 넘는다(고도는 전선보다 10m 이상 위, 5.6).
+     * 지점 번호(`viewpoint`)는 선로 방향 θ 기준 0: θ+45°(앞-오른쪽), 1: θ+135°(뒤-오른쪽), 2: θ+225°(뒤-왼쪽), 3: θ+315°(앞-왼쪽).
+     */
     private fun diagonal(poles: List<Pole>, p: FlightParams, start: GeoPoint): List<Viewpoint> {
+        if (poles.isEmpty()) return emptyList()
         val pitch = -Math.toDegrees(atan2(p.diagonalAltitudeM - p.aimHeightM, p.diagonalDistanceM))
-        var last = start
-        return poles.flatMapIndexed { i, pole ->
-            val line = lineBearing(poles, i)
-            val corners = (0 until 4).map { k ->
-                val b = line + 45.0 + 90.0 * k
-                val at = offset(pole.position, b, p.diagonalDistanceM)
-                Viewpoint(pole, k, at, p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch)
-            }
-            val first = corners.indices.minBy { LocalProjection.distanceM(last, corners[it].position) }
-            (0 until 4).map { corners[(first + it) % 4] }.also { last = it.last().position }
+        // 가까운 끝에서 출발
+        val line = if (LocalProjection.distanceM(start, poles.last().position) < LocalProjection.distanceM(start, poles.first().position)) poles.reversed() else poles
+        fun corner(i: Int, k: Int): Viewpoint {
+            val b = lineBearing(line, i) + 45.0 + 90.0 * k
+            return Viewpoint(line[i], k, offset(line[i].position, b, p.diagonalDistanceM), p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch)
         }
+        val forward = line.indices
+        val back = line.indices.reversed()
+        // 오른쪽(1→0)과 왼쪽(2→3) 중 첫 지점이 가까운 쪽부터
+        val rightFirst = LocalProjection.distanceM(start, corner(0, 1).position) <= LocalProjection.distanceM(start, corner(0, 2).position)
+        val (a, b) = if (rightFirst) (1 to 0) to (2 to 3) else (2 to 3) to (1 to 0)
+        return forward.map { corner(it, a.first) } + back.map { corner(it, a.second) } +
+            forward.map { corner(it, b.first) } + back.map { corner(it, b.second) }
     }
 
     /** 선로 방향: 앞뒤 전주를 이은 방위. 이웃이 하나면 그쪽, 없으면 정북. */

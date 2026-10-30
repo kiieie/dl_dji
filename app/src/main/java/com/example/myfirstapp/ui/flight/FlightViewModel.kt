@@ -88,6 +88,8 @@ data class FlightUiState(
     val lens: Lens = Lens.WIDE,
     /** 비행 전 점검 체크리스트(Pilot 2): [비행 시작]을 누르면 채워지고, 확인하면 비운다. */
     val preflight: List<PreflightCheck>? = null,
+    /** 미션 파라미터(촬영 방식 포함). 미니맵에 실제 촬영 지점 경로를 그린다. */
+    val params: FlightParams? = null,
 ) {
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.SortieDone, ExecState.MissionDone)
     val sortieCount get() = (exec.visits.maxOfOrNull { it.sortieIndex } ?: 0) + 1
@@ -207,7 +209,7 @@ class FlightViewModel(
         }
         _state.update {
             it.copy(
-                loading = false, home = home, poles = sorties.flatMap { s -> s.poles },
+                loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params,
                 simulated = drone is FakeDroneGateway, modelVersion = detector.modelVersion,
             )
         }

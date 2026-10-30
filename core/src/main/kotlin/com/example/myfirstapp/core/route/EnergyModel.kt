@@ -1,6 +1,7 @@
 package com.example.myfirstapp.core.route
 
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.ShotMode
 
 /** 에너지 모델 파라미터(5.5). 초기값은 보수적으로 잡았고 필드 테스트로 보정한다. */
 data class EnergyParams(
@@ -34,12 +35,18 @@ class EnergyModel(val params: EnergyParams, val flight: FlightParams) {
     fun budget(startBatteryPct: Double = 100.0): Double =
         startBatteryPct - flight.batteryReservePct - params.rthMarginPct
 
-    /** 이동 거리 [distanceM], 방문 [visits]개인 소티의 예상 소모량. */
-    fun sortieCost(distanceM: Double, visits: Int): Double = move(distanceM) + visits * perVisit + takeoffLanding
+    /**
+     * 촬영 방식(5.6)에 따른 배수. 4방향 사선은 선로를 4번 오가고(4패스) 전주마다 4장을 찍는다.
+     * ponytail: 이동 거리 전체(이륙 지점 왕복 포함)를 4배로 잡아 보수적으로 나눈다. 소티가 너무 잘게 나뉘면 4패스 경로 길이를 직접 계산한다.
+     */
+    private val shots: Int get() = if (flight.shotMode == ShotMode.DIAGONAL4) 4 else 1
+
+    /** 이동 거리 [distanceM](전주 순서 기준), 방문 [visits]개인 소티의 예상 소모량. */
+    fun sortieCost(distanceM: Double, visits: Int): Double = move(distanceM * shots) + visits * shots * perVisit + takeoffLanding
 
     fun sortieDurationSec(distanceM: Double, visits: Int): Double =
-        distanceM / flight.speedMps +
-            visits * (params.legOverheadSec + params.visitSec + climbDescentSec) +
+        distanceM * shots / flight.speedMps +
+            visits * shots * (params.legOverheadSec + params.visitSec + climbDescentSec) +
             2 * flight.transitAltitudeM / params.verticalSpeedMps
 
     /**

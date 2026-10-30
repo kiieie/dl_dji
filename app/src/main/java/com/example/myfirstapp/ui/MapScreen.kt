@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import com.example.myfirstapp.core.route.Viewpoints
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.example.myfirstapp.core.model.ShotMode
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -132,7 +133,7 @@ fun MapScreen(
                 poles = it,
                 mapFiles = s.mapFiles,
                 onlineTiles = s.onlineTiles,
-                overlay = Overlay(s.vertices, s.home, s.plan, s.excludedPoints),
+                overlay = Overlay(s.vertices, s.home, s.plan, s.excludedPoints, s.params),
                 focus = s.focus,
                 onPoleClick = vm::selectPole,
                 onMapTap = if (s.tool == Tool.NONE) null else vm::onMapTap,
@@ -317,7 +318,7 @@ private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
 private fun fmt(v: Double) = String.format(Locale.ROOT, "%.1f", v)
 
 /** 지도 위에 그릴 계획 요소. */
-private data class Overlay(val vertices: List<GeoPoint>, val home: GeoPoint?, val plan: RoutePlan?, val excluded: List<GeoPoint>)
+private data class Overlay(val vertices: List<GeoPoint>, val home: GeoPoint?, val plan: RoutePlan?, val excluded: List<GeoPoint>, val params: FlightParams)
 
 /**
  * MapLibre 지도. 배경은 앱 전용 폴더의 MBTiles를 모두 겹쳐 그린다(지역별 파일). 네트워크 소스는 쓰지 않는다.
@@ -441,7 +442,7 @@ private fun PoleMap(
         mapView.getMapAsync { map ->
             val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
             style.getSourceAs<GeoJsonSource>("draw")?.setGeoJson(drawFeatures(overlay.vertices))
-            style.getSourceAs<GeoJsonSource>("route")?.setGeoJson(routeFeatures(overlay.plan))
+            style.getSourceAs<GeoJsonSource>("route")?.setGeoJson(routeFeatures(overlay.plan, overlay.params))
             style.getSourceAs<GeoJsonSource>("excluded")?.setGeoJson(
                 FeatureCollection.fromFeatures(overlay.excluded.map { Feature.fromGeometry(it.toPoint()) }),
             )
@@ -502,11 +503,11 @@ private fun drawFeatures(vertices: List<GeoPoint>): FeatureCollection {
 internal fun areaPolygon(vertices: List<GeoPoint>): GeoJsonPolygon =
     vertices.map { it.toPoint() }.let { GeoJsonPolygon.fromLngLats(listOf(it + it.first())) }
 
-/** 소티마다 이륙 지점 → 전주들 → 이륙 지점으로 닫힌 선 하나와 방문 전주 점들. */
-private fun routeFeatures(plan: RoutePlan?): FeatureCollection = FeatureCollection.fromFeatures(
+/** 소티마다 이륙 지점 → 실제 촬영 지점들(5.6, 4방향이면 4패스) → 이륙 지점으로 닫힌 선 하나와 방문 전주 점들. 기체가 날 경로와 같다. */
+private fun routeFeatures(plan: RoutePlan?, params: FlightParams): FeatureCollection = FeatureCollection.fromFeatures(
     if (plan == null) emptyList() else plan.sorties.flatMapIndexed { i, s ->
         val color = SORTIE_COLORS[i % SORTIE_COLORS.size]
-        val line = listOf(plan.home) + s.poles.map { it.position } + plan.home
+        val line = listOf(plan.home) + Viewpoints.expand(s.poles, params, plan.home).map { it.position } + plan.home
         (listOf(LineString.fromLngLats(line.map { it.toPoint() })) + s.poles.map { it.position.toPoint() })
             .map { g -> Feature.fromGeometry(g).apply { addStringProperty("color", color) } }
     },
