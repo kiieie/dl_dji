@@ -84,6 +84,9 @@ class FakeDroneGateway(
 
     /** 지형 추적 미션 시작을 거절한다(2026-10-30 시뮬레이터에서 본 동작). */
     var rejectTerrainStarts = false
+
+    /** 실제 기체처럼 이륙을 KMZ에 맡긴다(takeoff는 바로 성공하고 뜨지 않음, 방식 A). */
+    var kmzTakesOff = false
     var failNextCaptures = 0
 
     /** 다음 지점 사진을 이만큼 늦게 알린다(다음 지점에 도착한 뒤 오는 사진, 6.4 사진 순서). */
@@ -105,6 +108,7 @@ class FakeDroneGateway(
     override suspend fun takeoff(): Result<Unit> {
         calls += "takeoff"
         if (!connected()) return Result.failure(IllegalStateException("연결 없음"))
+        if (kmzTakesOff) return Result.success(Unit)
         _telemetry.update { it.copy(flightMode = FlightMode.TAKING_OFF) }
         delay(config.takeoffMs)
         _telemetry.update { it.copy(flightMode = FlightMode.MANUAL, altitudeM = 1.2) }

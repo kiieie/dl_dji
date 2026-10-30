@@ -227,12 +227,22 @@ class InspectionExecutor(
                 StepResult.ManualCaptured(info, image)
             }
             Command.EndMission -> if (state == SortieDone) enter(MissionDone, "운용자 미션 종료")
-            Command.FlyTakeoffHeight -> if (state == Paused && terrainFallbackAsk && batteryAllowsNext()) {
-                terrainFallbackAsk = false
-                params = params.copy(terrainFollow = false)
-                message = "이륙 지점 기준으로 다시 올립니다."
-                stopMissionBeforeLeg = true
-                enter(PreparingLeg, "지형 추적 거절 → 이륙 기준")
+            Command.FlyTakeoffHeight -> when {
+                !terrainFallbackAsk -> Unit
+                // 땅에서 거절: 이륙 기준으로 소티를 처음부터(비행 전 점검 포함)
+                state == Idle -> {
+                    terrainFallbackAsk = false
+                    params = params.copy(terrainFollow = false)
+                    stopMissionBeforeLeg = true
+                    startSortie()
+                }
+                state == Paused && batteryAllowsNext() -> {
+                    terrainFallbackAsk = false
+                    params = params.copy(terrainFollow = false)
+                    message = "이륙 지점 기준으로 다시 올립니다."
+                    stopMissionBeforeLeg = true
+                    enter(PreparingLeg, "지형 추적 거절 → 이륙 기준")
+                }
             }
             Command.DismissTerrainFallback -> terrainFallbackAsk = false
         }
@@ -311,6 +321,12 @@ class InspectionExecutor(
                     recorder.recordHeightMode(params.terrainFollow)
                 }
                 enter(FlyingLeg, if (config.sortieMission) "소티 미션 시작" else "구간 시작")
+            } else if (r.terrainRejected && !drone.telemetry.value.isFlying) {
+                // 이륙은 KMZ가 하므로(방식 A) 땅에서 거절되면 아직 안 떴다: 대기로 돌아가 묻는다(화면을 나갈 수도 있음)
+                terrainFallbackAsk = true
+                message = r.reason
+                notifier.play(Sound.ERROR)
+                enter(Idle, r.reason)
             } else {
                 // 운용자가 고를 때까지 일시정지(호버). [재개]하면 지형 추적으로 한 번 더 해 본다
                 terrainFallbackAsk = r.terrainRejected
@@ -721,7 +737,7 @@ class InspectionExecutor(
         }
         if (to in setOf(Paused, LinkLost, ReturningHome, SortieDone, MissionDone, Idle)) cancelRthPrompt()
         if (to == Paused || to == LinkLost) pausePending = false
-        if (to != Paused) terrainFallbackAsk = false
+        if (to != Paused && to != Idle) terrainFallbackAsk = false
 
         when (to) {
             PreflightCheck -> {

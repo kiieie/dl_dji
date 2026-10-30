@@ -564,6 +564,20 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `방식 A - 땅에서 지형 추적이 거절되면 대기로 돌아가 묻고, 이륙 기준을 고르면 처음부터 시작한다`() = runTest {
+        val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.OVERHEAD, terrainFollow = true)) {
+            it.rejectTerrainStarts = true
+            it.kmzTakesOff = true
+        }
+        h.send(Command.Start)
+        h.awaitUntil { h.executor.uiState.value.terrainFallbackAsk }
+        assertEquals(ExecState.Idle, h.state) // 안 떴으므로 일시정지(공중)가 아니다
+        h.send(Command.FlyTakeoffHeight)
+        h.awaitUntil { "terrain:false" in h.drone.calls }
+        assertEquals(listOf(false), h.recorder.heightModes)
+    }
+
+    @Test
     fun `방식 A - 지형 추적 거절 창을 취소하면 일시정지로 남는다`() = runTest {
         val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.OVERHEAD, terrainFollow = true)) { it.rejectTerrainStarts = true }
         h.send(Command.Start)
