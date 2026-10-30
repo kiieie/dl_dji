@@ -110,6 +110,9 @@ sealed interface DroneEvent {
     /** 방식 A: [index]번 지점에서 미션 동작으로 사진이 찍힘. */
     data class PhotoTaken(val index: Int, val capture: CaptureInfo) : DroneEvent
 
+    /** RC 셔터 버튼으로 기체가 찍은 사진(6.4 RC 셔터). [capture]의 위치·자세는 파일이 생긴 때의 텔레메트리, 지점 번호는 없다. */
+    data class ShutterPhoto(val capture: CaptureInfo) : DroneEvent
+
     /** 방식 A: 마지막 지점을 지나 미션이 끝남(완료 동작 RTH가 이어짐). */
     data object MissionFinished : DroneEvent
 

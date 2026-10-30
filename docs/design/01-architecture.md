@@ -166,7 +166,7 @@ erDiagram
 ├── maps/*.mbtiles              # 오프라인 지도
 ├── models/<version>/model.tflite, labels.txt, model.json
 └── projects/<projectId>/missions/<missionId>/
-    ├── images/<poleId>_<viewpoint>_<timestamp>_<lens>.jpg   # 원본(기본) 또는 미리보기
+    ├── images/<poleId>_<viewpoint>_<timestamp>_<mediaId>_<lens>.jpg   # 원본(기본) 또는 미리보기. 수동은 지점 m, 같은 초 겹침을 사진 번호로 막음
     └── export/<missionId>.zip    # 아래 묶음 (10장 ⑤)
 ```
 

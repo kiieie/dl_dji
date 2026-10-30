@@ -516,11 +516,10 @@ class InspectionExecutorTest {
         val h = harness(config = sortieMode)
         h.send(Command.Start)
         h.awaitUntil { h.visit("B").captureCount == 1 } // B 상공에서 자동 사진을 찍은 직후
-        val at = System.currentTimeMillis()
         val shot = h.drone.pressRcShutter()
-        h.send(Command.HardwareShutter(at))
         h.awaitUntil { h.recorder.captures.any { it.second == CaptureSource.MANUAL } }
         assertEquals(1 to CaptureSource.MANUAL, h.recorder.captures.last()) // B는 소티 안 순서 1
+        assertEquals(1, h.visit("B").captureCount) // 셔터 사진은 완료 판정 사진 수에 안 셈
         h.awaitUntil { "download:${shot.mediaId}" in h.drone.calls }
 
         h.awaitState(ExecState.MissionDone)
@@ -528,6 +527,20 @@ class InspectionExecutorTest {
         assertEquals(1, h.recorder.captures.count { it.second == CaptureSource.MANUAL })
         h.awaitUntil { h.recorder.images.size == 4 }
         h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+        assertTrue("listMedia" !in h.drone.calls) // 셔터 사진은 SD 목록을 읽지 않는다
+    }
+
+    @Test
+    fun `방식 A - 자동 사진이 없고 셔터 사진만 있는 전주는 완료가 아니라 실패다`() = runTest {
+        val h = harness(config = sortieMode) { it.failNextCaptures = 1 } // A 자동 사진 실패
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("A").status == VisitStatus.IN_PROGRESS }
+        h.drone.pressRcShutter() // A 상공
+        h.awaitUntil { h.recorder.captures.any { it.second == CaptureSource.MANUAL } }
+        assertEquals(0 to CaptureSource.MANUAL, h.recorder.captures.first())
+        h.awaitState(ExecState.MissionDone)
+        assertEquals(VisitStatus.FAILED, h.visit("A").status)
+        assertEquals(0, h.visit("A").captureCount)
     }
 
     @Test
@@ -538,35 +551,26 @@ class InspectionExecutorTest {
         // A(100,0)와 B(100,100) 사이, 어느 전주에서도 20m 넘게 떨어진 곳
         h.awaitUntil { h.drone.telemetry.value.position?.let { p -> threePoles.all { LocalProjection.distanceM(p, it.position) > SHUTTER_POLE_LINK_M + 5 } } == true }
         h.drone.pressRcShutter()
-        h.send(Command.HardwareShutter(System.currentTimeMillis()))
         h.awaitUntil { h.executor.uiState.value.message?.contains("연결할 전주가 없습니다") == true }
         assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
     }
 
     @Test
-    fun `RC 셔터 - 땅에서는 무시하고, SD에 새 사진이 없으면 기록하지 않는다`() = runTest {
+    fun `RC 셔터 - 땅에서 찍은 셔터 사진은 기록하지 않는다`() = runTest {
         val h = harness(config = sortieMode)
-        h.send(Command.HardwareShutter(System.currentTimeMillis()))
+        h.drone.pressRcShutter()
         h.scope.advanceTimeBy(5_000)
         h.scope.runCurrent()
-        assertTrue("listMedia" !in h.drone.calls)
-
-        h.send(Command.Start)
-        h.awaitUntil { h.visit("A").captureCount == 1 }
-        h.send(Command.HardwareShutter(System.currentTimeMillis())) // 기체가 찍지 않음(새 사진 없음)
-        h.awaitUntil { "listMedia" in h.drone.calls }
-        h.scope.runCurrent()
-        assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
+        assertTrue(h.recorder.captures.isEmpty())
     }
 
     @Test
-    fun `RC 셔터 사진 고르기 - 누른 무렵 이후, 기록하지 않은 가장 새 사진`() {
-        fun media(id: String, at: Long) = CaptureInfo(id, Lens.WIDE, null, 0.0, 0.0, 0.0, at)
-        val sd = listOf(media("1", 1_000), media("2", 9_000), media("3", 10_000), media("4", 10_000))
-        assertEquals("4", shutterPhoto(sd, 10_500, emptySet())?.mediaId) // 같은 초면 번호가 큰 것
-        assertEquals("3", shutterPhoto(sd, 10_500, setOf("4"))?.mediaId)
-        assertEquals("2", shutterPhoto(sd, 10_500, setOf("3", "4"))?.mediaId) // 시계 차이 3초까지 본다
-        assertEquals(null, shutterPhoto(sd, 20_000, emptySet()))
+    fun `셔터 사진을 붙일 전주 - 20m 안의 가장 가까운 전주, 위치가 없거나 멀면 없음`() {
+        fun at(e: Double, n: Double) = proj.toGeo(Enu(e, n))
+        assertEquals("A", shutterLinkTarget(at(110.0, 5.0), threePoles) { it.position }?.poleId)
+        assertEquals("B", shutterLinkTarget(at(100.0, 85.0), threePoles) { it.position }?.poleId)
+        assertEquals(null, shutterLinkTarget(at(100.0, 50.0), threePoles) { it.position })
+        assertEquals(null, shutterLinkTarget(null, threePoles) { it.position })
     }
 
     @Test
