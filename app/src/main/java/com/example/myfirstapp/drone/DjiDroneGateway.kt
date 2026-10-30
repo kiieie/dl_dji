@@ -2,7 +2,8 @@ package com.example.myfirstapp.drone
 
 import com.example.myfirstapp.data.OpLog
 import android.util.Log
-import com.example.myfirstapp.core.executor.SHUTTER_SKEW_MS
+import com.example.myfirstapp.core.executor.MediaClassifier
+import com.example.myfirstapp.core.executor.MediaOwner
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
@@ -89,20 +90,20 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     private val _events = MutableSharedFlow<DroneEvent>(extraBufferCapacity = 64)
     override val events: Flow<DroneEvent> = _events.asSharedFlow()
 
-    private var missionName: String? = null
-    private var waypoint = -1
+    // 미션·사진 콜백이 서로 다른 스레드에서 읽고 쓴다
+    @Volatile private var missionName: String? = null
+    @Volatile private var waypoint = -1
 
     /** 올린 KMZ의 웨이포인트(이동 고도 지점 포함, 5.6). 기체가 알리는 KMZ 번호를 촬영 지점 번호로 바꾼다. */
-    private var kmzWaypoints: List<WpmlWriter.Waypoint> = emptyList()
-    private var manualShot = false
-    /** RC 셔터를 누른 직후 새로 생긴 사진은 지점 사진이 아니다(실행기가 SD에서 찾아 수동 사진으로 붙인다, 6.4 RC 셔터). */
-    private var rcShotUntil = 0L
+    @Volatile private var kmzWaypoints: List<WpmlWriter.Waypoint> = emptyList()
+    /** 새 사진의 주인(화면 촬영·지점·RC 셔터)을 가른다(6.4 RC 셔터 규칙). 시각은 모두 조종기가 알림을 받은 때라 카메라 시계와 무관하다. */
+    private val owners = MediaClassifier()
     private var lostJob: Job? = null
     private var lost = false
     private val newPhotos = MutableSharedFlow<CaptureInfo>(extraBufferCapacity = 16)
     private val mediaLock = Mutex()
     /** 기체가 FINISHED를 마지막 사진보다 먼저 알린다(2026-10-30 확인). 그 뒤 잠깐 들어온 사진도 미션 사진으로 넘긴다. */
-    private var photoGraceUntil = 0L
+    @Volatile private var photoGraceUntil = 0L
     private var mediaEnabled = false
 
     private val stateListener = WaypointMissionExecuteStateListener { s ->
@@ -167,22 +168,26 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             // 녹화한 영상은 SD에만 둔다(10.4.3). 지점·수동 사진으로 넘기지 않는다
             if (info.type == MediaFileType.MOV || info.type == MediaFileType.MP4) return@listen
             val t = _telemetry.value
+            val now = System.currentTimeMillis()
             val capture = CaptureInfo(
                 mediaId = info.index.toString(), lens = Lens.WIDE, position = t.position, altitudeM = t.altitudeM,
                 gimbalPitchDeg = t.gimbalPitchDeg, headingDeg = t.headingDeg,
-                takenAtMs = System.currentTimeMillis(),
+                takenAtMs = now,
             )
-            Log.i(TAG, "사진 #${info.index} 지점 $waypoint")
-            newPhotos.tryEmit(capture)
-            val inMission = missionName != null || System.currentTimeMillis() < photoGraceUntil
-            // ponytail: 셔터를 누른 3초 안에 지점 사진이 먼저 생기면 그 사진을 셔터 사진으로 본다(둘 다 기록되고 자동·수동 표시만 바뀜). 정확히 가르려면 PoC에서 셔터 사진의 SD 번호를 확인한다
-            val rcShot = System.currentTimeMillis() < rcShotUntil
-            if (rcShot) rcShotUntil = 0
-            val shot = WpmlWriter.shotIndex(kmzWaypoints, waypoint)
-            if (!manualShot && !rcShot && inMission && shot != null) _events.tryEmit(DroneEvent.PhotoTaken(shot, capture))
+            val inMission = missionName != null || now < photoGraceUntil
+            val shot = if (inMission) WpmlWriter.shotIndex(kmzWaypoints, waypoint) else null
+            val owner = owners.classify(now, shot)
+            Log.i(TAG, "사진 #${info.index} 지점 $waypoint → $owner")
+            OpLog.log("media", owner.name, mapOf("media" to info.index, "waypoint" to waypoint, "shot" to shot))
+            when (owner) {
+                MediaOwner.SCREEN -> newPhotos.tryEmit(capture)
+                MediaOwner.WAYPOINT -> _events.tryEmit(DroneEvent.PhotoTaken(shot!!, capture))
+                MediaOwner.SHUTTER -> _events.tryEmit(DroneEvent.ShutterPhoto(capture))
+                MediaOwner.NONE -> Unit
+            }
         }
         keys.listen(KeyTools.createKey(RemoteControllerKey.KeyShutterButtonDown), holder) { _, down ->
-            if (down == true) rcShotUntil = System.currentTimeMillis() + SHUTTER_SKEW_MS
+            if (down == true) owners.shutterPressed(System.currentTimeMillis())
         }
         missions.addWaypointMissionExecuteStateListener(stateListener)
         missions.addWaylineExecutingInfoListener(waylineListener)
@@ -282,6 +287,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         }
         waypoint = -1
         kmzWaypoints = wps
+        owners.sortieStarted()
         missionName = name
         djiDone { missions.startMission(name, it) }
         Log.i(TAG, "소티 미션 시작 $name 촬영 지점 ${points.size}개, 웨이포인트 ${wps.size}개")
@@ -301,14 +307,14 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         return runCatching { djiDone { missions.stopMission(name, it) } }
     }
 
-    /** 수동 촬영(일시정지 중): 찍고 새 사진 알림을 기다린다. 미션 사진으로 잘못 넘기지 않게 표시해 둔다. */
+    /** 화면 수동 촬영: 찍고 새 사진 알림을 기다린다. 그 동안 첫 파일은 이 촬영 것이다(지점·셔터로 넘기지 않음). */
     override suspend fun capture(lens: Lens, gimbalPitchDeg: Double, zoomRatio: Double): Result<CaptureInfo> = runCatching {
-        manualShot = true
+        owners.screenStarted()
         try {
             djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(CameraKey.KeyStartShootPhoto, camera), it) }
             withTimeoutOrNull(5_000) { newPhotos.first() } ?: error("사진 알림 없음")
         } finally {
-            manualShot = false
+            owners.screenEnded(System.currentTimeMillis())
         }
     }
 

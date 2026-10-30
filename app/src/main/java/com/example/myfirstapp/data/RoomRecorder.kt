@@ -55,8 +55,8 @@ class RoomRecorder(
 
     override suspend fun saveImage(captureId: Long, bytes: ByteArray) {
         val c = dao.capture(captureId) ?: return
-        // 4.3 파일 이름 규칙: <poleId>_<viewpoint>_<timestamp>_<lens>.jpg (수동 촬영은 지점 m)
-        val file = File(imagesDir, "${poleIdOfVisit[c.visitId]}_${c.viewpoint ?: "m"}_${c.takenAt}_${c.lens}.jpg")
+        // 4.3 파일 이름 규칙: <poleId>_<viewpoint>_<timestamp>_<mediaId>_<lens>.jpg (수동 촬영은 지점 m, 사진 번호로 같은 초 겹침을 막음)
+        val file = File(imagesDir, "${poleIdOfVisit[c.visitId]}_${c.viewpoint ?: "m"}_${c.takenAt}_${c.mediaId}_${c.lens}.jpg")
         withContext(Dispatchers.IO) {
             imagesDir.mkdirs()
             file.writeBytes(bytes)
