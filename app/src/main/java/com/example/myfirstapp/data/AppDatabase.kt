@@ -268,6 +268,7 @@ data class ResultRow(
     val lineNo: String?,
     val lengthM: Double?,
     val equipment: String?,
+    val voltage: String?,
     val status: String,
     val skipReason: String?,
     val arrivedAt: Long?,
@@ -416,7 +417,7 @@ interface ProjectDao {
     suspend fun projectName(projectId: Long): String?
 
     @Query(
-        "SELECT s.seq, v.`order`, v.id AS visitId, p.poleId, p.lat, p.lon, p.lineName, p.lineNo, p.lengthM, p.equipment, v.status, v.skipReason, v.arrivedAt, " +
+        "SELECT s.seq, v.`order`, v.id AS visitId, p.poleId, p.lat, p.lon, p.lineName, p.lineNo, p.lengthM, p.equipment, p.voltage, v.status, v.skipReason, v.arrivedAt, " +
             "(SELECT COUNT(*) FROM capture c WHERE c.visitId = v.id) AS photoCount, " +
             "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert) AS detectCount " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
