@@ -14,6 +14,10 @@ import dji.v5.common.error.IDJIError
 import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.simulator.InitializationSettings
 import dji.v5.manager.aircraft.simulator.SimulatorManager
+import dji.v5.manager.aircraft.waypoint3.WaylineExecutingInfoListener
+import dji.v5.manager.aircraft.waypoint3.WaypointMissionExecuteStateListener
+import dji.v5.manager.aircraft.waypoint3.WaypointMissionManager
+import dji.v5.manager.aircraft.waypoint3.model.WaylineExecutingInfo
 import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.manager.datacenter.media.MediaFileDownloadListener
@@ -71,6 +75,28 @@ object DjiPoc {
         )
     }
 
+    /** 시뮬레이터는 화면이 없으므로 위치·고도·속도·비행 모드를 글로 보여 준다(1초마다 읽기). */
+    private val telemetryKeys by lazy {
+        // getValue는 캐시만 읽으므로 한 번 구독해 두어야 값이 갱신된다
+        listOf(
+            FlightControllerKey.KeyAircraftLocation3D, FlightControllerKey.KeyAircraftVelocity, FlightControllerKey.KeyCompassHeading,
+            FlightControllerKey.KeyFlightMode, FlightControllerKey.KeyAreMotorsOn,
+        ).forEach { KeyManager.getInstance().listen(KeyTools.createKey(it), this) { _, _ -> } }
+    }
+
+    fun telemetry(): String {
+        telemetryKeys
+        val keys = KeyManager.getInstance()
+        val p = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D))
+        val v = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyAircraftVelocity))
+        val speed = v?.let { Math.hypot(it.x, it.y) } ?: 0.0
+        val heading = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyCompassHeading)) ?: 0.0
+        val mode = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyFlightMode))
+        val motors = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyAreMotorsOn), false)
+        return if (p == null) "위치: 없음"
+        else "위치 %.6f, %.6f · 고도 %.1fm · 속도 %.1fm/s · 기수 %.0f° · %s · 모터 %s".format(p.latitude, p.longitude, p.altitude, speed, heading, mode, if (motors) "켜짐" else "꺼짐")
+    }
+
     /** PoC ③: 촬영 → SD 최신 사진 → 미리보기·원본 다운로드 시간. 원본은 [dir]에 저장한다. */
     suspend fun shootAndDownload(dir: File): String {
         val t0 = System.currentTimeMillis()
@@ -109,11 +135,60 @@ object DjiPoc {
         }
     }
 
-    /** PoC ⑥ 준비: 시뮬레이터 켜기(프로펠러 제거 상태). 위치는 시험용 대전 좌표. */
+    /** PoC ⑥ 준비: 시뮬레이터 켜기(프로펠러 제거 상태). 위치는 현장 KMZ M1(대평선 137L-A)의 첫 웨이포인트 근처. */
     suspend fun simulator(on: Boolean): String {
         val sim = SimulatorManager.getInstance()
-        if (on) done { sim.enableSimulator(InitializationSettings.createInstance(LocationCoordinate2D(36.3504, 127.3845), 15), it) }
+        if (on) done { sim.enableSimulator(InitializationSettings.createInstance(LocationCoordinate2D(36.48010, 127.33090), 15), it) }
         else done { sim.disableSimulator(it) }
         return log("시뮬레이터 ${if (sim.isSimulatorEnabled) "켜짐" else "꺼짐"}")
     }
+
+    private val missions = WaypointMissionManager.getInstance()
+    private var missionT0 = 0L
+    private var lastWaypoint = -1
+
+    /** 미션 상태 변화와 현재 웨이포인트를 시작 명령 기준 경과 시간과 함께 로그로 남긴다(한 번만 등록). */
+    private val stateLog by lazy {
+        missions.addWaypointMissionExecuteStateListener(WaypointMissionExecuteStateListener { log("미션 상태 $it +${System.currentTimeMillis() - missionT0}ms") })
+        missions.addWaylineExecutingInfoListener(object : WaylineExecutingInfoListener {
+            override fun onWaylineExecutingInfoUpdate(info: WaylineExecutingInfo) {
+                if (info.currentWaypointIndex != lastWaypoint) {
+                    lastWaypoint = info.currentWaypointIndex
+                    log("웨이포인트 ${info.currentWaypointIndex} +${System.currentTimeMillis() - missionT0}ms")
+                }
+            }
+
+            override fun onWaylineExecutingInterruptReasonUpdate(error: IDJIError?) {
+                if (error != null) log("미션 중단 이유: ${error.errorCode()} ${error.description()}")
+            }
+        })
+    }
+
+    /** PoC ①: KMZ 업로드 시간. */
+    suspend fun upload(kmz: File): String {
+        stateLog
+        require(kmz.exists()) { "KMZ 없음: ${kmz.path}" }
+        val t0 = System.currentTimeMillis()
+        suspendCancellableCoroutine { c ->
+            missions.pushKMZFileToAircraft(kmz.path, object : CommonCallbacks.CompletionCallbackWithProgress<Double> {
+                override fun onProgressUpdate(progress: Double) {}
+                override fun onSuccess() = c.resume(Unit)
+                override fun onFailure(error: IDJIError) = c.resumeWithException(DjiException(error))
+            })
+        }
+        return log("업로드 ${kmz.name} ${kmz.length() / 1024}KB ${System.currentTimeMillis() - t0}ms, 웨이라인 ${missions.getAvailableWaylineIDs(kmz.path)}")
+    }
+
+    /** PoC ①: 시작 명령. 실제 출발까지의 지연은 상태 로그(ENTER_WAYLINE, 웨이포인트 0)로 본다. */
+    suspend fun start(kmz: File): String {
+        stateLog
+        missionT0 = System.currentTimeMillis()
+        lastWaypoint = -1
+        done { missions.startMission(kmz.nameWithoutExtension, it) }
+        return log("시작 명령 성공 +${System.currentTimeMillis() - missionT0}ms")
+    }
+
+    suspend fun pause() = done { missions.pauseMission(it) }.let { log("일시정지 성공") }
+    suspend fun resume() = done { missions.resumeMission(it) }.let { log("재개 성공") }
+    suspend fun stop(kmz: File) = done { missions.stopMission(kmz.nameWithoutExtension, it) }.let { log("정지 성공") }
 }

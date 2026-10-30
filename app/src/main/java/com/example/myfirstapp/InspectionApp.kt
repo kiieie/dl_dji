@@ -36,6 +36,8 @@ class InspectionApp : Application() {
     /** 검증 화면에 보이는 SDK 상태 문구. SDK 콜백 스레드에서 갱신하므로 StateFlow로 넘긴다. */
     val djiStatus: StateFlow<String> = _djiStatus.asStateFlow()
     private val djiRegistered = MutableStateFlow(false)
+    /** SDK 등록이 끝났는지. 키 구독은 등록 뒤에 해야 한다. */
+    val djiReady: StateFlow<Boolean> = djiRegistered.asStateFlow()
 
     /** RC 하드웨어 버튼 누름(10장). SDK 등록이 끝난 뒤에 감시를 시작한다. */
     @OptIn(ExperimentalCoroutinesApi::class)
