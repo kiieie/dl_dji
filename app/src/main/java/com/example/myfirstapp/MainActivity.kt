@@ -29,7 +29,7 @@ import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
-import com.example.myfirstapp.ui.settings.SettingsScreen
+import com.example.myfirstapp.ui.settings.SettingsHub
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -143,7 +143,7 @@ class MainActivity : ComponentActivity() {
                     onBack = { nav.popBackStack() },
                 )
             }
-            composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }
+            composable("settings") { SettingsHub(onBack = { nav.popBackStack() }) }
             composable("verify") { VerificationPanel() }
         }
     }
