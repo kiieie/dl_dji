@@ -14,11 +14,12 @@
 | **B. 구간(Leg) 단위 미니 미션 (권장)** | "현재 위치 → 다음 전주" 짧은 KMZ를 매번 생성·업로드·실행 | 도착 후 동작을 앱이 완전히 제어, 재개 시 **현재 위치에서 다음 전주로** 바로 이동, 요구사항과 정확히 일치 | 구간마다 업로드 지연(수 초), 구간 사이 호버 중에는 기체 기본 페일세이프에 의존 |
 | C. Virtual Stick (앱이 직접 조종) | 앱이 속도 명령을 계속 전송 | 가장 유연함 | 앱이나 통신에 문제가 생기면 위험, 구현·검증 부담이 큼 → **제외** |
 
-**결정(2026-10-30 PoC ①·⑥ 뒤 변경): 방식 A를 1차 기본으로 한다.** 시뮬레이터에서 소티 KMZ 업로드 약 1.2초, 일시정지 버튼으로 즉시 멈춤, C1 → `resumeMission`으로 재개했다. 수동 조종 뒤 재개하면 중단 지점으로 되돌아갔다가 이어 가는데(약 12초 더 걸림), 사용자가 이 동작을 받아들였다. 방식 B("현재 위치에서 다음 전주로")는 나중에 설정(비행 기본값)에서 A/B를 고를 수 있게 한다. 상태머신(6.3)은 그대로 두고, 미션을 올리는 단위(소티 1개 / 구간 1개)와 재개 동작만 `DroneGateway` 구현 안에서 바꾼다(`docs/evidence/2026-10-30-aircraft-poc`). 방식 A에서 전주별 촬영·다운로드·분석 대기를 미션 동작(호버 시간)으로 넣을지, 웨이포인트 도착 이벤트에 앱이 일시정지·재개를 거는 방식으로 할지는 다음 PoC에서 정한다. 이전 결정: 방식 B를 기본으로 하고 PoC에서 A와 비교 검증한다. M3E에서 `startMission` 타임아웃 사례가 보고되어 있으므로([이슈 #394](https://github.com/dji-sdk/Mobile-SDK-Android-V5/issues/394)), PoC에서 업로드와 시작 지연, 재시도 정책을 반드시 측정한다.
+**결정(2026-10-30 PoC ①·⑥ 뒤 변경): 방식 A를 1차 기본으로 한다.** 시뮬레이터에서 소티 KMZ 업로드 약 1.2초, 일시정지 버튼으로 즉시 멈춤, C1 → `resumeMission`으로 재개했다. 수동 조종 뒤 재개하면 중단 지점으로 되돌아갔다가 이어 가는데(약 12초 더 걸림), 사용자가 이 동작을 받아들였다. 방식 B("현재 위치에서 다음 전주로")는 나중에 설정(비행 기본값)에서 A/B를 고를 수 있게 한다. 상태머신(6.3)은 그대로 두고, 미션을 올리는 단위(소티 1개 / 구간 1개)와 재개 동작만 `DroneGateway` 구현 안에서 바꾼다(`docs/evidence/2026-10-30-aircraft-poc`). 방식 A는 **멈추지 않고 계속 비행**한다(2026-10-30 사용자 결정): 지점마다 KMZ 동작(짐벌 → 촬영)으로 찍고 다음 지점으로 가며, 앱은 사진 이벤트마다 다운로드 → 탐지 → 저장 → 알림을 비행과 병렬로 처리한다(검출 알림은 몇 초 늦음). 더 보려면 운용자가 일시정지 버튼으로 멈추고 수동으로 본다. 이전 결정: 방식 B를 기본으로 하고 PoC에서 A와 비교 검증한다. M3E에서 `startMission` 타임아웃 사례가 보고되어 있으므로([이슈 #394](https://github.com/dji-sdk/Mobile-SDK-Android-V5/issues/394)), PoC에서 업로드와 시작 지연, 재시도 정책을 반드시 측정한다.
 
-### 6.2 구간 미션 생성
+### 6.2 미션 생성
 
-- `WPMZManager.generateKMZFile(...)`로 KMZ를 만들고 `checkValidation` → `WaypointMissionManager.pushKMZFileToAircraft` → `startMission` 순으로 진행한다.
+- **방식 A(기본)**: 소티의 전주를 촬영 지점으로 펼치고(`Viewpoints.expand`, 5.6) `WpmlWriter`로 소티 KMZ 하나를 만들어 `pushKMZFileToAircraft` → `startMission`. SDK `WPMZManager` 대신 직접 쓰는 이유: 현장에서 M3E로 날았던 KMZ와 같은 형식을 `:core`에서 만들고 단위 테스트할 수 있다(2026-10-30 시뮬레이터에서 40지점 확인). 사진 파일 이름 끝(`fileSuffix`)에 `전주번호_지점번호`를 붙인다. 완료 동작은 RTH(goHome).
+- 아래는 **방식 B(선택지)** 구간 미션이다. `WPMZManager.generateKMZFile(...)`로 KMZ를 만들고 `checkValidation` → `WaypointMissionManager.pushKMZFileToAircraft` → `startMission` 순으로 진행한다.
 - 구간 웨이포인트 구성(기본):
   1. (필요 시) 현재 위치 상공에서 **이동 고도**까지 상승
   2. 목표 전주의 점검 위치 상공, 이동 고도
@@ -98,6 +99,14 @@ stateDiagram-v2
   SortieDone --> MissionDone: 남은 전주 없음 또는 운용자가 미션 종료 선택
   MissionDone --> [*]
 ```
+
+**방식 A 흐름(기본, 2026-10-30)**: 위 그림은 방식 B다. 방식 A는 같은 상태를 이렇게 쓴다.
+
+- `PreparingLeg`: 소티의 남은 전주 전체로 KMZ를 만들어 `startSortie` 한 번 → `FlyingLeg`("임무 비행").
+- `FlyingLeg`에 머무는 동안 기체가 지점마다 찍는다. `WaypointReached`로 그 전주를 `IN_PROGRESS`로, `PhotoTaken`마다 사진 처리(다운로드 → 저장 → 탐지 → 기록·알림음)를 비행과 병렬로 차례차례 한다. 전주의 모든 지점 사진이 기록되면 `DONE`. 사진이 하나도 없는 전주는 `DONE`이 아니다(`FAILED`).
+- 일시정지: RC 버튼은 펌웨어가 멈춤(`PausedByRc`), 화면 버튼은 `pauseMission`. 재개: `resumeMission`(중단 지점으로 돌아가 이어 감). 건너뛰기·완료 처리는 기록만 바꾸고 미션은 그대로다.
+- `MissionFinished`(마지막 지점 뒤 RTH 시작) → `ReturningHome` → 착륙 → `SortieDone`. 남은 사진 처리는 착륙 뒤에도 끝까지 한다.
+- 수동 촬영(일시정지 중)은 지금처럼 `capture` → `download` 경로를 쓴다.
 
 **일시정지/재개 규칙**
 
