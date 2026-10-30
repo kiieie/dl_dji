@@ -512,6 +512,51 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `방식 A - RC 셔터 사진은 가까운 전주의 수동 사진이 되고 자동 사진과 섞이지 않는다`() = runTest {
+        val h = harness(config = sortieMode)
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("B").captureCount == 1 } // B 상공에서 자동 사진을 찍은 직후
+        val at = System.currentTimeMillis()
+        val shot = h.drone.pressRcShutter()
+        h.send(Command.HardwareShutter(at))
+        h.awaitUntil { h.recorder.captures.any { it.second == CaptureSource.MANUAL } }
+        assertEquals(1 to CaptureSource.MANUAL, h.recorder.captures.last()) // B는 소티 안 순서 1
+        h.awaitUntil { "download:${shot.mediaId}" in h.drone.calls }
+
+        h.awaitState(ExecState.MissionDone)
+        assertEquals(3, h.recorder.captures.count { it.second == CaptureSource.AUTO })
+        assertEquals(1, h.recorder.captures.count { it.second == CaptureSource.MANUAL })
+        h.awaitUntil { h.recorder.images.size == 4 }
+        h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+    }
+
+    @Test
+    fun `RC 셔터 - 땅에서는 무시하고, SD에 새 사진이 없으면 기록하지 않는다`() = runTest {
+        val h = harness(config = sortieMode)
+        h.send(Command.HardwareShutter(System.currentTimeMillis()))
+        h.scope.advanceTimeBy(5_000)
+        h.scope.runCurrent()
+        assertTrue("listMedia" !in h.drone.calls)
+
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("A").captureCount == 1 }
+        h.send(Command.HardwareShutter(System.currentTimeMillis())) // 기체가 찍지 않음(새 사진 없음)
+        h.awaitUntil { "listMedia" in h.drone.calls }
+        h.scope.runCurrent()
+        assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
+    }
+
+    @Test
+    fun `RC 셔터 사진 고르기 - 누른 무렵 이후, 기록하지 않은 가장 새 사진`() {
+        fun media(id: String, at: Long) = CaptureInfo(id, Lens.WIDE, null, 0.0, 0.0, 0.0, at)
+        val sd = listOf(media("1", 1_000), media("2", 9_000), media("3", 10_000), media("4", 10_000))
+        assertEquals("4", shutterPhoto(sd, 10_500, emptySet())?.mediaId) // 같은 초면 번호가 큰 것
+        assertEquals("3", shutterPhoto(sd, 10_500, setOf("4"))?.mediaId)
+        assertEquals("2", shutterPhoto(sd, 10_500, setOf("3", "4"))?.mediaId) // 시계 차이 3초까지 본다
+        assertEquals(null, shutterPhoto(sd, 20_000, emptySet()))
+    }
+
+    @Test
     fun `비행 전 점검 경고를 확인하고 시작하면 그대로 비행한다(연결은 필수)`() = runTest {
         val h = harness(config = sortieMode) { it.preflightReport = it.preflightReport.copy(gpsSatellites = 3) }
         h.send(Command.Start)

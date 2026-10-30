@@ -225,6 +225,12 @@ class FakeDroneGateway(
         _events.tryEmit(DroneEvent.PausedByRc)
     }
 
+    /** RC 셔터 버튼: 기체가 직접 찍어 SD에만 남긴다(지점 사진 알림 없음). 찍은 사진을 돌려준다. */
+    fun pressRcShutter(): CaptureInfo {
+        // 실제 SD 목록처럼 위치·자세가 없다
+        return CaptureInfo("FAKE_${++mediaSeq}", Lens.WIDE, null, 0.0, 0.0, 0.0, System.currentTimeMillis()).also { sdCard += it }
+    }
+
     fun pressRcResume() {
         _events.tryEmit(DroneEvent.ResumeByRc)
     }

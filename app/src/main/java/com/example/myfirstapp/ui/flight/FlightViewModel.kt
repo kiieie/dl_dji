@@ -141,6 +141,12 @@ class FlightViewModel(
             RcButton.C1 -> resume()
             RcButton.C2 -> toggleGimbal()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
+            RcButton.SHUTTER -> {
+                // 실제 기체는 스스로 찍는다. 모의 기체는 SD에 사진을 넣어 흉내 낸다
+                val at = System.currentTimeMillis()
+                (drone as? FakeDroneGateway)?.pressRcShutter()
+                send(Command.HardwareShutter(at))
+            }
             else -> Unit // 5D는 비행 명령에 쓰지 않는다(10장)
         }
     }

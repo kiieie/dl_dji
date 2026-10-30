@@ -37,6 +37,7 @@ import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.route.SortiePlan
 import com.example.myfirstapp.core.route.Viewpoint
 import com.example.myfirstapp.core.route.Viewpoints
+import com.example.myfirstapp.core.route.nearestWithin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -50,6 +51,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 data class ExecutorConfig(
+    /** RC 셔터를 누른 뒤 SD 목록을 읽기까지 기다리는 시간. */
+    val shutterSettleMs: Long = SHUTTER_SETTLE_MS,
     /** 도착 후 처리(촬영~분석) 전체 타임아웃(6.5). */
     val arrivalTimeoutMs: Long = 60_000,
     /** 구간 업로드·시작 재시도(6.2). */
@@ -104,6 +107,9 @@ class InspectionExecutor(
         data class ArrivalTimeout(val token: Int) : Msg
         data class Recover(val sortieIndex: Int) : Msg
 
+        /** RC 셔터: 누른 시각, 그때의 텔레메트리, 잠시 뒤 읽은 SD 목록. */
+        data class Shutter(val atMs: Long, val telemetry: Telemetry, val media: List<CaptureInfo>) : Msg
+
         /** 방식 A 사진 처리 결과(다운로드 실패면 [bytes]가 null). */
         data class Photo(val captureId: Long, val bytes: ByteArray?, val detections: List<Detection>?, val error: String?) : Msg
     }
@@ -155,10 +161,13 @@ class InspectionExecutor(
     private var photosInProgress = 0
     private val photoQueue = Channel<Pair<Long, CaptureInfo>>(Channel.UNLIMITED)
 
+    /** 이번 실행에서 기록한 사진 번호. RC 셔터 사진을 SD에서 고를 때 자동·수동 사진을 뺀다. */
+    private val knownMedia = mutableSetOf<String>()
+
     fun start() {
         scope.launch { drone.events.collect { inbox.send(Msg.Drone(it)) } }
-        // 사진 처리(방식 A)는 상태와 무관하게 차례로 한다. 착륙한 뒤에도 남은 사진을 끝까지 처리한다
-        if (config.sortieMission) scope.launch { for ((id, info) in photoQueue) inbox.send(processPhoto(id, info)) }
+        // 사진 처리(방식 A, RC 셔터)는 상태와 무관하게 차례로 한다. 착륙한 뒤에도 남은 사진을 끝까지 처리한다
+        scope.launch { for ((id, info) in photoQueue) inbox.send(processPhoto(id, info)) }
         scope.launch { drone.telemetry.collect { inbox.send(Msg.Tele(it)) } }
         recoverSortie?.let { inbox.trySend(Msg.Recover(it)) }
         scope.launch { for (m in inbox) handle(m) }
@@ -184,6 +193,7 @@ class InspectionExecutor(
             is Msg.ArrivalTimeout -> if (m.token == arrivalToken) onArrivalTimeout()
             is Msg.Recover -> recover(m.sortieIndex)
             is Msg.Photo -> onPhotoProcessed(m)
+            is Msg.Shutter -> onShutterMedia(m)
         }
         publish()
     }
@@ -217,6 +227,14 @@ class InspectionExecutor(
                 val info = drone.capture(params.lenses.first(), params.gimbalPitchDeg, params.zoomRatio).getOrNull()
                 val image = info?.let { drone.download(it, params.downloadMode).getOrNull() }
                 StepResult.ManualCaptured(info, image)
+            }
+            // 기체가 이미 찍었다. 자동 비행을 건드리지 않고 뒤에서 SD 목록을 읽는다
+            is Command.HardwareShutter -> if (state.airborne || state == ReturningHome) {
+                val t = drone.telemetry.value
+                scope.launch {
+                    delay(config.shutterSettleMs)
+                    inbox.send(Msg.Shutter(c.atMs, t, drone.listMedia(c.atMs - SHUTTER_SKEW_MS).getOrNull().orEmpty()))
+                }
             }
             Command.EndMission -> if (state == SortieDone) enter(MissionDone, "운용자 미션 종료")
         }
@@ -434,7 +452,7 @@ class InspectionExecutor(
             afterArrivalStep(Waiting, "촬영 실패")
             return
         }
-        captured = captures.map { recorder.saveCapture(visit.sortieIndex, visit.order, it, CaptureSource.AUTO) to it }
+        captured = captures.map { saveCapture(visit, it, CaptureSource.AUTO) to it }
         visit.captureCount += captures.size
         // 사진이 있으므로 완료로 기록한다. 다운로드·분석이 실패해도 완료는 유지된다(6.4 재개 규칙)
         setStatus(visit, VisitStatus.DONE)
@@ -509,13 +527,37 @@ class InspectionExecutor(
             message = "연결할 전주가 없습니다(사진은 SD 카드에 있음)."
             return
         }
-        val id = recorder.saveCapture(visit.sortieIndex, visit.order, r.capture, CaptureSource.MANUAL)
+        val id = saveCapture(visit, r.capture, CaptureSource.MANUAL)
         r.image?.let { recorder.saveImage(id, it) }
         visit.captureCount++
         // 운용자가 수동 촬영하면 그 결과로 완료 처리한다(6.4)
         if (visit.status != VisitStatus.DONE) setStatus(visit, VisitStatus.DONE)
         target = visit
         message = "${visit.pole.poleId} 수동 촬영 저장"
+    }
+
+    /**
+     * RC 셔터 사진(6.4): 기체 위치에서 가장 가까운 이번 미션 전주에 수동 사진으로 기록하고 처리 줄(다운로드 → 탐지)에 넣는다.
+     * ponytail: 전주 상태는 바꾸지 않는다(아직 안 간 전주를 완료로 만들어 건너뛰지 않게). 사진 수만 늘어 지나간 전주 마무리에 반영된다.
+     * ponytail: 가까운 전주는 이번 실행이 읽은 방문(남은 전주)에서 고른다. 앞선 비행에서 끝낸 전주 옆에서 찍으면 남은 전주 중 가장 가까운 곳에 붙는다.
+     */
+    private suspend fun onShutterMedia(m: Msg.Shutter) {
+        val info = shutterPhoto(m.media, m.atMs, knownMedia)
+        if (info == null) {
+            message = "셔터 사진을 SD에서 찾지 못했습니다(사진은 SD 카드에 있음)."
+            return
+        }
+        val visit = m.telemetry.position?.let { p -> nearestWithin(p, visits) { it.pole.position } }
+        if (visit == null) {
+            message = "셔터 사진을 연결할 전주가 없습니다(사진은 SD 카드에 있음)."
+            return
+        }
+        val capture = info.takenAt(m.telemetry)
+        val id = saveCapture(visit, capture, CaptureSource.MANUAL)
+        visit.captureCount++
+        photosInProgress++
+        photoQueue.send(id to capture)
+        message = "${visit.pole.poleId} 셔터 사진 저장"
     }
 
     // ---------------------------------------------------------------- 방식 A(소티 미션)
@@ -536,7 +578,7 @@ class InspectionExecutor(
     private suspend fun onPhoto(index: Int, info: CaptureInfo) {
         val v = missionVisits.getOrNull(index) ?: return
         val capture = info.copy(viewpoint = missionPoints[index].index)
-        val id = recorder.saveCapture(v.sortieIndex, v.order, capture, CaptureSource.AUTO)
+        val id = saveCapture(v, capture, CaptureSource.AUTO)
         v.captureCount++
         if (v.status == VisitStatus.PENDING) setStatus(v, VisitStatus.IN_PROGRESS)
         photosInProgress++
@@ -751,6 +793,11 @@ class InspectionExecutor(
     }
 
     // ---------------------------------------------------------------- 보조
+
+    private suspend fun saveCapture(v: Visit, info: CaptureInfo, source: CaptureSource): Long {
+        knownMedia += info.mediaId
+        return recorder.saveCapture(v.sortieIndex, v.order, info, source)
+    }
 
     private suspend fun setStatus(v: Visit, status: VisitStatus, reason: String? = null) {
         v.status = status

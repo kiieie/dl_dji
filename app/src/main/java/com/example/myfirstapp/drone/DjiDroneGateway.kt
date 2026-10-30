@@ -2,6 +2,7 @@ package com.example.myfirstapp.drone
 
 import com.example.myfirstapp.data.OpLog
 import android.util.Log
+import com.example.myfirstapp.core.executor.SHUTTER_SKEW_MS
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
@@ -21,6 +22,7 @@ import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.key.RemoteControllerKey
 import dji.sdk.keyvalue.value.camera.CameraStorageLocation
 import dji.sdk.keyvalue.value.camera.CameraVideoStreamSourceType
 import dji.sdk.keyvalue.value.gimbal.GimbalResetType
@@ -87,6 +89,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     private var missionName: String? = null
     private var waypoint = -1
     private var manualShot = false
+    /** RC 셔터를 누른 직후 새로 생긴 사진은 지점 사진이 아니다(실행기가 SD에서 찾아 수동 사진으로 붙인다, 6.4 RC 셔터). */
+    private var rcShotUntil = 0L
     private var lostJob: Job? = null
     private var lost = false
     private val newPhotos = MutableSharedFlow<CaptureInfo>(extraBufferCapacity = 16)
@@ -162,7 +166,13 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             Log.i(TAG, "사진 #${info.index} 지점 $waypoint")
             newPhotos.tryEmit(capture)
             val inMission = missionName != null || System.currentTimeMillis() < photoGraceUntil
-            if (!manualShot && inMission) _events.tryEmit(DroneEvent.PhotoTaken(waypoint, capture))
+            // ponytail: 셔터를 누른 3초 안에 지점 사진이 먼저 생기면 그 사진을 셔터 사진으로 본다(둘 다 기록되고 자동·수동 표시만 바뀜). 정확히 가르려면 PoC에서 셔터 사진의 SD 번호를 확인한다
+            val rcShot = System.currentTimeMillis() < rcShotUntil
+            if (rcShot) rcShotUntil = 0
+            if (!manualShot && !rcShot && inMission) _events.tryEmit(DroneEvent.PhotoTaken(waypoint, capture))
+        }
+        keys.listen(KeyTools.createKey(RemoteControllerKey.KeyShutterButtonDown), holder) { _, down ->
+            if (down == true) rcShotUntil = System.currentTimeMillis() + SHUTTER_SKEW_MS
         }
         missions.addWaypointMissionExecuteStateListener(stateListener)
         missions.addWaylineExecutingInfoListener(waylineListener)
