@@ -71,4 +71,4 @@ grep -ac "curl_easy" jni/arm64-v8a/libPPAL.so              # 0
 
 - A-1: `android:allowBackup="false"`로 바꿈(앱 데이터가 Google 백업으로 나가지 않음).
 - D-3: 비행 전 점검에서 LDM이 꺼져 있으면 경고를 확인해도 시작할 수 없게 함(`PreflightEvaluator` 막는 항목). 앱 등록은 그대로.
-- C-4(온라인 배경 끄기)는 설계 변경이라 사용자 결정 대기. 현장 배포 APK는 `secrets/cesium.properties` 없이 빌드하면 온라인 요청이 없다.
+- C-4: 사용자 결정(2026-10-31) — 배포에도 Cesium 위성 배경을 쓰고(토큰 포함), 받은 타일은 캐시해 다시 받지 않으며 계획 저장 때 미션 영역을 미리 받는다(설계서 7.4). 스위치는 두지 않는다. 나가는 것은 토큰·IP·타일 좌표뿐.

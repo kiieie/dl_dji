@@ -90,6 +90,7 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.drone.djiCurrentLocation
 import com.example.myfirstapp.drone.djiSimulatorOn
+import com.example.myfirstapp.data.prefetchSatellite
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.poleDisplayName
@@ -162,6 +163,7 @@ fun MapScreen(
         factory = PlanViewModel.factory(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() },
             (context.applicationContext as InspectionApp).settings, ::djiCurrentLocation, ::djiSimulatorOn,
+            { points, name -> prefetchSatellite(context.applicationContext, points, name) },
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()

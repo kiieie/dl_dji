@@ -100,6 +100,8 @@ class PlanViewModel(
     private val currentLocation: suspend () -> GeoPoint? = { null },
     /** 기체가 시뮬레이터 모드인지(DJI SimulatorManager). */
     private val simulatorOn: () -> Boolean = { false },
+    /** 계획을 저장하면 미션 영역의 위성 타일을 미리 받는다(7.4, 현장은 인터넷 없음). 점들과 이름을 넘긴다. */
+    private val prefetchArea: (List<GeoPoint>, String) -> Unit = { _, _ -> },
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlanUiState(mapFiles = listMbtiles(mapsDir)))
     val state: StateFlow<PlanUiState> = _state.asStateFlow()
@@ -269,6 +271,7 @@ class PlanViewModel(
                         )
                     }
                     Log.i("RoutePlan", "saved mission=$id")
+                    prefetchArea(s.vertices + p.home, "mission-$id")
                 }
                 .onFailure { e -> _state.update { it.copy(message = "계획을 저장하지 못했습니다: ${e.message}") } }
             _state.update { it.copy(saving = false) }
@@ -280,7 +283,7 @@ class PlanViewModel(
     companion object {
         fun factory(
             dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, settings: SettingsStore,
-            currentLocation: suspend () -> GeoPoint?, simulatorOn: () -> Boolean,
-        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, currentLocation, simulatorOn) } }
+            currentLocation: suspend () -> GeoPoint?, simulatorOn: () -> Boolean, prefetchArea: (List<GeoPoint>, String) -> Unit,
+        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, currentLocation, simulatorOn, prefetchArea) } }
     }
 }

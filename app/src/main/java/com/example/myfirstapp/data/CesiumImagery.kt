@@ -12,9 +12,8 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * Cesium ion의 Bing Maps Aerial(자산 2)을 MapLibre 래스터 타일 주소로 바꾼다(7.4 임시 결정, 온라인 전용).
+ * Cesium ion의 Bing Maps Aerial(자산 2)을 MapLibre 래스터 타일 주소로 바꾼다(7.4, 배포에도 사용 2026-10-31).
  * ion 엔드포인트가 Bing 키를 주고, Bing 메타데이터가 `{quadkey}` 타일 주소를 준다. 타일 요청에는 인증 헤더가 필요 없다.
- * 타일 주소는 Bing 세션마다 다르므로 저장하지 않고 화면을 열 때마다 받는다.
  */
 suspend fun cesiumBingTileUrls(token: String): List<String> = withContext(Dispatchers.IO) {
     val endpoint = getJson("https://api.cesium.com/v1/assets/2/endpoint?access_token=${enc(token)}")
@@ -33,16 +32,21 @@ suspend fun cesiumBingTileUrls(token: String): List<String> = withContext(Dispat
 var savedSatelliteTilesFile: File? = null
 
 /**
- * 토큰이 있으면 위성 타일 주소를 준다. 받지 못하면(인터넷 없는 현장 등) 마지막으로 받은 주소를 주어,
- * 전에 본 곳은 MapLibre 캐시로 보이게 한다. 둘 다 없으면 빈 목록. 계획·비행 화면 공용.
+ * 위성 타일 주소. **한 번 받은 주소를 저장해 계속 쓴다**(7.4): 주소가 바뀌면 MapLibre 캐시 열쇠가 바뀌어 받은 타일을 다시 받기 때문이다.
+ * 저장한 주소가 없을 때만 ion·Bing에 묻는다. 토큰이 없거나 받지 못하면 빈 목록. 계획·비행 화면 공용.
  */
 suspend fun onlineSatelliteTiles(): List<String> {
     if (BuildConfig.CESIUM_ION_TOKEN.isBlank()) return emptyList()
+    savedSatelliteTiles().takeIf { it.isNotEmpty() }?.let { return it }
     return runCatching { cesiumBingTileUrls(BuildConfig.CESIUM_ION_TOKEN) }
         .onSuccess { urls -> runCatching { savedSatelliteTilesFile?.writeText(urls.joinToString("\n")) } }
         .onFailure { Log.w("CesiumImagery", "온라인 위성 배경 실패: $it") } // UnknownHostException은 Log가 스택을 지우므로 메시지로 남긴다
-        .getOrElse { runCatching { savedSatelliteTilesFile?.takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() } }.getOrNull().orEmpty() }
+        .getOrDefault(emptyList())
 }
+
+/** 저장한 타일 주소(없으면 빈 목록). */
+fun savedSatelliteTiles(): List<String> =
+    runCatching { savedSatelliteTilesFile?.takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() } }.getOrNull().orEmpty()
 
 /** 받을 때까지 10초마다 다시 시도한다(화면을 연 뒤에 인터넷이 붙는 경우). 토큰이 없으면 바로 빈 목록. 화면을 닫으면 취소된다. */
 suspend fun onlineSatelliteTilesRetrying(): List<String> {
