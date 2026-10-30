@@ -104,7 +104,8 @@ data class FlightUiState(
     /** 충돌 경고(13번): 방향별 등급·거리. 내비 원판 부채꼴과 상단 상태 칸에 보인다. */
     val obstacles: ObstacleWarning = ObstacleWarning(),
 ) {
-    val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.SortieDone, ExecState.MissionDone)
+    /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
+    val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
     val sortieCount get() = (exec.visits.maxOfOrNull { it.sortieIndex } ?: 0) + 1
 }
 
@@ -174,7 +175,8 @@ class FlightViewModel(
         val lastTarget = dao.missionVisits(missionId).firstOrNull { it.sortieId == open?.id && it.status == "IN_PROGRESS" }
         val drone = droneFactory(viewModelScope, home, appFilesDir, open?.let { lastTarget?.let { GeoPoint(it.lat, it.lon) } ?: home })
             .also { drone = it }
-        if (open != null) recoverTarget(open.id, drone)
+        // SD 대조는 기체가 붙어 있을 때만(없으면 진행 중 전주는 그대로 두고 남은 전주로 다시 감)
+        if (open != null && drone.telemetry.value.connected) recoverTarget(open.id, drone)
 
         val rows = dao.missionVisits(missionId).filter { it.status == "PENDING" || it.status == "IN_PROGRESS" }
         if (rows.isEmpty() && open == null) return _state.update { it.copy(loading = false, error = "남은 전주가 없습니다(미션 완료)") }
@@ -373,7 +375,7 @@ class FlightViewModel(
         /** 기체가 연결돼 있으면 실제 기체([DjiDroneGateway]), 아니면 모의 기체. 올린 KMZ는 미션 폴더 `kmz/`에 남는다(4.3). */
         fun factory(
             dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore, rcButtons: Flow<RcButton>,
-            sdkReady: StateFlow<Boolean>,
+            sdkReady: StateFlow<Boolean>, sdkInitialized: StateFlow<Boolean>,
         ) =
             viewModelFactory {
                 initializer {
@@ -381,9 +383,9 @@ class FlightViewModel(
                         dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons,
                         droneFactory = { scope, home, dir, airborneAt ->
                             // 앱 재시작 복구(열린 소티, [airborneAt] 있음): 앱이 막 켜져 SDK 등록·기체 연결 전일 수 있으니 기다린다(6.4).
-                            // 실제 RC(SDK 등록됨)에서는 연결이 안 돼도 모의 기체로 가지 않는다 — 실행기가 연결 끊김으로 두고 붙으면 맞춘다
+                            // 실제 RC(SDK 초기화됨, 등록 실패여도)에서는 연결이 안 돼도 모의 기체로 가지 않는다 — 실행기가 연결 끊김으로 두고 붙으면 맞춘다
                             if (airborneAt != null) withTimeoutOrNull(RECOVER_CONNECT_MS) { while (!(sdkReady.value && djiAircraftConnected())) delay(500) }
-                            if (djiAircraftConnected() || (airborneAt != null && sdkReady.value)) DjiDroneGateway(scope, File(dir, "projects/$projectId/missions/$missionId/kmz"))
+                            if (djiAircraftConnected() || (airborneAt != null && sdkInitialized.value)) DjiDroneGateway(scope, File(dir, "projects/$projectId/missions/$missionId/kmz"))
                             else fakeDrone(scope, home, dir, airborneAt)
                         },
                     )

@@ -48,6 +48,10 @@ class InspectionApp : Application() {
     /** SDK 등록이 끝났는지. 키 구독은 등록 뒤에 해야 한다. */
     val djiReady: StateFlow<Boolean> = djiRegistered.asStateFlow()
 
+    private val _djiInitialized = MutableStateFlow(false)
+    /** SDK 초기화 완료(INITIALIZE_COMPLETE): DJI 기기(RC)에서 돌고 있음. 등록 성공과 따로 본다(앱 재시작 복구가 모의 기체로 가지 않게). */
+    val djiInitialized: StateFlow<Boolean> = _djiInitialized.asStateFlow()
+
     /** RC 하드웨어 버튼 누름(10장). SDK 등록이 끝난 뒤에 감시를 시작한다. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val rcButtons: Flow<RcButton> = djiRegistered.filter { it }.take(1).flatMapLatest { djiRcButtonPresses() }
@@ -126,7 +130,10 @@ class InspectionApp : Application() {
                 override fun onProductChanged(productId: Int) {}
 
                 override fun onInitProcess(event: DJISDKInitEvent, totalProcess: Int) {
-                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) enableLdm { SDKManager.getInstance().registerApp() }
+                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
+                        _djiInitialized.value = true
+                        enableLdm { SDKManager.getInstance().registerApp() }
+                    }
                 }
 
                 override fun onDatabaseDownloadProgress(current: Long, total: Long) {}

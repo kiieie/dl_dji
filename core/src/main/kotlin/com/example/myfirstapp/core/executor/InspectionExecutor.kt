@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -72,6 +73,9 @@ data class ExecutorConfig(
  * 오래 걸리는 작업(업로드, 촬영, 다운로드, 분석, 대기)은 상태마다 하나의 작업(step)으로 실행하고,
  * 결과를 다시 채널로 보낸다. 상태가 바뀌면 이전 작업은 취소되고 늦게 온 결과는 세대 번호로 버린다.
  */
+/** 복구·재연결 때 기체 미션 일시정지를 기다리는 시간. */
+private const val PAUSE_TIMEOUT_MS = 5_000L
+
 class InspectionExecutor(
     private val scope: CoroutineScope,
     private val drone: DroneGateway,
@@ -374,9 +378,10 @@ class InspectionExecutor(
         sortieIndex = index
         val t = drone.telemetry.value
         when {
-            !t.connected -> {
+            // 연결 직후 비행 모드를 아직 모르면 연결 끊김처럼 기다린다(값이 오면 어댑터가 재연결로 알림)
+            !t.connected || t.flightMode == FlightMode.UNKNOWN -> {
                 message = "앱이 다시 시작되었습니다. 기체 연결을 기다립니다."
-                enter(LinkLost, "앱 재시작 복구: 연결 없음")
+                enter(LinkLost, "앱 재시작 복구: 연결·비행 모드 확인 전")
             }
             // 앱이 죽은 동안 기체가 미션을 끝내고(또는 저전압으로) 복귀 중이면 끊지 않고 복귀로 둔다
             t.flightMode == FlightMode.GO_HOME || t.flightMode == FlightMode.LANDING -> {
@@ -397,7 +402,14 @@ class InspectionExecutor(
      * 옛 미션을 끝내고 남은 전주로 새로 올린다.
      */
     private suspend fun pauseRunningMission(reason: String) {
-        if (drone.telemetry.value.flightMode == FlightMode.MISSION) drone.pauseMission()
+        if (drone.telemetry.value.flightMode == FlightMode.MISSION) {
+            // 실행기 차례를 막지 않게 시간을 둔다. 못 멈추면 운용자가 RC로 멈추게 알린다
+            val ok = withTimeoutOrNull(PAUSE_TIMEOUT_MS) { drone.pauseMission() }?.isSuccess == true
+            if (!ok) {
+                message = "기체 미션을 멈추지 못했습니다 — RC 일시정지 버튼을 누르세요."
+                notifier.play(Sound.ERROR)
+            }
+        }
         if (missionPoints.isEmpty()) {
             missionActive = false
             stopMissionBeforeLeg = true

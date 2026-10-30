@@ -465,6 +465,16 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `앱 재시작 복구 - 연결됐지만 비행 모드를 아직 모르면 판정하지 않고 기다린다`() = runTest {
+        val h = harness(
+            config = sortieMode, recoverSortie = 0,
+            droneConfig = FakeDroneGateway.Config(airborneAt = threePoles[0].position, airborneMode = FlightMode.UNKNOWN),
+        )
+        assertEquals(ExecState.LinkLost, h.state) // 땅으로 보고 소티를 닫거나 일시정지로 들어가지 않음
+        assertTrue(h.drone.calls.isEmpty())
+    }
+
+    @Test
     fun `앱 재시작 복구 - 착륙 상태면 소티를 닫고 남은 전주는 다음 소티로 남긴다`() = runTest {
         val h = harness(recoverSortie = 0)
         assertEquals(ExecState.SortieDone, h.state)

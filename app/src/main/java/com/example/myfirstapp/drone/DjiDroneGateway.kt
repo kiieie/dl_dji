@@ -101,6 +101,9 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     private val owners = MediaClassifier()
     private var lostJob: Job? = null
     private var lost = false
+
+    /** 다시 붙었지만 비행 모드를 아직 몰라 재연결 알림을 미룬 중(실행기가 모드로 상태를 정하므로, 6.4). */
+    private var restorePending = false
     private val newPhotos = MutableSharedFlow<CaptureInfo>(extraBufferCapacity = 16)
     private val mediaLock = Mutex()
     /** 기체가 FINISHED를 마지막 사진보다 먼저 알린다(2026-10-30 확인). 그 뒤 잠깐 들어온 사진도 미션 사진으로 넘긴다. */
@@ -166,6 +169,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(FlightControllerKey.KeyIsFlying) { flying ->
             val was = _telemetry.value.isFlying
             if (flying == false) _telemetry.update { it.copy(flightMode = AppFlightMode.ON_GROUND) }
+            // 비행 모드가 이륙 판정보다 먼저 오면 땅으로 굳으므로 떠오르면 다시 계산한다
+            if (flying == true) onFlightMode(keys.getValue(KeyTools.createKey(FlightControllerKey.KeyFlightMode)))
             if (was && flying == false) _events.tryEmit(DroneEvent.Landed)
         }
         on(GimbalKey.KeyGimbalAttitude) { g -> _telemetry.update { it.copy(gimbalPitchDeg = g?.pitch ?: 0.0) } }
@@ -218,10 +223,12 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         _telemetry.update { it.copy(connected = connected) }
         if (connected) {
             lostJob?.cancel()
-            // 끊김 판정(3초) 전에 다시 붙어도, 처음부터 연결 없이 시작했다 붙어도 알린다(실행기는 연결 끊김 상태일 때만 받음)
+            // 끊김 판정(3초) 전에 다시 붙어도, 처음부터 연결 없이 시작했다 붙어도 알린다(실행기는 연결 끊김 상태일 때만 받음).
+            // 비행 모드 값이 온 뒤에 알린다
             if (lost || !was) {
                 lost = false
-                _events.tryEmit(DroneEvent.ConnectionRestored)
+                restorePending = true
+                maybeRestored()
             }
         } else if (lostJob?.isActive != true) {
             // 3초 넘게 끊겨야 연결 끊김으로 본다(6.4)
@@ -245,6 +252,14 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         val before = _telemetry.value.flightMode
         _telemetry.update { it.copy(flightMode = mode) }
         if (mode == AppFlightMode.GO_HOME && before != AppFlightMode.GO_HOME) _events.tryEmit(DroneEvent.GoHomeStarted)
+        maybeRestored()
+    }
+
+    private fun maybeRestored() {
+        val t = _telemetry.value
+        if (!restorePending || !t.connected || t.flightMode == AppFlightMode.UNKNOWN) return
+        restorePending = false
+        _events.tryEmit(DroneEvent.ConnectionRestored)
     }
 
     private fun gpsLevel(g: GPSSignalLevel?) = when (g) {
