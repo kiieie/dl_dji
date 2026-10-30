@@ -1,5 +1,6 @@
 package com.example.myfirstapp
 
+import android.annotation.SuppressLint
 import android.view.KeyEvent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -51,6 +52,8 @@ private val FIVE_D_BACK_ROUTES = listOf("projects", "settings", "verify", "album
 class MainActivity : ComponentActivity() {
 
     /** 운용 로그(4.4): 안드로이드 키 입력(볼륨, 뒤로, 게임패드 등). RC Pro 전용 버튼은 SDK로 따로 받는다(drone/DjiInputLog.kt). */
+    // lint 오탐: Activity.dispatchKeyEvent는 공개 프레임워크 API인데 androidx.core의 ComponentActivity 재정의에 붙은 @RestrictTo가 걸린다
+    @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) OpLog.log("key", KeyEvent.keyCodeToString(event.keyCode), mapOf("repeat" to event.repeatCount))
         return super.dispatchKeyEvent(event)

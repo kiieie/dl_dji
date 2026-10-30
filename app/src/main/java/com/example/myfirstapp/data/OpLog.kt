@@ -71,7 +71,10 @@ object OpLog {
                 val now = System.currentTimeMillis()
                 val out = File(d, "logcat-$now.txt")
                 // 마지막 5,000줄(DJI SDK 로그가 많아 크기를 제한)
-                ProcessBuilder("logcat", "-d", "-t", "5000", "-v", "threadtime").redirectErrorStream(true).redirectOutput(out).start().waitFor()
+                // redirectOutput(File)은 API 26부터라(minSdk 24) 출력 스트림을 직접 파일로 복사한다
+                val p = ProcessBuilder("logcat", "-d", "-t", "5000", "-v", "threadtime").redirectErrorStream(true).start()
+                p.inputStream.use { input -> out.outputStream().use { input.copyTo(it) } }
+                p.waitFor()
                 log("crash", "previousSessionAbnormal", mapOf("logcat" to out.name, "startedAt" to lastStart))
             }
         }
