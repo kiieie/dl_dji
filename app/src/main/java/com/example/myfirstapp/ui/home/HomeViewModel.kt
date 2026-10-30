@@ -38,9 +38,9 @@ data class LatestMission(
     val remaining get() = total - done
 }
 
-/** 가장 최근 미션과 진행 수. 미션이 없으면 null. */
+/** 날 미션(남은 전주가 있는 가장 최근 것, 없으면 가장 최근 미션)과 진행 수. 미션이 없으면 null. */
 suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
-    val m = dao.latestMission() ?: return null
+    val m = dao.latestOpenMission() ?: dao.latestMission() ?: return null
     val visits = dao.missionVisits(m.id)
     val isDone = { v: MissionVisitRow -> v.status != "PENDING" && v.status != "IN_PROGRESS" }
     val params = flightParamsFromJson(m.flightParams)

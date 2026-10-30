@@ -1,11 +1,31 @@
 package com.example.myfirstapp.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.sp
+import com.example.myfirstapp.R
+import com.example.myfirstapp.ui.theme.Accent
+import com.example.myfirstapp.ui.theme.Caution
+import com.example.myfirstapp.ui.theme.TextSoft
+import com.example.myfirstapp.ui.theme.Warning
+import com.example.myfirstapp.ui.theme.numberStyle
+import kotlin.math.atan2
+import kotlin.math.roundToInt
 import com.example.myfirstapp.core.route.Viewpoints
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.example.myfirstapp.core.model.ShotMode
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SegmentedButton
 import android.graphics.RectF
 import android.view.Gravity
 import androidx.activity.compose.BackHandler
@@ -116,10 +136,10 @@ private val POLE_RADIUS = interpolate(linear(), zoom(), stop(11, 2.5f), stop(14,
 private val POLE_STROKE = interpolate(linear(), zoom(), stop(11, 0.5f), stop(14, 1.5f), stop(16, 2f))
 
 /**
- * 계획 화면 ③(10장): DJI Pilot 2 비행경로 편집(매뉴얼 68·74쪽)과 같은 배치.
- * 지도 왼쪽 위 저장·경로 정보, 왼쪽 세로 도구(영역·이륙·되돌리기·지우기), 지도 오른쪽 가장자리 지도 버튼(61쪽 중앙 복귀·레이어),
- * 오른쪽 전체 높이 설정 패널(» 로 접음), 왼쪽 아래 [▶ 수행]. 경로는 바꿀 때마다 자동으로 다시 계산한다.
- * 계획 로직은 [PlanViewModel]에 있고, 이 화면은 상태를 그리고 누른 것을 올려 보낸다.
+ * 계획 화면 ③(10.4.3 시안, Pilot 2 비행경로 편집 68·74쪽): 머리글 32dp(뒤로·프로젝트·저장 상태),
+ * 지도 위 가운데 경로 정보 띠, 왼쪽 흰 그리기 도구(영역·이륙), 오른쪽 흰 지도 도구(전체 보기·레이어·지우기),
+ * 오른쪽 240dp 패널(고른 전주, 촬영 방식, 고도·거리·피치(자동)·속도, [저장] [저장하고 수행]).
+ * 경로는 바꿀 때마다 자동으로 다시 계산한다. 계획 로직은 [PlanViewModel]에 있고, 이 화면은 상태를 그리고 누른 것을 올려 보낸다.
  */
 @Composable
 fun MapScreen(
@@ -138,8 +158,7 @@ fun MapScreen(
     )
     val s by vm.state.collectAsStateWithLifecycle()
     val inArea = s.inArea
-    // 화면 배치 상태(UI 전용): 패널 펼침, 배경 지도 보이기, 전체 보기 요청
-    var panelOpen by rememberSaveable { mutableStateOf(true) }
+    // 화면 배치 상태(UI 전용): 배경 지도 보이기, 전체 보기 요청
     var showBackground by rememberSaveable { mutableStateOf(true) }
     var fitRequest by remember { mutableStateOf(0) }
 
@@ -148,220 +167,213 @@ fun MapScreen(
     }
     // 영역·이륙 지점을 찍는 중 뒤로 가기(5D ← 포함)는 화면을 떠나지 않고 도구만 취소한다(10.3)
     BackHandler(enabled = s.tool != Tool.NONE, onBack = vm::cancelTool)
-    // 전주를 누르면 오른쪽 패널에 그 전주 설정이 뜬다(Pilot 2 개별 웨이포인트 설정)
-    LaunchedEffect(s.selected) { if (s.selected != null) panelOpen = true }
 
-    Row(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f).fillMaxHeight()) {
-            s.poles?.let {
-                PoleMap(
-                    poles = it,
-                    mapFiles = s.mapFiles,
-                    onlineTiles = s.onlineTiles,
-                    overlay = Overlay(s.vertices, s.home, s.plan, s.excludedPoints, s.params, s.poles?.firstOrNull { p -> p.poleId == s.selected }?.let { p -> GeoPoint(p.lat, p.lon) }),
-                    focus = s.focus,
-                    fitRequest = fitRequest,
-                    showBackground = showBackground,
-                    onPoleClick = vm::selectPole,
-                    onMapTap = if (s.tool == Tool.NONE) null else vm::onMapTap,
-                )
-            }
-            Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SaveInfoCard(s, inArea.size, onBack, onSave = { vm.savePlan() })
-                ToolBar(s, onArea = vm::startArea, onHome = vm::startHome, onUndo = vm::undoVertex, onClear = vm::clearArea)
-            }
-            HintChip(s, inArea.size, vm, Modifier.align(Alignment.TopStart).padding(start = 72.dp, top = 64.dp, end = 64.dp))
-            MapButtons(
-                showBackground,
-                onFit = { fitRequest++ },
-                onToggleBackground = { showBackground = !showBackground },
-                modifier = Modifier.align(Alignment.CenterEnd).padding(8.dp),
-            )
-            ExecutePill(s, onExecute = { vm.savePlan(fly = true) }, modifier = Modifier.align(Alignment.BottomStart).padding(8.dp))
-            // 패널 접기·펴기(Pilot 2 »)
-            MapIconButton(if (panelOpen) "»" else "«", if (panelOpen) "패널 접기" else "패널 펴기", Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                panelOpen = !panelOpen
-            }
-        }
-        if (panelOpen) SidePanel(s, inArea, vm)
-    }
-}
-
-private const val PANEL_WIDTH_DP = 256
-
-/** 지도 위 버튼 바탕(10.1: 지도 위 정보는 반투명 어두운 패널). */
-@Composable
-private fun overlayColor() = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
-
-/** 왼쪽 위: 뒤로, 프로젝트 이름, 경로 정보 세 칸(매뉴얼 74쪽 매핑 면적·예상 시간 자리), [저장](68쪽 8번). */
-@Composable
-private fun SaveInfoCard(s: PlanUiState, inAreaCount: Int, onBack: () -> Unit, onSave: () -> Unit) {
-    Surface(color = overlayColor(), shape = MaterialTheme.shapes.medium) {
-        Row(Modifier.height(48.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text("‹", style = MaterialTheme.typography.titleLarge) }
-            Text(s.projectName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 110.dp))
-            VerticalDivider(Modifier.padding(horizontal = 6.dp, vertical = 10.dp))
-            val plan = s.plan
-            InfoCell("영역 전주", if (s.vertices.size >= 3) "${inAreaCount - s.excluded.size}개" else "-")
-            InfoCell("예상 시간", plan?.let { "${fmt(it.sorties.sumOf { so -> so.estDurationSec } / 60)}분" } ?: "-")
-            InfoCell("사진", plan?.let { "${it.sorties.sumOf { so -> so.poles.size } * perPole(s.params)}장" } ?: "-")
-            VerticalDivider(Modifier.padding(horizontal = 4.dp, vertical = 10.dp))
-            TextButton(onClick = onSave, enabled = plan != null && s.savedMissionId == null && !s.saving, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                Text(if (s.savedMissionId != null) "저장됨" else "저장")
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoCell(label: String, value: String) {
-    Column(Modifier.padding(horizontal = 5.dp)) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        Text(value, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-    }
-}
-
-/** 왼쪽 세로 도구(매뉴얼 68쪽 1~4번 자리). 지금 쓰는 도구는 강조색. */
-@Composable
-private fun ToolBar(s: PlanUiState, onArea: () -> Unit, onHome: () -> Unit, onUndo: () -> Unit, onClear: () -> Unit) {
-    Surface(color = overlayColor(), shape = MaterialTheme.shapes.medium) {
-        Column {
-            ToolButton("⬠", "영역", selected = s.tool == Tool.AREA, onClick = onArea)
-            ToolButton("H", "이륙", selected = s.tool == Tool.HOME, onClick = onHome)
-            ToolButton("↶", "되돌리기", enabled = s.tool == Tool.AREA && s.vertices.isNotEmpty(), onClick = onUndo)
-            ToolButton("✕", "지우기", enabled = s.vertices.isNotEmpty(), onClick = onClear)
-        }
-    }
-}
-
-@Composable
-private fun ToolButton(glyph: String, label: String, selected: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
-    val color = when {
-        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-        selected -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-    Column(
-        Modifier.size(width = 56.dp, height = 52.dp).clickable(enabled = enabled, onClick = onClick).semantics { contentDescription = label },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(glyph, style = MaterialTheme.typography.titleMedium, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = color, maxLines = 1)
-    }
-}
-
-/** 지도 오른쪽 가장자리(매뉴얼 61쪽 6번 중앙 복귀, 4번 레이어). */
-@Composable
-private fun MapButtons(showBackground: Boolean, onFit: () -> Unit, onToggleBackground: () -> Unit, modifier: Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        MapIconButton("◎", "전체 보기", onClick = onFit)
-        MapIconButton(if (showBackground) "▦" else "□", if (showBackground) "배경 끄기" else "배경 켜기", onClick = onToggleBackground)
-    }
-}
-
-@Composable
-private fun MapIconButton(glyph: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = overlayColor(), shape = MaterialTheme.shapes.medium, modifier = modifier.size(48.dp).semantics { contentDescription = label }) {
-        Box(contentAlignment = Alignment.Center) { Text(glyph, style = MaterialTheme.typography.titleMedium) }
-    }
-}
-
-/** 도구 줄 오른쪽 안내: 지금 할 일 한 줄(10.0 순서 안내)과 그리는 중의 [완료]·[취소]. */
-@Composable
-private fun HintChip(s: PlanUiState, inAreaCount: Int, vm: PlanViewModel, modifier: Modifier) {
-    val (text, action) = when {
-        s.tool == Tool.AREA -> "지도를 눌러 꼭짓점 추가 (${s.vertices.size}개 · 전주 ${inAreaCount}개)" to ("완료" to vm::finishArea)
-        s.tool == Tool.HOME -> "지도를 눌러 이륙 지점(H)을 정하세요" to ("취소" to vm::cancelTool)
-        s.vertices.size < 3 -> "① 왼쪽 [영역]으로 점검 영역을 그리세요" to null
-        s.home == null -> "② [이륙]으로 이륙 지점을 정하세요" to null
-        s.planning -> "경로 계산 중" to null
-        s.plan == null -> (s.paramErrors.firstOrNull() ?: "영역 안에 넣을 전주가 없습니다") to null
-        s.savedMissionId == null -> "③ 경로를 확인하고 [▶ 수행]" to null
-        else -> "저장됨 · 미션 #${s.savedMissionId}" to null
-    }
-    Surface(color = overlayColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                action?.let { (label, onClick) ->
-                    Button(onClick = onClick, enabled = label != "완료" || s.vertices.size >= 3, modifier = Modifier.height(36.dp)) { Text(label) }
+    Column(Modifier.fillMaxSize()) {
+        PlanHeader(s, replanFrom, onBack)
+        Row(Modifier.weight(1f)) {
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                s.poles?.let {
+                    PoleMap(
+                        poles = it,
+                        mapFiles = s.mapFiles,
+                        onlineTiles = s.onlineTiles,
+                        overlay = Overlay(s.vertices, s.home, s.plan, s.excludedPoints, s.params, s.poles?.firstOrNull { p -> p.poleId == s.selected }?.let { p -> GeoPoint(p.lat, p.lon) }),
+                        focus = s.focus,
+                        fitRequest = fitRequest,
+                        showBackground = showBackground,
+                        onPoleClick = vm::selectPole,
+                        onMapTap = if (s.tool == Tool.NONE) null else vm::onMapTap,
+                    )
+                }
+                Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MapTool("영역 그리기", active = s.tool == Tool.AREA, onClick = vm::startArea) { tint ->
+                        Icon(painterResource(R.drawable.ic_area), contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+                    }
+                    MapTool("이륙 지점", active = s.tool == Tool.HOME, onClick = vm::startHome) {
+                        Box(Modifier.size(18.dp).clip(CircleShape).background(Caution), contentAlignment = Alignment.Center) {
+                            Text("H", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        }
+                    }
+                }
+                Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp, start = 52.dp, end = 52.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RouteInfoBand(s, inArea.size)
+                    HintChip(s, inArea.size, vm)
+                }
+                Column(Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MapTool("전체 보기", onClick = { fitRequest++ }) { tint -> Icon(painterResource(R.drawable.ic_fit), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp)) }
+                    MapTool(if (showBackground) "배경 끄기" else "배경 켜기", active = !showBackground, onClick = { showBackground = !showBackground }) { tint ->
+                        Icon(painterResource(R.drawable.ic_layers), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+                    }
+                    MapTool("지우기", enabled = s.vertices.isNotEmpty(), onClick = vm::clearArea) { tint ->
+                        Icon(painterResource(R.drawable.ic_erase), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+                    }
                 }
             }
-            s.message?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            SidePanel(s, inArea, vm)
         }
     }
 }
 
-/** 왼쪽 아래 [▶ 수행](매뉴얼 68쪽 9·10번): 저장하고 비행 전 점검으로. 옆에 소티 수와 경로 길이. */
+/** 머리글 32dp(지도·카메라 화면, 10.4.2): 뒤로, 프로젝트 이름, 새 계획/다시 계획, 저장 상태. */
 @Composable
-private fun ExecutePill(s: PlanUiState, onExecute: () -> Unit, modifier: Modifier) {
+private fun PlanHeader(s: PlanUiState, replanFrom: Long?, onBack: () -> Unit) {
+    Row(Modifier.fillMaxWidth().height(32.dp).background(Color.Black).padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
+            Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(15.dp))
+        }
+        Text(s.projectName, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 240.dp))
+        Text(replanFrom?.let { "미션 #$it 남은 전주" } ?: "새 계획", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        val saved = s.savedMissionId
+        val c = if (saved == null) Warning else MaterialTheme.colorScheme.tertiary
+        Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(c))
+            Text(if (saved == null) "저장 전" else "저장됨 · 미션 #$saved", fontSize = 11.sp, color = c, maxLines = 1)
+        }
+    }
+}
+
+/** 흰 지도 도구 36dp(10.4.3). 쓰는 중인 도구는 파랑 테두리와 파랑 아이콘. */
+@Composable
+private fun MapTool(label: String, active: Boolean = false, enabled: Boolean = true, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
+    Surface(
+        onClick = onClick, enabled = enabled, color = Color.White, shape = RoundedCornerShape(4.dp),
+        border = if (active) BorderStroke(2.dp, Accent) else null,
+        modifier = Modifier.size(36.dp).semantics { contentDescription = label },
+    ) {
+        Box(contentAlignment = Alignment.Center) { icon(if (!enabled) Color(0xFFB0B0B0) else if (active) Accent else Color.Black) }
+    }
+}
+
+/** 지도 위 가운데 경로 정보 띠(Pilot 2 74쪽): 경로 길이, 예상 시간, 전주, 사진, 소티. */
+@Composable
+private fun RouteInfoBand(s: PlanUiState, inAreaCount: Int) {
     val plan = s.plan
-    val ready = plan != null && plan.sorties.isNotEmpty() && !s.saving
-    Surface(color = overlayColor(), shape = MaterialTheme.shapes.extraLarge, modifier = modifier) {
-        Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(
-                onClick = onExecute, enabled = ready, shape = CircleShape, contentPadding = PaddingValues(0.dp),
-                modifier = Modifier.size(56.dp).semantics { contentDescription = "수행" },
-            ) { Text("▶", style = MaterialTheme.typography.titleLarge) }
-            Column(Modifier.padding(start = 10.dp, end = 14.dp)) {
-                Text("수행", style = MaterialTheme.typography.labelLarge)
-                Text(
-                    plan?.let { "소티 ${it.sorties.size} · ${fmt(it.sorties.sumOf { so -> so.estDistanceM } / 1000)}km" } ?: "경로 없음",
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                )
+    val poles = plan?.sorties?.sumOf { it.poles.size }
+    val cells = listOf(
+        "경로 길이" to (plan?.let { distance(it.sorties.sumOf { so -> so.estDistanceM }) } ?: "-"),
+        "예상 시간" to (plan?.let { mmss(it.sorties.sumOf { so -> so.estDurationSec }) } ?: "-"),
+        "전주" to (poles?.toString() ?: if (s.vertices.size >= 3) "${inAreaCount - s.excluded.size}" else "-"),
+        "사진" to (poles?.let { "${it * perPole(s.params)}" } ?: "-"),
+        "소티" to (plan?.let { "${it.sorties.size}" } ?: "-"),
+    )
+    Row(Modifier.clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.75f)).height(IntrinsicSize.Min)) {
+        cells.forEachIndexed { i, (label, value) ->
+            if (i > 0) VerticalDivider(color = Color(0xFF333333))
+            Column(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(label, fontSize = 11.sp, color = TextSoft, maxLines = 1)
+                Text(value, style = numberStyle(15.sp), maxLines = 1)
             }
         }
     }
 }
 
-/** 오른쪽 패널(매뉴얼 68쪽 6·7번, 74쪽): 고른 전주 → 경로 설정 → 경로 정보. */
+private fun distance(m: Double) = if (m < 1000) "${m.toInt()} m" else "${fmt(m / 1000)} km"
+private fun mmss(sec: Double) = sec.toInt().let { String.format(Locale.ROOT, "%d:%02d", it / 60, it % 60) }
+
+/** 띠 아래 안내: 지금 할 일 한 줄(10.0 순서 안내)과 그리는 중의 [되돌리기]·[완료]·[취소]. */
+@Composable
+private fun HintChip(s: PlanUiState, inAreaCount: Int, vm: PlanViewModel) {
+    val text = when {
+        s.tool == Tool.AREA -> "지도를 눌러 꼭짓점 추가 (${s.vertices.size}개 · 전주 ${inAreaCount}개)"
+        s.tool == Tool.HOME -> "지도를 눌러 이륙 지점(H)을 정하세요"
+        s.vertices.size < 3 -> "① 왼쪽 [영역]으로 점검 영역을 그리세요"
+        s.home == null -> "② [H]로 이륙 지점을 정하세요"
+        s.planning -> "경로 계산 중"
+        s.plan == null -> s.paramErrors.firstOrNull() ?: "영역 안에 넣을 전주가 없습니다"
+        s.savedMissionId == null -> "③ 경로를 확인하고 [저장하고 수행]"
+        else -> null
+    }
+    val message = s.message
+    if (text == null && message == null) return
+    Surface(color = Color.Black.copy(alpha = 0.75f), shape = RoundedCornerShape(4.dp)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                text?.let { Text(it, fontSize = 12.sp, color = Accent, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)) }
+                when (s.tool) {
+                    Tool.AREA -> {
+                        ChipButton("되돌리기", enabled = s.vertices.isNotEmpty(), onClick = vm::undoVertex)
+                        ChipButton("완료", enabled = s.vertices.size >= 3, filled = true, onClick = vm::finishArea)
+                    }
+                    Tool.HOME -> ChipButton("취소", onClick = vm::cancelTool)
+                    Tool.NONE -> Unit
+                }
+            }
+            message?.let { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+    }
+}
+
+@Composable
+private fun ChipButton(label: String, enabled: Boolean = true, filled: Boolean = false, onClick: () -> Unit) {
+    Button(
+        onClick = onClick, enabled = enabled, modifier = Modifier.height(30.dp), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(horizontal = 10.dp),
+        colors = if (filled) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
+    ) { Text(label, fontSize = 12.sp) }
+}
+
+/**
+ * 오른쪽 패널 240dp(10.4.3): 고른 전주 → 미션 설정(촬영 방식, 항목 줄) → [저장] [저장하고 수행].
+ * 가운데는 넘치면 스크롤한다(이동 고도·예비율·소티별 정보는 아래쪽).
+ */
 @Composable
 private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewModel) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.width(PANEL_WIDTH_DP.dp).fillMaxHeight()) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-            val pole = s.poles?.firstOrNull { it.poleId == s.selected }
-            if (pole != null) {
-                PoleSection(pole, isExcluded = pole.poleId in s.excluded, canExclude = inArea.any { it.id == pole.id }, vm)
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            }
-            PanelTitle("경로 설정")
-            ParamSteppers(s.params, enabled = s.tool == Tool.NONE, onChange = vm::updateParams)
-            s.paramErrors.forEach { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp)) }
-            s.plan?.let {
-                HorizontalDivider(Modifier.padding(top = 8.dp))
-                PanelTitle("경로 정보")
-                PlanSummary(it, s.planMs, s.params)
+    Column(Modifier.width(240.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLow)) {
+        val pole = s.poles?.firstOrNull { it.poleId == s.selected }
+        if (pole != null) {
+            PoleSection(pole, isExcluded = pole.poleId in s.excluded, canExclude = inArea.any { it.id == pole.id }, vm)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
+        val guys = inArea.count { it.guy && it.poleId in s.excluded }
+        Row(Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(listOfNotNull("미션 설정", "지선주 ${guys}개 기본 제외".takeIf { guys > 0 }).joinToString(" · "), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        val scroll = rememberScrollState()
+        Column(Modifier.weight(1f).verticalScroll(scroll)) {
+            ParamRows(s.params, pole, enabled = s.tool == Tool.NONE, onChange = vm::updateParams)
+            s.paramErrors.forEach { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) }
+            s.plan?.let { PlanSummary(it, s.planMs, s.params) }
+        }
+        val ready = s.plan != null && s.plan.sorties.isNotEmpty() && !s.saving
+        Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Button(
+                onClick = { vm.savePlan() }, enabled = ready && s.savedMissionId == null, modifier = Modifier.width(72.dp).height(40.dp),
+                shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
+                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
+            ) { Text(if (s.savedMissionId != null) "저장됨" else "저장", fontSize = 12.sp) }
+            Button(
+                onClick = { vm.savePlan(fly = true) }, enabled = ready, modifier = Modifier.weight(1f).height(40.dp),
+                shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
+            ) {
+                Icon(painterResource(R.drawable.ic_play), contentDescription = null, modifier = Modifier.size(11.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (s.savedMissionId != null) "수행" else "저장하고 수행", fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
-@Composable
-private fun PanelTitle(text: String) =
-    Text(text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-
-/** 고른 전주(Pilot 2 개별 웨이포인트 설정 자리): 번호·선로·좌표, 경로 넣기/빼기(F-06). */
+/** 고른 전주(Pilot 2 개별 웨이포인트 설정 자리): 이름·설치기기, 속성 한 줄, 경로 넣기/빼기(F-06). */
 @Composable
 private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boolean, vm: PlanViewModel) {
-    Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(poleDisplayName(pole.poleId, pole.lineName, pole.lineNo), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            TextButton(onClick = { vm.selectPole(null) }, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text("✕") }
+    Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(if (isExcluded) Color.Gray else Warning).border(2.dp, Caution, CircleShape))
+            Text(poleDisplayName(pole.poleId, pole.lineName, pole.lineNo), fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            pole.equipment?.takeIf { it.isNotBlank() }?.let {
+                Text(it, fontSize = 11.sp, color = Caution, maxLines = 1, modifier = Modifier.border(1.dp, Caution, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp))
+            }
+            IconButton(onClick = { vm.selectPole(null) }, modifier = Modifier.size(28.dp)) { Text("✕", fontSize = 12.sp, color = TextSoft) }
         }
-        // 설비 엑셀 속성(4.5): 전산화번호 · 규격 · 설치기기 · 설치년월 · 지선주
+        // 설비 엑셀 속성(4.5): 전산화번호 · 규격 · 설치년월 · 지선주
         val attrs = listOfNotNull(
-            pole.poleId, pole.lengthM?.let { "${it.toInt()}M" }, pole.equipment,
-            pole.installedYm?.takeIf { it.length >= 6 }?.let { "${it.take(4)}-${it.substring(4, 6)} 설치" }, "지선주".takeIf { pole.guy },
+            pole.poleId, pole.lengthM?.let { "${it.toInt()}M" },
+            pole.installedYm?.takeIf { it.length >= 6 }?.let { "${it.take(4)}-${it.substring(4, 6)} 설치" }, "지선주".takeIf { pole.guy }, pole.note?.takeIf { it.isNotBlank() },
         ).joinToString(" · ")
-        listOfNotNull(attrs, pole.note).filter { it.isNotBlank() }.forEach {
-            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Text(String.format(Locale.ROOT, "%.6f, %.6f", pole.lat, pole.lon), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(attrs, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         when {
-            !canExclude -> Text("영역 밖 전주", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            isExcluded -> OutlinedButton(onClick = { vm.toggleExcluded(pole.poleId) }, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("경로에 다시 넣기") }
-            else -> OutlinedButton(onClick = { vm.toggleExcluded(pole.poleId) }, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("경로에서 빼기") }
+            !canExclude -> Text("영역 밖 전주", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> ChipButton(if (isExcluded) "경로에 다시 넣기" else "경로에서 빼기") { vm.toggleExcluded(pole.poleId) }
         }
     }
 }
@@ -369,36 +381,74 @@ private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boole
 internal fun perPole(p: FlightParams) = if (p.shotMode == ShotMode.DIAGONAL4) 4 else 1
 
 /**
- * 경로 설정(6.3, Pilot 2 비행경로 설정): 촬영 방식(5.6)과 핵심 파라미터. 한 줄에 하나씩 이름·범위와 [−][+].
- * 장갑 낀 손가락으로 누를 수 있게 48dp 버튼. 범위 검증은 [FlightParams.validate]. 영역·이륙 지점을 찍는 동안에는 잠근다.
+ * 미션 설정(6.3, 5.6): 촬영 방식 두 버튼과 40dp 항목 줄. 사선은 비행 고도·전주 거리·짐벌 피치(전주 높이로 자동)·속도,
+ * 전주 위는 점검 고도·속도. 아래에 이동 고도·예비율. 범위 검증은 [FlightParams.validate]. 영역·이륙 지점을 찍는 동안에는 잠근다.
  */
 @Composable
-private fun ParamSteppers(p: FlightParams, enabled: Boolean, onChange: (FlightParams) -> Unit) {
-    Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("촬영 방식", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            ShotMode.entries.forEachIndexed { i, mode ->
-                SegmentedButton(
-                    selected = p.shotMode == mode,
-                    onClick = { onChange(p.copy(shotMode = mode)) },
-                    enabled = enabled,
-                    shape = SegmentedButtonDefaults.itemShape(i, ShotMode.entries.size),
-                    icon = {},
-                ) { Text(if (mode == ShotMode.OVERHEAD) "전주 위" else "4방향 사선", maxLines = 1) }
+private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, onChange: (FlightParams) -> Unit) {
+    Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        ShotMode.entries.forEach { mode ->
+            val on = p.shotMode == mode
+            Surface(
+                onClick = { onChange(p.copy(shotMode = mode)) }, enabled = enabled, modifier = Modifier.weight(1f).height(32.dp),
+                shape = RoundedCornerShape(4.dp), color = if (on) Accent.copy(alpha = 0.16f) else Color.Transparent,
+                border = BorderStroke(1.dp, if (on) Accent else MaterialTheme.colorScheme.outline),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(if (mode == ShotMode.OVERHEAD) "전주 위" else "4방향 사선", fontSize = 11.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) Color.White else TextSoft)
+                }
             }
         }
+    }
+    Column(Modifier.padding(horizontal = 12.dp)) {
         if (p.shotMode == ShotMode.DIAGONAL4) {
-            Stepper("사선 고도 (27m~)", "${p.diagonalAltitudeM.toInt()}m", Modifier.fillMaxWidth(), enabled) { onChange(p.copy(diagonalAltitudeM = p.diagonalAltitudeM + it)) }
-            Stepper("전주 거리 (3~50m)", "${p.diagonalDistanceM.toInt()}m", Modifier.fillMaxWidth(), enabled) { onChange(p.copy(diagonalDistanceM = p.diagonalDistanceM + it)) }
+            ParamRow("비행 고도", "${p.diagonalAltitudeM.toInt()}", "m", enabled) { onChange(p.copy(diagonalAltitudeM = p.diagonalAltitudeM + it)) }
+            ParamRow("전주 거리", "${p.diagonalDistanceM.toInt()}", "m", enabled) { onChange(p.copy(diagonalDistanceM = p.diagonalDistanceM + it)) }
+            // 피치는 고도·거리·조준 높이(전주 지상고, 없으면 기본 조준 높이)로 정해진다(5.6)
+            val aim = pole?.let { Viewpoints.aimHeight(it.toPole(), p) } ?: p.aimHeightM
+            val pitch = -Math.toDegrees(atan2(p.diagonalAltitudeM - aim, p.diagonalDistanceM))
+            Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("짐벌 피치", Modifier.weight(1f), fontSize = 12.sp, color = TextSoft)
+                Text("${pitch.roundToInt()}°", style = numberStyle(15.sp))
+                Text(" 전주 높이로 자동", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        } else {
+            ParamRow("점검 고도", "${p.inspectAltitudeM.toInt()}", "m", enabled) { onChange(p.copy(inspectAltitudeM = p.inspectAltitudeM + it * 5)) }
         }
-        Stepper("이동 고도 (30~120m)", "${p.transitAltitudeM.toInt()}m", Modifier.fillMaxWidth(), enabled) { onChange(p.copy(transitAltitudeM = p.transitAltitudeM + it * 5)) }
-        Stepper("점검 고도 (이동 고도 이하)", "${p.inspectAltitudeM.toInt()}m", Modifier.fillMaxWidth(), enabled) { onChange(p.copy(inspectAltitudeM = p.inspectAltitudeM + it * 5)) }
-        Stepper("속도 (2~15m/s)", "${p.speedMps.toInt()}m/s", Modifier.fillMaxWidth(), enabled) { onChange(p.copy(speedMps = p.speedMps + it)) }
-        Stepper("예비율 (20%~)", "${p.batteryReservePct.toInt()}%", Modifier.fillMaxWidth(), enabled) { onChange(p.copy(batteryReservePct = p.batteryReservePct + it * 5)) }
+        ParamRow("속도", "${p.speedMps.toInt()}", "m/s", enabled) { onChange(p.copy(speedMps = p.speedMps + it)) }
+        ParamRow("이동 고도", "${p.transitAltitudeM.toInt()}", "m", enabled) { onChange(p.copy(transitAltitudeM = p.transitAltitudeM + it * 5)) }
+        ParamRow("배터리 예비율", "${p.batteryReservePct.toInt()}", "%", enabled) { onChange(p.copy(batteryReservePct = p.batteryReservePct + it * 5)) }
     }
 }
 
-/** [onStep]에는 −1 또는 +1이 넘어간다. 버튼 설명(contentDescription)은 스모크 스크립트가 찾는 이름이다("이동 고도 높이기" 등, 괄호 범위는 뺀다). */
+/** 항목 한 줄 40dp: 이름, [−] 값 [+](32dp). 버튼 설명은 스모크 스크립트가 찾는 이름이다("속도 낮추기" 등). */
+@Composable
+private fun ParamRow(label: String, value: String, unit: String, enabled: Boolean, onStep: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), fontSize = 12.sp, color = TextSoft, maxLines = 1)
+        StepButton("−", "$label 낮추기", enabled) { onStep(-1) }
+        Text(
+            buildAnnotatedString {
+                append(value)
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)) { append(unit) }
+            },
+            Modifier.width(46.dp), style = numberStyle(15.sp), textAlign = TextAlign.Center, maxLines = 1,
+        )
+        StepButton("+", "$label 높이기", enabled) { onStep(1) }
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+@Composable
+private fun StepButton(sign: String, description: String, enabled: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, enabled = enabled, modifier = Modifier.size(32.dp).semantics { contentDescription = description },
+        shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceContainer,
+    ) { Box(contentAlignment = Alignment.Center) { Text(sign, fontSize = 15.sp, color = if (enabled) Color.White else MaterialTheme.colorScheme.outline) } }
+}
+
+/** [onStep]에는 −1 또는 +1이 넘어간다(설정 화면에서 쓰는 큰 스테퍼). */
 @Composable
 internal fun Stepper(label: String, value: String, modifier: Modifier, enabled: Boolean = true, onStep: (Int) -> Unit) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -418,23 +468,16 @@ internal fun Stepper(label: String, value: String, modifier: Modifier, enabled: 
     }
 }
 
-/** 소티별 예상 거리·시간·배터리(F-08)와 도달 불가 전주(5.4). */
+/** 소티별 예상 시간·배터리(F-08)와 도달 불가 전주(5.4). 패널 스크롤 아래쪽. */
 @Composable
 private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
-    val visits = plan.sorties.sumOf { it.poles.size }
-    Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            "전주 ${visits}개 · ${fmt(plan.sorties.sumOf { it.estDistanceM } / 1000)}km · ${fmt(plan.sorties.sumOf { it.estDurationSec } / 60)}분",
-            style = MaterialTheme.typography.labelLarge,
-        )
-        // Pilot 2 경로 정보: 웨이포인트·사진 수(촬영 방식 5.6에 따라 전주당 1곳 또는 4곳)
-        Text("웨이포인트 ${visits * perPole(params)}개 · 사진 ${visits * perPole(params)}장", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         plan.sorties.forEachIndexed { i, s ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(SORTIE_COLORS[i % SORTIE_COLORS.size]))))
+                Box(Modifier.size(8.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(SORTIE_COLORS[i % SORTIE_COLORS.size]))))
                 Text(
-                    "소티 ${i + 1} · ${s.poles.size}개 · ${fmt(s.estDurationSec / 60)}분 · 배터리 ${s.estBatteryPct.toInt()}%",
-                    style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    "소티 ${i + 1} · ${s.poles.size}개 · ${mmss(s.estDurationSec)} · 배터리 ${s.estBatteryPct.toInt()}%",
+                    fontSize = 11.sp, color = TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -442,10 +485,10 @@ private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
             val vlos = plan.unreachable.count { it.reason == UnreachablePole.Reason.VLOS_EXCEEDED }
             Text(
                 "도달 불가 ${plan.unreachable.size}개 (가시권 ${params.vlosRadiusM.toInt()}m 초과 ${vlos}, 배터리 초과 ${plan.unreachable.size - vlos})",
-                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error,
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.error,
             )
         }
-        Text("계산 ${planMs}ms", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("계산 ${planMs}ms", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

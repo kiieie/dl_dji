@@ -353,6 +353,13 @@ interface ProjectDao {
     @Query("SELECT * FROM mission ORDER BY createdAt DESC LIMIT 1")
     suspend fun latestMission(): MissionEntity?
 
+    /** 남은 전주가 있는 가장 최근 미션(홈 카드·수동 비행 경로 알약). 부분 완료로 닫은 미션은 뺀다. */
+    @Query(
+        "SELECT * FROM mission m WHERE m.status != 'PARTIAL' AND EXISTS (SELECT 1 FROM sortie s JOIN visit v ON v.sortieId = s.id " +
+            "WHERE s.missionId = m.id AND v.status IN ('PENDING', 'IN_PROGRESS')) ORDER BY m.createdAt DESC LIMIT 1",
+    )
+    suspend fun latestOpenMission(): MissionEntity?
+
     @Query(
         "SELECT s.id AS sortieId, s.seq, v.id AS visitId, v.status, p.poleId, p.lat, p.lon, p.lineName, p.note, p.lineNo, p.lengthM, p.equipment " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
