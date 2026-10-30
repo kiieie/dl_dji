@@ -6,6 +6,9 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.executor.PreflightEvaluator
 import com.example.myfirstapp.core.executor.PreflightCheck
 import com.example.myfirstapp.core.model.Lens
+import com.example.myfirstapp.core.model.ObstacleDirection
+import com.example.myfirstapp.core.model.ObstacleWarning
+import com.example.myfirstapp.core.model.Obstacles
 import com.example.myfirstapp.core.executor.ExecutorConfig
 import com.example.myfirstapp.data.TelemetrySampleEntity
 import com.example.myfirstapp.drone.DjiDroneGateway
@@ -94,6 +97,8 @@ data class FlightUiState(
     val preflight: List<PreflightCheck>? = null,
     /** 미션 파라미터(촬영 방식 포함). 미니맵에 실제 촬영 지점 경로를 그린다. */
     val params: FlightParams? = null,
+    /** 충돌 경고(13번): 방향별 등급·거리. 내비 원판 부채꼴과 상단 상태 칸에 보인다. */
+    val obstacles: ObstacleWarning = ObstacleWarning(),
 ) {
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.SortieDone, ExecState.MissionDone)
     val sortieCount get() = (exec.visits.maxOfOrNull { it.sortieIndex } ?: 0) + 1
@@ -217,6 +222,7 @@ class FlightViewModel(
                 )
             }
         }
+        viewModelScope.watchObstacles(drone, notifier) { w -> _state.update { it.copy(obstacles = w) } }
         _state.update {
             it.copy(
                 loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = params.zoomRatio,
@@ -337,6 +343,12 @@ class FlightViewModel(
     fun rcPause() = (drone as? FakeDroneGateway)?.pressRcPause()
     fun rcResume() = (drone as? FakeDroneGateway)?.pressRcResume()
     fun dropBattery() = (drone as? FakeDroneGateway)?.let { it.setBattery((it.telemetry.value.batteryPct - 30).coerceAtLeast(0.0)) }
+
+    /** 모의 장애물: 누를 때마다 앞 장애물 없음 → 8m → 4m → 없음. */
+    fun cycleObstacle() = (drone as? FakeDroneGateway)?.let { d ->
+        val front = when (d.obstacles.value?.distancesM?.get(ObstacleDirection.FRONT)) { null -> 8.0; 8.0 -> 4.0; else -> null }
+        d.setObstacles(front?.let { Obstacles(mapOf(ObstacleDirection.FRONT to it)) })
+    }
 
     private fun send(c: Command) = executor?.send(c).also { OpLog.log("flight", c.toString(), mapOf("mission" to missionId)) }
 

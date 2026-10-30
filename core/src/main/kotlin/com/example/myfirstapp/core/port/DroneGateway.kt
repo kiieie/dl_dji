@@ -4,10 +4,12 @@ import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
+import com.example.myfirstapp.core.model.Obstacles
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.route.Viewpoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * 기체 제어 포트. DJI SDK 호출은 이 인터페이스의 구현(`DjiDroneGateway`) 안에만 둔다.
@@ -18,6 +20,9 @@ interface DroneGateway {
 
     /** 텔레메트리에서 해석한 기체 이벤트. 연결 끊김 판정(3초)도 어댑터가 한다(6.4). */
     val events: Flow<DroneEvent>
+
+    /** 방향별 장애물 거리(충돌 경고, 13번). 값을 모르면 null. 기본은 빈 흐름(장애물 감지 없음). */
+    val obstacles: Flow<Obstacles?> get() = emptyFlow()
 
     suspend fun preflight(): PreflightReport
 

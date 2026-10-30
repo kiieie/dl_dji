@@ -168,7 +168,7 @@ private fun FlightContent(
 
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (s.telemetry?.landingConfirmNeeded == true) LandingConfirmButton(vm::confirmLanding)
-            s.telemetry?.let { NavDisplay(it, s.home) }
+            s.telemetry?.let { NavDisplay(it, s.home, s.obstacles) }
         }
         // 실행기가 대기여도 기체가 떠 있으면(수동 비행 화면에서 넘어온 경우 등) RTH를 보인다
         if ((ui.state.airborne || s.telemetry?.isFlying == true) && ui.state != ExecState.ReturningHome) {
@@ -339,11 +339,13 @@ internal fun LandingConfirmButton(onClick: () -> Unit) {
 /** 모의 조작(기체 연동 전 전용). RC Pro의 일시정지·C1 버튼으로도 같은 동작을 한다(10장). */
 @Composable
 private fun MockRcControls(vm: FlightViewModel) {
-    Row(Modifier.width(CARD_WIDTH), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+    // [장애물]이 들어가게 카드보다 조금 넓다
+    Row(Modifier.width(CARD_WIDTH + 56.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("모의 RC", fontSize = 11.sp, color = TextSoft)
         CardButton("Ⅱ", CardBg, Color.White, { vm.rcPause() }, Modifier.weight(1f), height = 30.dp)
         CardButton("C1", CardBg, Color.White, { vm.rcResume() }, Modifier.weight(1f), height = 30.dp)
         CardButton("−30%", CardBg, Color.White, { vm.dropBattery() }, Modifier.weight(1f), height = 30.dp)
+        CardButton("장애물", CardBg, Color.White, { vm.cycleObstacle() }, Modifier.weight(1f), height = 30.dp)
     }
 }
 

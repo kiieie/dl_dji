@@ -5,6 +5,7 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.FlightMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
+import com.example.myfirstapp.core.model.Obstacles
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.DroneEvent
@@ -266,6 +267,11 @@ class FakeDroneGateway(
     fun simulateAircraftRth() = startGoHome()
 
     fun setBattery(pct: Double) = _telemetry.update { it.copy(batteryPct = pct) }
+
+    /** 장애물 주입(시뮬레이터에는 장애물이 없다). null이면 없앤다. */
+    fun setObstacles(o: Obstacles?) { _obstacles.value = o }
+    private val _obstacles = MutableStateFlow<Obstacles?>(null)
+    override val obstacles: StateFlow<Obstacles?> = _obstacles.asStateFlow()
 
     // ---------------------------------------------------------------- 내부
 

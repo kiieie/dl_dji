@@ -25,6 +25,7 @@ import com.example.myfirstapp.data.listMbtiles
 import com.example.myfirstapp.data.onlineSatelliteTilesRetrying
 import com.example.myfirstapp.drone.DjiDroneGateway
 import com.example.myfirstapp.drone.djiAircraftConnected
+import com.example.myfirstapp.sound.ToneNotifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,11 +65,13 @@ class ManualFlightViewModel(
     val state: StateFlow<ManualFlightUiState> = _state.asStateFlow()
     private val drone: DroneGateway? = if (djiAircraftConnected()) DjiDroneGateway(viewModelScope, File(appFilesDir, "manual/kmz")) else null
     private val camera = CameraControl(viewModelScope, { drone }, { _state.value.flight }, { f -> _state.update { it.copy(flight = f(it.flight)) } }, "manual")
+    private val tone = ToneNotifier()
 
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))
         _state.update { it.copy(connected = drone != null, message = if (drone == null) "기체가 연결되지 않았습니다" else null) }
         drone?.let { d -> viewModelScope.launch { d.telemetry.collect { t -> _state.update { it.copy(flight = it.flight.copy(telemetry = t, home = t.home)) } } } }
+        drone?.let { d -> viewModelScope.watchObstacles(d, tone) { w -> _state.update { it.copy(flight = it.flight.copy(obstacles = w)) } } }
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
             _state.update { it.copy(flight = it.flight.copy(mapFiles = files)) }
@@ -161,6 +164,7 @@ class ManualFlightViewModel(
 
     override fun onCleared() {
         (drone as? DjiDroneGateway)?.close()
+        tone.release()
     }
 
     companion object {

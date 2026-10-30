@@ -27,5 +27,10 @@ class ToneNotifier : Notifier {
         tone?.startTone(type, ms)
     }
 
+    /** 충돌 경고 짧은 삑 하나(11장). 반복 간격은 부르는 쪽(`ui/flight/ObstacleWatch.kt`)이 등급에 따라 정한다. */
+    fun obstacleBeep() {
+        tone?.startTone(ToneGenerator.TONE_PROP_BEEP, 80)
+    }
+
     fun release() = tone?.release()
 }
