@@ -54,7 +54,6 @@ import com.example.myfirstapp.data.MissionSummary
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.ui.FullscreenAlertDialog
-import com.example.myfirstapp.ui.perPole
 import com.example.myfirstapp.ui.MENU_PROPERTIES
 import com.example.myfirstapp.ui.scrollbar
 import com.example.myfirstapp.ui.theme.Accent
@@ -218,7 +217,7 @@ private fun MissionRow(
     onSelect: () -> Unit, onRun: () -> Unit, onResult: () -> Unit, onDelete: () -> Unit,
 ) {
     val action = m.primaryAction()
-    val photos = remember(m.flightParams, m.poleCount) { m.poleCount * perPole(flightParamsFromJson(m.flightParams)) }
+    val photos = remember(m.flightParams, m.poleCount) { m.poleCount * flightParamsFromJson(m.flightParams).photosPerPole() }
     val text = if (selected) Color.White else TextSoft
     Surface(
         onClick = onSelect, modifier = Modifier.fillMaxWidth().height(40.dp), shape = RoundedCornerShape(4.dp),

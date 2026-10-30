@@ -10,7 +10,6 @@ import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.data.MissionVisitRow
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.drone.AircraftStatus
-import com.example.myfirstapp.ui.perPole
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,7 +46,7 @@ suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     val route = visits.groupBy { it.sortieId }.values.map { s -> s.map { RoutePoint(it.lat, it.lon, isDone(it), it.lineNo?.takeIf(String::isNotBlank) ?: it.poleId.takeLast(4)) } }
     return LatestMission(
         m.projectId, m.id, dao.projectName(m.projectId).orEmpty(), visits.count(isDone), visits.size,
-        status = m.status, sorties = route.size, photos = visits.size * perPole(params), shotMode = params.shotMode,
+        status = m.status, sorties = route.size, photos = visits.sumOf { params.photosPerPole(it.toPole()) }, shotMode = params.shotMode,
         home = GeoPoint(m.homeLat, m.homeLon), route = route,
     )
 }

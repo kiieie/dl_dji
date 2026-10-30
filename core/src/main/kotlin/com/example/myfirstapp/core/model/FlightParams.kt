@@ -40,6 +40,16 @@ data class FlightParams(
     /** 촬영 고도: 4방향 사선은 사선 고도, 전주 위는 점검 고도(5.6). */
     val shotAltitudeM: Double get() = if (shotMode == ShotMode.DIAGONAL4) diagonalAltitudeM else inspectAltitudeM
 
+    /**
+     * 전주 하나에서 받을 사진 파일 수(5.6): 촬영 지점 수(사선 4, 전주 위 1) × 렌즈 수, 사선에서 설치기기가 있으면 설비 조준 사진으로 2배.
+     * [pole]을 모르면 설비 사진은 셈하지 않는다.
+     */
+    fun photosPerPole(pole: Pole? = null): Int {
+        val points = if (shotMode == ShotMode.DIAGONAL4) 4 else 1
+        val aims = if (shotMode == ShotMode.DIAGONAL4 && equipmentsOf(pole?.equipment).any { it in equipmentDropM }) 2 else 1
+        return points * lenses.distinct().size.coerceAtLeast(1) * aims
+    }
+
     /** RTH 고도 = 이동 고도 + 10m, 법정 상한 150m을 넘지 않는다(6.3). */
     val rthAltitudeM: Double get() = minOf(transitAltitudeM + RTH_MARGIN_M, MAX_ALTITUDE_M)
 

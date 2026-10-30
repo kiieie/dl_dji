@@ -29,4 +29,13 @@ class FlightParamsTest {
         assertTrue(d.copy(terrainFollow = false, diagonalAltitudeM = 24.5).validate().any { "27m" in it })
         assertTrue(d.copy(diagonalAltitudeM = 60.0).validate().any { "이동 고도 이하" in it })
     }
+
+    @Test
+    fun `전주당 사진 수는 지점 수 × 렌즈 수, 설치기기 사선은 2배`() {
+        val bank = Pole("P", GeoPoint(36.0, 127.0), equipment = "가공뱅크")
+        assertEquals(8, FlightParams().photosPerPole())
+        assertEquals(16, FlightParams().photosPerPole(bank))
+        assertEquals(2, FlightParams(shotMode = ShotMode.OVERHEAD).photosPerPole(bank))
+        assertEquals(4, FlightParams(lenses = listOf(Lens.WIDE), equipmentDropM = emptyMap()).photosPerPole(bank))
+    }
 }

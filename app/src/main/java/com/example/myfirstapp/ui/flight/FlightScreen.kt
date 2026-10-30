@@ -8,7 +8,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.example.myfirstapp.ui.FullscreenAlertDialog
-import com.example.myfirstapp.ui.perPole
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.Error
 import com.example.myfirstapp.ui.theme.OnTertiaryContainer
@@ -204,7 +203,7 @@ private fun MissionCard(s: FlightUiState, missionId: Long, vm: FlightViewModel, 
     val ui = s.exec
     val all = ui.visits
     val done = all.count { it.status == VisitStatus.DONE || it.status == VisitStatus.SKIPPED || it.status == VisitStatus.FAILED }
-    val planned = all.size * (s.params?.let(::perPole) ?: 1)
+    val planned = s.params?.let { p -> all.sumOf { p.photosPerPole(it.pole) } } ?: all.size
     val photos = all.sumOf { it.captureCount }
     val pct = if (all.isEmpty()) 0 else done * 100 / all.size
     val paused = ui.state == ExecState.Paused

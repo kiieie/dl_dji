@@ -264,7 +264,7 @@ private fun RouteInfoBand(s: PlanUiState, inAreaCount: Int) {
         "경로 길이" to (plan?.let { distance(it.sorties.sumOf { so -> so.estDistanceM }) } ?: "-"),
         "예상 시간" to (plan?.let { mmss(it.sorties.sumOf { so -> so.estDurationSec }) } ?: "-"),
         "전주" to (poles?.toString() ?: if (s.vertices.size >= 3) "${inAreaCount - s.excluded.size}" else "-"),
-        "사진" to (poles?.let { "${it * perPole(s.params)}" } ?: "-"),
+        "사진" to (plan?.let { "${it.sorties.sumOf { so -> so.poles.sumOf(s.params::photosPerPole) }}" } ?: "-"),
         "소티" to (plan?.let { "${it.sorties.size}" } ?: "-"),
     )
     Row(Modifier.clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.75f)).height(IntrinsicSize.Min)) {
@@ -390,7 +390,6 @@ private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boole
     }
 }
 
-internal fun perPole(p: FlightParams) = if (p.shotMode == ShotMode.DIAGONAL4) 4 else 1
 
 /**
  * 미션 설정(6.3, 5.6): 촬영 방식 두 버튼과 40dp 항목 줄. 사선은 비행 고도·전주 거리·짐벌 피치(전주 높이로 자동)·속도,

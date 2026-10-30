@@ -49,10 +49,11 @@ class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?
 
     init {
         viewModelScope.launch {
-            val missions = dao.albumMissions().map { AlbumGroup.Mission(it) }
+            // 사진이 없는 미션(계획만 한 것)은 앨범에 두지 않는다
+            val missions = dao.albumMissions().filter { it.photoCount > 0 }.map { AlbumGroup.Mission(it) }
             val days = withContext(Dispatchers.IO) {
                 File(appFilesDir, "manual").listFiles { f -> f.isDirectory && f.name.all(Char::isDigit) }.orEmpty()
-                    .map { d -> AlbumGroup.ManualDay(d.name, d.listFiles { f -> f.extension.equals("jpg", true) }.orEmpty().sortedBy { it.name }) }
+                    .map { d -> AlbumGroup.ManualDay(d.name, d.listFiles { f -> f.extension.equals("jpg", true) }.orEmpty().sortedByDescending { it.name }) }
                     .filter { it.files.isNotEmpty() }
             }
             // 최신순: 미션은 계획 시각, 수동 하루치는 그날 끝으로 본다
