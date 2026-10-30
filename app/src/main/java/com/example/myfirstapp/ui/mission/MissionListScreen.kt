@@ -65,13 +65,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-internal val STATUS_TITLE = mapOf("PLANNED" to "계획됨", "IN_PROGRESS" to "진행 중", "DONE" to "완료", "PARTIAL" to "부분 완료")
+internal val STATUS_TITLE = mapOf("PLANNED" to "계획됨", "IN_PROGRESS" to "진행 중", "DONE" to "완료", "PARTIAL" to "부분 완료", "REPLACED" to "대체됨")
 
-/** 상태 색(10.4.1): 계획됨 파랑, 진행 중·부분 완료 주황, 완료 초록. */
+/** 상태 색(10.4.1): 계획됨 파랑, 진행 중·부분 완료 주황, 완료 초록, 새 계획으로 대체됨 회색. */
 @Composable
 internal fun statusColor(status: String) = when (status) {
     "DONE" -> MaterialTheme.colorScheme.tertiary
     "IN_PROGRESS", "PARTIAL" -> Warning
+    "REPLACED" -> MaterialTheme.colorScheme.onSurfaceVariant
     else -> Accent
 }
 

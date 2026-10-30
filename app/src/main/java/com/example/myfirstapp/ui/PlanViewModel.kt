@@ -88,7 +88,7 @@ data class PlanUiState(
 
 /**
  * 계획 화면 ③(10장): 영역, 이륙 지점, 파라미터, 전주 제외, 경로 계산과 계획 저장.
- * [replanFrom]이 있으면 그 미션의 남은 전주만 골라 연다(F-20 [남은 전주로 새 계획]). 저장하면 그 미션은 부분 완료로 닫힌다.
+ * [replanFrom]이 있으면 그 미션의 남은 전주만 골라 연다(F-20 [남은 전주로 새 계획]). 저장하면 그 미션은 대체됨(REPLACED)으로 닫힌다.
  */
 class PlanViewModel(
     private val dao: ProjectDao,
@@ -258,7 +258,7 @@ class PlanViewModel(
                 homeLat = p.home.lat, homeLon = p.home.lon, flightParams = s.params.toJson(), modelVersion = null, status = "PLANNED",
             )
             val sorties = p.sorties.map { so -> SortieDraft(so.estDistanceM, so.estBatteryPct, so.poles.map { rowIds.getValue(it.poleId) }) }
-            runCatching { dao.saveMission(mission, sorties).also { id -> replanFrom?.let { old -> dao.setMissionStatus(old, "PARTIAL") } } }
+            runCatching { dao.saveMission(mission, sorties).also { id -> replanFrom?.let { old -> dao.setMissionStatus(old, "REPLACED") } } }
                 .onSuccess { id ->
                     // 저장하는 사이 계획이 바뀌었으면 [비행 시작]을 켜지 않는다
                     _state.update {

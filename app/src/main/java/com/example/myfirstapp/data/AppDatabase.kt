@@ -386,9 +386,9 @@ interface ProjectDao {
     @Query("SELECT * FROM mission ORDER BY createdAt DESC LIMIT 1")
     suspend fun latestMission(): MissionEntity?
 
-    /** 남은 전주가 있는 가장 최근 미션(홈 카드·수동 비행 경로 알약). 부분 완료로 닫은 미션은 뺀다. */
+    /** 남은 전주가 있는 가장 최근 미션(홈 카드·수동 비행 경로 알약). 새 계획으로 대체한 미션(REPLACED)은 뺀다. */
     @Query(
-        "SELECT * FROM mission m WHERE m.status != 'PARTIAL' AND EXISTS (SELECT 1 FROM sortie s JOIN visit v ON v.sortieId = s.id " +
+        "SELECT * FROM mission m WHERE m.status != 'REPLACED' AND EXISTS (SELECT 1 FROM sortie s JOIN visit v ON v.sortieId = s.id " +
             "WHERE s.missionId = m.id AND v.status IN ('PENDING', 'IN_PROGRESS')) ORDER BY m.createdAt DESC LIMIT 1",
     )
     suspend fun latestOpenMission(): MissionEntity?
@@ -408,6 +408,10 @@ interface ProjectDao {
 
     @Query("UPDATE mission SET status = :status WHERE id = :missionId")
     suspend fun setMissionStatus(missionId: Long, status: String)
+
+    /** 미션의 남은 전주(미점검·진행 중) 수. */
+    @Query("SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId AND v.status IN ('PENDING', 'IN_PROGRESS')")
+    suspend fun remainingVisits(missionId: Long): Int
 
     @Query("UPDATE mission SET flownHeightMode = :mode WHERE id = :missionId")
     suspend fun setFlownHeightMode(missionId: Long, mode: String)
@@ -554,7 +558,7 @@ interface ProjectDao {
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -562,7 +566,21 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
+
+        /**
+         * 5 → 6(2026-10-31): 미션 상태. 전에는 PARTIAL이 "새 계획으로 대체"였으므로 REPLACED로 바꾸고,
+         * 남은 전주가 있는데 DONE으로 끝난 미션은 부분 완료(PARTIAL, 이어하기에 남음)로 고친다.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("UPDATE mission SET status = 'REPLACED' WHERE status = 'PARTIAL'")
+                db.execSQL(
+                    "UPDATE mission SET status = 'PARTIAL' WHERE status = 'DONE' AND EXISTS (SELECT 1 FROM sortie s JOIN visit v ON v.sortieId = s.id " +
+                        "WHERE s.missionId = mission.id AND v.status IN ('PENDING', 'IN_PROGRESS'))",
+                )
+            }
+        }
 
         /** 4 → 5(2026-10-31): 실제로 날아간 고도 방식(지형 추적 거절 시 이륙 기준, 5.6). */
         val MIGRATION_4_5 = object : Migration(4, 5) {

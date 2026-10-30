@@ -40,7 +40,8 @@ class RoomRecorder(
             "Takeoff" -> dao.startSortie(sortie.sortieId, now)
             "Arrived" -> visitId?.let { dao.setArrived(it, now) }
             "SortieDone" -> dao.endSortie(sortie.sortieId, now)
-            "MissionDone" -> dao.setMissionStatus(missionId, "DONE")
+            // 남은 전주가 있으면 부분 완료(홈·이어하기에 남음, 2026-10-30 사용자 결정)
+            "MissionDone" -> dao.setMissionStatus(missionId, if (dao.remainingVisits(missionId) > 0) "PARTIAL" else "DONE")
         }
     }
 

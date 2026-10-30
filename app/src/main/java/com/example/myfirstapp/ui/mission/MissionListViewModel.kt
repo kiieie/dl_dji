@@ -43,7 +43,7 @@ enum class MissionAction(val label: String) { FLY("▶ 비행"), CONTINUE("이�
 
 fun MissionSummary.primaryAction(): MissionAction? = when {
     status == "PLANNED" -> MissionAction.FLY
-    remainingCount > 0 && status != "PARTIAL" -> MissionAction.CONTINUE
+    remainingCount > 0 && status != "REPLACED" -> MissionAction.CONTINUE
     doneCount > 0 -> MissionAction.RESULT
     else -> null
 }
@@ -51,7 +51,7 @@ fun MissionSummary.primaryAction(): MissionAction? = when {
 /** 미션 목록에서 다른 화면으로 가는 동작. */
 sealed interface MissionNav {
     data class Flight(val missionId: Long) : MissionNav
-    /** 남은 전주만 골라 새 계획을 세운다. 저장하면 [missionId]는 부분 완료로 닫힌다. */
+    /** 남은 전주만 골라 새 계획을 세운다. 저장하면 [missionId]는 대체됨(REPLACED)으로 닫혀 이어하기에서 빠진다. */
     data class Replan(val missionId: Long) : MissionNav
     data class Result(val missionId: Long) : MissionNav
 }
