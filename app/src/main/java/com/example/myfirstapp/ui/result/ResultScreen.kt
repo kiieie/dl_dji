@@ -61,6 +61,18 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.material3.FilterChipDefaults
+import com.example.myfirstapp.data.DetectionEntity
+import androidx.compose.ui.unit.center
+import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -241,9 +253,11 @@ private fun PhotoViewer(
     r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto: (Int) -> Unit, verdict: ReviewVerdict?, saved: ReviewVerdict?, onTap: () -> Unit, modifier: Modifier,
 ) {
     val p = photos.getOrNull(index)
-    Box(modifier.clickable(interactionSource = null, indication = null, onClick = onTap)) {
-        if (p == null) Text("사진이 없습니다.", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else Photo(p, Modifier.fillMaxSize())
+    // 고른 검출 객체(상자를 누르거나 아래 칩을 누름). 사진이 바뀌면 지운다
+    var selected by remember(p?.capture?.id) { mutableStateOf<Int?>(null) }
+    Box(modifier) {
+        if (p == null) Text("사진이 없습니다.", modifier = Modifier.align(Alignment.Center).clickable(onClick = onTap), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else Photo(p, selected, { selected = it }, onTapEmpty = onTap, Modifier.fillMaxSize())
         Column(
             Modifier.align(Alignment.BottomCenter).padding(8.dp).widthIn(max = 280.dp).background(PanelBg, RoundedCornerShape(8.dp)).padding(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -262,13 +276,17 @@ private fun PhotoViewer(
                     FilterChip(i == index, { onPhoto(i) }, label = { Text(when (ph.capture.lens) { "ZOOM" -> "망원"; "WIDE" -> "광각"; else -> ph.capture.lens }) })
                 }
             }
+            // 검출 객체가 여럿이면 칩으로 고른다. 고르면 그 상자로 확대된다(다시 누르면 전체 보기)
             p?.boxes?.takeIf { it.isNotEmpty() }?.let { boxes ->
-                Text(
-                    boxes.sortedByDescending { it.alert }.joinToString(" · ") { "${TargetLabels.title(it.label)} ${(it.score * 100).toInt()}%" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (boxes.any { it.alert }) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                )
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    boxes.forEachIndexed { i, d ->
+                        FilterChip(
+                            selected == i, { selected = if (selected == i) null else i },
+                            label = { Text("${TargetLabels.title(d.label)} ${(d.score * 100).toInt()}%", maxLines = 1) },
+                            colors = FilterChipDefaults.filterChipColors(labelColor = if (d.alert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant),
+                        )
+                    }
+                }
             }
         }
     }
@@ -304,36 +322,81 @@ private fun VerdictBadge(verdict: ReviewVerdict?, saved: ReviewVerdict?) {
 }
 
 /** 사진 위에 탐지 상자(0~1 비율 좌표)를 그린다. 사진은 비율을 지켜 가운데 그리므로 상자도 그 영역에 맞춘다. */
+/**
+ * 사진과 검출 상자. 두 손가락으로 확대·이동, 두 번 탭하면 2.5배 ↔ 전체. 상자를 누르면 그 객체를 고르고 그 상자로 확대한다.
+ * 상자 밖을 한 번 누르면 [onTapEmpty](패널 숨기기).
+ */
 @Composable
-private fun Photo(p: PhotoUi, modifier: Modifier) {
+private fun Photo(p: PhotoUi, selected: Int?, onSelect: (Int?) -> Unit, onTapEmpty: () -> Unit, modifier: Modifier) {
     val bitmap by produceState<ImageBitmap?>(null, p.capture.filePath) {
         value = withContext(Dispatchers.IO) { p.capture.filePath?.let { BitmapFactory.decodeFile(it) }?.asImageBitmap() }
     }
     val measurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelMedium.copy(color = Color.Black, fontWeight = FontWeight.Bold)
-    Box(modifier) {
-        val b = bitmap
-        if (b != null) Image(b, contentDescription = "${p.capture.lens} 사진", modifier = Modifier.fillMaxSize())
-        else Text("사진 파일 없음", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Canvas(Modifier.fillMaxSize().clipToBounds()) {
-            val scale = b?.let { minOf(size.width / it.width, size.height / it.height) }
-            val w = if (b != null) b.width * scale!! else size.width
-            val h = if (b != null) b.height * scale!! else size.height
-            val left = (size.width - w) / 2
-            val top = (size.height - h) / 2
-            p.boxes.forEach { d ->
-                val color = if (d.alert) DetectedBox else OtherBox
-                val box = Offset(left + d.x * w, top + d.y * h)
-                drawRect(color, box, Size(d.w * w, d.h * h), style = Stroke(3.dp.toPx()))
-                // 라벨은 상자 위 왼쪽에 붙이고, 위가 사진 밖이면 상자 안쪽 위에 둔다
-                val text = measurer.measure("${TargetLabels.title(d.label)} ${(d.score * 100).toInt()}%", labelStyle)
-                val pad = 4.dp.toPx()
-                val lw = text.size.width + pad * 2
-                val lh = text.size.height.toFloat()
-                val lx = box.x.coerceIn(0f, (size.width - lw).coerceAtLeast(0f))
-                val ly = if (box.y - lh >= top) box.y - lh else box.y
-                drawRect(color, Offset(lx, ly), Size(lw, lh))
-                drawText(text, topLeft = Offset(lx + pad, ly))
+    var scale by remember(p.capture.id) { mutableFloatStateOf(1f) }
+    var pan by remember(p.capture.id) { mutableStateOf(Offset.Zero) }
+    var viewSize by remember { mutableStateOf(Size.Zero) }
+    /** 사진이 화면에 맞춰 들어간 영역(확대 전 좌표). */
+    fun imageRect(): Rect {
+        val b = bitmap ?: return Rect(Offset.Zero, viewSize)
+        val k = minOf(viewSize.width / b.width, viewSize.height / b.height)
+        val w = b.width * k
+        val h = b.height * k
+        return Rect(Offset((viewSize.width - w) / 2, (viewSize.height - h) / 2), Size(w, h))
+    }
+    fun boxRect(d: DetectionEntity) = imageRect().let { r -> Rect(Offset(r.left + d.x * r.width, r.top + d.y * r.height), Size(d.w * r.width, d.h * r.height)) }
+    // 고른 상자가 화면 절반쯤 차도록 확대해 가운데로
+    LaunchedEffect(selected, viewSize, bitmap) {
+        val d = selected?.let { p.boxes.getOrNull(it) } ?: return@LaunchedEffect
+        val r = boxRect(d)
+        if (r.width <= 0f || r.height <= 0f) return@LaunchedEffect
+        scale = minOf(viewSize.width * 0.5f / r.width, viewSize.height * 0.5f / r.height).coerceIn(1f, 8f)
+        pan = (viewSize.center - r.center) * scale
+    }
+    Box(
+        modifier.clipToBounds()
+            .onSizeChanged { viewSize = Size(it.width.toFloat(), it.height.toFloat()) }
+            .pointerInput(p.capture.id) {
+                detectTransformGestures { _, dPan, zoom, _ ->
+                    scale = (scale * zoom).coerceIn(1f, 8f)
+                    pan = if (scale == 1f) Offset.Zero else pan + dPan
+                }
+            }
+            .pointerInput(p.capture.id, p.boxes) {
+                detectTapGestures(
+                    onDoubleTap = { at ->
+                        if (scale > 1f) { scale = 1f; pan = Offset.Zero } else { scale = 2.5f; pan = (viewSize.center - at) * 1.5f }
+                    },
+                    onTap = { at ->
+                        // 화면 좌표 → 확대 전 좌표(가운데 기준 확대 + 이동)
+                        val c = viewSize.center + (at - viewSize.center - pan) / scale
+                        val hit = p.boxes.indices.lastOrNull { boxRect(p.boxes[it]).contains(c) }
+                        if (hit != null) onSelect(if (hit == selected) null else hit) else onTapEmpty()
+                    },
+                )
+            },
+    ) {
+        Box(Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = pan.x; translationY = pan.y }) {
+            val b = bitmap
+            if (b != null) Image(b, contentDescription = "${p.capture.lens} 사진", modifier = Modifier.fillMaxSize())
+            else Text("사진 파일 없음", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Canvas(Modifier.fillMaxSize()) {
+                p.boxes.forEachIndexed { i, d ->
+                    val color = if (d.alert) DetectedBox else OtherBox
+                    val r = boxRect(d)
+                    // 확대해도 선·글자 굵기는 화면에서 같게
+                    val stroke = (if (i == selected) 5.dp else 3.dp).toPx() / scale
+                    drawRect(if (selected == null || i == selected) color else color.copy(alpha = 0.45f), r.topLeft, r.size, style = Stroke(stroke))
+                    val text = measurer.measure("${TargetLabels.title(d.label)} ${(d.score * 100).toInt()}%", labelStyle)
+                    val k = 1f / scale
+                    val pad = 4.dp.toPx() * k
+                    val lw = text.size.width * k + pad * 2
+                    val lh = text.size.height * k
+                    val lx = r.left.coerceIn(0f, (size.width - lw).coerceAtLeast(0f))
+                    val ly = if (r.top - lh >= imageRect().top) r.top - lh else r.top
+                    drawRect(color, Offset(lx, ly), Size(lw, lh))
+                    withTransform({ translate(lx + pad, ly); scale(k, k, Offset.Zero) }) { drawText(text) }
+                }
             }
         }
     }

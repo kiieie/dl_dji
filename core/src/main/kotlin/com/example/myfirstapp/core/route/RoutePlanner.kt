@@ -58,7 +58,7 @@ class RoutePlanner(
             var inner = 0.0
             for (j in i..n) {
                 if (j > i) inner += enu[j - 2].distanceTo(enu[j - 1])
-                val dist = energy.pathM(enu[i - 1].distanceTo(origin) + enu[j - 1].distanceTo(origin), inner)
+                val dist = energy.pathM(enu[i - 1].distanceTo(origin) + enu[j - 1].distanceTo(origin), inner, j - i + 1)
                 val cost = energy.sortieCost(dist, j - i + 1)
                 if (cost > budget) break // 전주를 더할수록 비용이 줄지 않으므로(삼각 부등식) 중단
                 if (v[i - 1] + cost < v[j]) {
@@ -92,6 +92,7 @@ class RoutePlanner(
         fun length(s: List<Int>) = energy.pathM(
             enu[s.first()].distanceTo(origin) + enu[s.last()].distanceTo(origin),
             s.zipWithNext { a, b -> enu[a].distanceTo(enu[b]) }.sum(),
+            s.size,
         )
         val solved = tsp.solve(listOf(origin) + seg.map { enu[it] }).map { seg[it - 1] }
         return listOf(seg, solved).map { it to length(it) }.minBy { it.second }

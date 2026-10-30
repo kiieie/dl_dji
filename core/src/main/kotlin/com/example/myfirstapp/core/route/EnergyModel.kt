@@ -43,13 +43,14 @@ class EnergyModel(val params: EnergyParams, val flight: FlightParams) {
     fun budget(startBatteryPct: Double = 100.0): Double =
         startBatteryPct - flight.batteryReservePct - params.rthMarginPct
 
-    /** 촬영 방식(5.6)에 따른 배수: 4방향 사선은 전주 사이 구간을 4번 지나고(4패스) 전주마다 4장을 찍는다. */
+    /** 촬영 방식(5.6)에 따른 전주당 사진 수: 4방향 사선은 4장. */
     val shots: Int get() = if (flight.shotMode == ShotMode.DIAGONAL4) 4 else 1
 
-    /**
-     * 이륙 지점 왕복 [homeLegsM]과 전주 사이 구간 [chainM]의 경로 길이. 4패스는 전주 사이 구간만 4번 난다.
-     */
-    fun pathM(homeLegsM: Double, chainM: Double): Double = homeLegsM + chainM * shots
+    /** 4방향 사선에서 전주 하나를 도는 거리: 대각선 이웃 지점 사이(d·√2)를 세 번 간다(2026-10-30 전주마다 4점). */
+    val aroundPoleM: Double get() = if (flight.shotMode == ShotMode.DIAGONAL4) 3 * flight.diagonalDistanceM * kotlin.math.sqrt(2.0) else 0.0
+
+    /** 이륙 지점 왕복 [homeLegsM], 전주 사이 구간 [chainM], 전주 [visits]개의 경로 길이. */
+    fun pathM(homeLegsM: Double, chainM: Double, visits: Int): Double = homeLegsM + chainM + visits * aroundPoleM
 
     /** 경로 길이 [distanceM]([pathM]), 방문 [visits]개인 소티의 예상 소모량. */
     fun sortieCost(distanceM: Double, visits: Int): Double = move(distanceM) + visits * perVisit + takeoffLanding

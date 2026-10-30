@@ -40,9 +40,10 @@ object Viewpoints {
     }
 
     /**
-     * 4패스(현장 대평선 비행 방법): 선로 한쪽 평행선을 따라 갔다 오고, 반대쪽을 따라 갔다 온다. 지나가며 전주마다 대각선에서 한 장씩.
-     * - 갈 때는 전주 뒤쪽 대각선(앞을 45° 보고), 올 때는 앞쪽 대각선에서 찍는다. 기수가 선로 쪽 45°로 유지되어 크게 돌지 않는다.
-     * - 이륙 지점에서 가까운 끝·가까운 쪽부터 시작한다. 전선은 패스 2 → 3에서 한 번만 넘는다(고도는 전선보다 10m 이상 위, 5.6).
+     * 전주마다 4점(2026-10-30 사용자 요청, 4패스는 경로가 왔다 갔다 해서 바꿈): 한 전주에서 대각선 4곳을 다 찍고 다음 전주로 간다.
+     * - 전주 i: 들어온 쪽(A)의 뒤 → A 앞 → 반대쪽(B) 앞 → B 뒤. 다음 전주는 B 쪽에서 시작해 거꾸로(B 뒤 → B 앞 → A 앞 → A 뒤).
+     *   뒤·앞은 방문 방향 기준이다. 전선은 전주마다 앞쪽에서 한 번만 넘고, 다음 전주로는 같은 쪽을 따라 간다.
+     * - 이륙 지점에서 가까운 끝·가까운 쪽부터 시작한다(고도는 전선보다 10m 이상 위, 5.6).
      * 지점 번호(`viewpoint`)는 선로 방향 θ(전원측 → 부하측) 기준 0: θ+45°(부하측 우), 1: θ+135°(전원측 우), 2: θ+225°(전원측 좌), 3: θ+315°(부하측 좌).
      * θ는 선로번호로 구한 [Pole.lineBearingDeg](4.5.6)을 먼저 쓰고, 없으면 방문 순서의 앞뒤 전주로 정한다.
      */
@@ -52,8 +53,7 @@ object Viewpoints {
         fun pitch(pole: Pole) = -Math.toDegrees(atan2(p.diagonalAltitudeM - aimHeight(pole, p), p.diagonalDistanceM))
         // 가까운 끝에서 출발
         val line = if (LocalProjection.distanceM(start, poles.last().position) < LocalProjection.distanceM(start, poles.first().position)) poles.reversed() else poles
-        // 패스(같은 쪽을 따라감)는 방문 방향 기준 k로 고르고, 실제 지점·번호는 선로번호 방향(있으면)의 가장 가까운 대각선으로 맞춘다.
-        // 그래야 번호 방향이 방문 방향과 반대이거나 일부 전주에만 있어도 한 패스가 전선을 넘지 않는다.
+        // k는 방문 방향 기준(0 앞-오른쪽, 1 뒤-오른쪽, 2 뒤-왼쪽, 3 앞-왼쪽). 실제 지점·번호는 선로번호 방향(있으면)의 가장 가까운 대각선으로 맞춘다
         fun corner(i: Int, k: Int): Viewpoint {
             val travel = lineBearing(line, i) + 45.0 + 90.0 * k
             val theta = line[i].lineBearingDeg
@@ -61,13 +61,14 @@ object Viewpoints {
             val b = (theta ?: lineBearing(line, i)) + 45.0 + 90.0 * idx
             return Viewpoint(line[i], idx, offset(line[i].position, b, p.diagonalDistanceM), p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch(line[i]))
         }
-        val forward = line.indices
-        val back = line.indices.reversed()
-        // 오른쪽(1→0)과 왼쪽(2→3) 중 첫 지점이 가까운 쪽부터
-        val rightFirst = LocalProjection.distanceM(start, corner(0, 1).position) <= LocalProjection.distanceM(start, corner(0, 2).position)
-        val (a, b) = if (rightFirst) (1 to 0) to (2 to 3) else (2 to 3) to (1 to 0)
-        return forward.map { corner(it, a.first) } + back.map { corner(it, a.second) } +
-            forward.map { corner(it, b.first) } + back.map { corner(it, b.second) }
+        // 오른쪽(뒤 1, 앞 0)과 왼쪽(뒤 2, 앞 3) 중 첫 지점이 가까운 쪽부터
+        val right = 1 to 0
+        val left = 2 to 3
+        var near = if (LocalProjection.distanceM(start, corner(0, 1).position) <= LocalProjection.distanceM(start, corner(0, 2).position)) right else left
+        return line.indices.flatMap { i ->
+            val far = if (near == right) left else right
+            listOf(corner(i, near.first), corner(i, near.second), corner(i, far.second), corner(i, far.first)).also { near = far }
+        }
     }
 
     /** 두 방위 사이 각(0~180°). */

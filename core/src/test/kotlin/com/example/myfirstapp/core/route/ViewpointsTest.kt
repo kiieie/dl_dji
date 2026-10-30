@@ -44,17 +44,17 @@ class ViewpointsTest {
     }
 
     @Test
-    fun `4방향 사선은 4패스 - 한쪽을 갔다 오고 반대쪽을 갔다 온다`() {
+    fun `4방향 사선은 전주마다 4점을 다 찍고 다음 전주로 간다`() {
         val v = Viewpoints.expand(poles, diagonal, home)
-        // 이륙 지점이 서쪽 끝이므로 P0부터, 갈 때 P0→P2, 올 때 P2→P0
-        assertEquals(listOf("P0", "P1", "P2", "P2", "P1", "P0", "P0", "P1", "P2", "P2", "P1", "P0"), v.map { it.pole.poleId })
-        // 선로 방향 90°: 1=뒤-오른쪽(225°), 0=앞-오른쪽(135°), 2=뒤-왼쪽(315°), 3=앞-왼쪽(45°). 이륙 지점(서쪽, 선로 위)에서 같은 거리면 오른쪽부터
-        assertEquals(listOf(1, 1, 1, 0, 0, 0, 2, 2, 2, 3, 3, 3), v.map { it.index })
-        // 한 패스 안에서는 기수가 같다(선로 쪽 45°를 유지)
-        v.chunked(3).forEach { pass -> assertEquals(1, pass.map { it.headingDeg.toInt() }.distinct().size) }
-        // 전선(선로, y=0)을 넘는 것은 패스 2 → 3 한 번뿐
+        // 이륙 지점이 서쪽 끝이므로 P0부터, 전주마다 4점
+        assertEquals(listOf("P0", "P0", "P0", "P0", "P1", "P1", "P1", "P1", "P2", "P2", "P2", "P2"), v.map { it.pole.poleId })
+        // 선로 방향 90°(동쪽): P0은 오른쪽(남) 뒤 1 → 앞 0 → 왼쪽(북) 앞 3 → 뒤 2, P1은 왼쪽에서 시작해 거꾸로
+        assertEquals(listOf(1, 0, 3, 2, 2, 3, 0, 1, 1, 0, 3, 2), v.map { it.index })
+        // 전선(선로, y=0)은 전주마다 한 번만 넘는다
         val side = v.map { Math.signum(LocalProjection(home).toEnu(it.position).y) }
-        assertEquals(1, side.zipWithNext().count { (a, b) -> a != b })
+        assertEquals(3, side.zipWithNext().count { (a, b) -> a != b })
+        // 다음 전주로는 같은 쪽을 따라 간다(전주 사이 이동에서는 넘지 않음)
+        assertTrue(side[3] == side[4] && side[7] == side[8])
     }
 
     @Test
@@ -104,12 +104,12 @@ class ViewpointsTest {
     }
 
     @Test
-    fun `4방향 사선은 배터리 예측에서 전주 사이 구간만 4번, 사진은 4장으로 잡는다`() {
+    fun `4방향 사선은 배터리 예측에서 전주마다 도는 거리와 사진 4장을 더한다`() {
         val over = EnergyModel(EnergyParams(), FlightParams(shotMode = ShotMode.OVERHEAD))
         val diag = EnergyModel(EnergyParams(), diagonal)
-        // 이륙 지점 왕복(200m)은 한 번, 전주 사이(1,000m)만 4번
-        assertEquals(1200.0, over.pathM(200.0, 1000.0), 0.0)
-        assertEquals(4200.0, diag.pathM(200.0, 1000.0), 0.0)
+        // 이륙 지점 왕복 200m + 전주 사이 1,000m, 전주 5개. 사선은 전주마다 d√2를 세 번
+        assertEquals(1200.0, over.pathM(200.0, 1000.0, 5), 0.0)
+        assertEquals(1200.0 + 5 * 3 * diagonal.diagonalDistanceM * Math.sqrt(2.0), diag.pathM(200.0, 1000.0, 5), 1e-9)
         assertEquals(4 * over.perVisit, diag.perVisit, 1e-9)
     }
 

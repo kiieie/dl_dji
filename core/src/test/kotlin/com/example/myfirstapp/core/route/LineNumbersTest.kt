@@ -39,16 +39,17 @@ class LineNumbersTest {
     }
 
     @Test
-    fun `4방향 사선 번호는 선로번호 방향 기준이고, 방문이 거꾸로여도 한 패스는 같은 쪽이다`() {
+    fun `4방향 사선 번호는 선로번호 방향 기준이고, 방문이 거꾸로여도 전선은 전주마다 한 번만 넘는다`() {
         val all = (1..4).map { pole("$it", 40.0 * it, 0.0) }
         val withB = LineNumbers.withBearings(all, all)
         // 이륙 지점이 동쪽 끝이라 방문은 부하측 → 전원측(거꾸로)
         val start = at(400.0, -30.0)
         val v = Viewpoints.expand(withB, FlightParams(shotMode = ShotMode.DIAGONAL4), start)
         assertEquals(16, v.size)
-        // 첫 패스 4개는 모두 선로의 같은 쪽(남쪽 y<0 또는 북쪽 y>0)
-        val firstPass = v.take(4).map { LocalProjection(home).toEnu(it.position).y }
-        assertTrue(firstPass.all { it < 0 } || firstPass.all { it > 0 })
+        // 전선(y=0)은 전주마다 한 번만 넘고, 전주 사이 이동에서는 넘지 않는다
+        val side = v.map { Math.signum(LocalProjection(home).toEnu(it.position).y) }
+        assertEquals(4, side.zipWithNext().count { (a, b) -> a != b })
+        assertTrue((1..3).all { side[4 * it - 1] == side[4 * it] })
         // 번호는 동쪽(부하측) 기준: 남쪽-동쪽 대각선 = θ(90°)+45° = 부하측 우(0)
         v.forEach { vp ->
             val enu = LocalProjection(vp.pole.position).toEnu(vp.position)
