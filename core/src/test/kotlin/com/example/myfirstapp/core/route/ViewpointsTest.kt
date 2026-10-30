@@ -112,4 +112,15 @@ class ViewpointsTest {
         assertEquals(4200.0, diag.pathM(200.0, 1000.0), 0.0)
         assertEquals(4 * over.perVisit, diag.perVisit, 1e-9)
     }
+
+    @Test
+    fun `4방향 사선 피치는 전주 길이로 구한 머리 높이를 조준한다`() {
+        val tall = poles.map { it.copy(lengthM = 16.0) } // 지상 13.5m
+        val v = Viewpoints.expand(tall, diagonal, home)
+        val expected = -Math.toDegrees(kotlin.math.atan2(diagonal.diagonalAltitudeM - 13.5, diagonal.diagonalDistanceM))
+        assertTrue(v.all { kotlin.math.abs(it.gimbalPitchDeg - expected) < 1e-9 })
+        // 길이를 모르면 설정의 조준 높이
+        val plain = Viewpoints.expand(poles, diagonal, home)
+        assertEquals(-Math.toDegrees(kotlin.math.atan2(diagonal.diagonalAltitudeM - diagonal.aimHeightM, diagonal.diagonalDistanceM)), plain[0].gimbalPitchDeg, 1e-9)
+    }
 }

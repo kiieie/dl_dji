@@ -223,7 +223,7 @@ private fun PoleList(s: ResultUiState, vm: ResultViewModel, modifier: Modifier) 
                             "${r.seq}-${r.order} · ${ResultUiState.STATUS_TITLE[r.status] ?: r.status} · 사진 ${r.photoCount}",
                             style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
                         )
-                        Text(r.poleId, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(r.displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         if (r.detectCount > 0) Text("검출 ${r.detectCount}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)

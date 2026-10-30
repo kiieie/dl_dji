@@ -90,7 +90,7 @@ fun ProjectScreen(
                 OutlinedButton(onClick = { importing = true }, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("+ 전주 파일") }
             }
             if (s.projects.isEmpty()) Text(
-                "프로젝트가 없습니다. [+ 전주 파일]로 전주 CSV를 가져오세요.", style = MaterialTheme.typography.bodyMedium,
+                "프로젝트가 없습니다. [+ 전주 파일]로 전주 엑셀·CSV를 가져오세요.", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp),
             )
             val listState = rememberLazyListState()
@@ -168,20 +168,21 @@ private fun ImportDialog(s: ProjectUiState, vm: ProjectViewModel, onPick: () -> 
         title = { Text("전주 파일 가져오기") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onPick, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("CSV 파일 선택") }
+                OutlinedButton(onClick = onPick, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("엑셀·CSV 파일 선택") }
                 s.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                 when (val r = s.result) {
-                    null -> Text("열 이름 예: 전주번호, 위도, 경도, 선로명, 비고 (WGS84)", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    null -> Text("배전 설비 엑셀(전산화번호, 선로번호, 전주규격, 설치기기, 경도·위도) 또는 CSV(전주번호, 위도, 경도)", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     is CsvImportResult.HeaderError -> {
                         Text("필수 열을 찾지 못했습니다: ${r.missing.joinToString { it.label }}", color = MaterialTheme.colorScheme.error)
                         Text("파일의 열: ${r.header.joinToString()}", maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     is CsvImportResult.Success -> {
-                        Text("인코딩 ${r.encoding} · 전주 ${r.poles.size}개 · 제외 ${r.issues.size}행")
+                        Text("${r.encoding} · 전주 ${r.poles.size}개 · 제외 ${r.issues.size}행")
+                        r.poles.count { it.guy }.takeIf { it > 0 }?.let { Text("지선주 ${it}개는 계획에서 기본 제외", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         OutlinedTextField(s.projectName, vm::setProjectName, Modifier.fillMaxWidth(), label = { Text("프로젝트 이름") }, singleLine = true)
                         r.issues.take(3).forEach { Text("${it.line}행 ${it.poleId.orEmpty()}: ${it.message}", color = MaterialTheme.colorScheme.error, maxLines = 1) }
                         r.poles.take(3).forEach {
-                            Text("${it.poleId}  ${it.position.lat}, ${it.position.lon}  ${it.lineName.orEmpty()}", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            Text("${it.displayName}  ${it.poleId}  ${"%.5f, %.5f".format(it.position.lat, it.position.lon)}  ${it.lengthM?.let { m -> "${m.toInt()}M" }.orEmpty()}", style = MaterialTheme.typography.bodySmall, maxLines = 1)
                         }
                     }
                 }
@@ -201,4 +202,5 @@ private val PoleCsvParser.Column.label
         PoleCsvParser.Column.LON -> "경도"
         PoleCsvParser.Column.LINE_NAME -> "선로명"
         PoleCsvParser.Column.NOTE -> "비고"
+        else -> name
     }

@@ -165,7 +165,7 @@ class FlightViewModel(
         sortieVisits = groups.map { (_, g) -> g.map { it.visitId } }
         flightParams = params
         val sorties = groups.map { (_, g) ->
-            val poles = g.map { Pole(it.poleId, GeoPoint(it.lat, it.lon), it.lineName, it.note) }
+            val poles = g.map { it.toPole() }
             val route = listOf(home) + poles.map { it.position } + home
             val dist = route.zipWithNext { a, b -> LocalProjection.distanceM(a, b) }.sum()
             SortiePlan(poles, dist, energy.sortieCost(dist, poles.size), energy.sortieDurationSec(dist, poles.size))

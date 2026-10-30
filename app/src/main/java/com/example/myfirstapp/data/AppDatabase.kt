@@ -1,6 +1,7 @@
 package com.example.myfirstapp.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -20,6 +21,7 @@ import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.poleDisplayName
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -46,8 +48,14 @@ data class PoleEntity(
     val lon: Double,
     val lineName: String?,
     val note: String?,
+    // 설비 엑셀(4.5). 예전 프로젝트는 null
+    val lineNo: String? = null,
+    val lengthM: Double? = null,
+    val equipment: String? = null,
+    @ColumnInfo(defaultValue = "0") val guy: Boolean = false,
+    val installedYm: String? = null,
 ) {
-    fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note)
+    fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note, lineNo, lengthM, equipment, guy, installedYm)
 }
 
 @Entity(
@@ -216,7 +224,12 @@ data class MissionVisitRow(
     val lon: Double,
     val lineName: String?,
     val note: String?,
-)
+    val lineNo: String?,
+    val lengthM: Double?,
+    val equipment: String?,
+) {
+    fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note, lineNo, lengthM, equipment)
+}
 
 /** `MISSION.flightParams`(JSON)를 읽는다. 없는 필드는 기본값을 쓴다. */
 fun flightParamsFromJson(json: String): FlightParams {
@@ -251,13 +264,18 @@ data class ResultRow(
     val lat: Double,
     val lon: Double,
     val lineName: String?,
+    val lineNo: String?,
+    val lengthM: Double?,
+    val equipment: String?,
     val status: String,
     val skipReason: String?,
     val arrivedAt: Long?,
     val photoCount: Int,
     /** 검출 대상(경고 라벨) 탐지 수. */
     val detectCount: Int,
-)
+) {
+    val displayName get() = poleDisplayName(poleId, lineName, lineNo)
+}
 
 /** 미션 목록(①-1) 카드 한 장. [lastFlightAt]은 소티 착륙(없으면 이륙) 시각 중 가장 늦은 값이다. */
 data class MissionSummary(
@@ -333,7 +351,7 @@ interface ProjectDao {
     suspend fun latestMission(): MissionEntity?
 
     @Query(
-        "SELECT s.id AS sortieId, s.seq, v.id AS visitId, v.status, p.poleId, p.lat, p.lon, p.lineName, p.note " +
+        "SELECT s.id AS sortieId, s.seq, v.id AS visitId, v.status, p.poleId, p.lat, p.lon, p.lineName, p.note, p.lineNo, p.lengthM, p.equipment " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
             "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`",
     )
@@ -388,7 +406,7 @@ interface ProjectDao {
     suspend fun projectName(projectId: Long): String?
 
     @Query(
-        "SELECT s.seq, v.`order`, v.id AS visitId, p.poleId, p.lat, p.lon, p.lineName, v.status, v.skipReason, v.arrivedAt, " +
+        "SELECT s.seq, v.`order`, v.id AS visitId, p.poleId, p.lat, p.lon, p.lineName, p.lineNo, p.lengthM, p.equipment, v.status, v.skipReason, v.arrivedAt, " +
             "(SELECT COUNT(*) FROM capture c WHERE c.visitId = v.id) AS photoCount, " +
             "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert) AS detectCount " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
@@ -449,7 +467,7 @@ interface ProjectDao {
     @Transaction
     suspend fun importProject(name: String, poles: List<Pole>, now: Long = System.currentTimeMillis()): Long {
         val projectId = insertProject(ProjectEntity(name = name, createdAt = now))
-        insertPoles(poles.map { PoleEntity(0, projectId, it.poleId, it.position.lat, it.position.lon, it.lineName, it.note) })
+        insertPoles(poles.map { PoleEntity(0, projectId, it.poleId, it.position.lat, it.position.lon, it.lineName, it.note, it.lineNo, it.lengthM, it.equipment, it.guy, it.installedYm) })
         return projectId
     }
 }
@@ -459,7 +477,7 @@ interface ProjectDao {
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -467,7 +485,15 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+
+        /** 2 → 3(2026-10-30): 설비 엑셀의 전주 속성(4.5). */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf("`lineNo` TEXT", "`lengthM` REAL", "`equipment` TEXT", "`guy` INTEGER NOT NULL DEFAULT 0", "`installedYm` TEXT")
+                    .forEach { db.execSQL("ALTER TABLE `pole` ADD COLUMN $it") }
+            }
+        }
 
         /** 1 → 2(2026-10-30): 촬영 지점 번호와 비행 궤적. 현장 시험 데이터를 지우지 않으려고 마이그레이션한다. */
         val MIGRATION_1_2 = object : Migration(1, 2) {

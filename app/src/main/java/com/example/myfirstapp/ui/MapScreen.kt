@@ -64,6 +64,7 @@ import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.drone.djiCurrentLocation
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.poleDisplayName
 import com.example.myfirstapp.core.route.RoutePlan
 import com.example.myfirstapp.core.route.UnreachablePole
 import org.maplibre.android.MapLibre
@@ -344,10 +345,15 @@ private fun PanelTitle(text: String) =
 private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boolean, vm: PlanViewModel) {
     Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(pole.poleId, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(poleDisplayName(pole.poleId, pole.lineName, pole.lineNo), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             TextButton(onClick = { vm.selectPole(null) }, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text("✕") }
         }
-        listOfNotNull(pole.lineName, pole.note).filter { it.isNotBlank() }.forEach {
+        // 설비 엑셀 속성(4.5): 전산화번호 · 규격 · 설치기기 · 설치년월 · 지선주
+        val attrs = listOfNotNull(
+            pole.poleId, pole.lengthM?.let { "${it.toInt()}M" }, pole.equipment,
+            pole.installedYm?.takeIf { it.length >= 6 }?.let { "${it.take(4)}-${it.substring(4, 6)} 설치" }, "지선주".takeIf { pole.guy },
+        ).joinToString(" · ")
+        listOfNotNull(attrs, pole.note).filter { it.isNotBlank() }.forEach {
             Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(String.format(Locale.ROOT, "%.6f, %.6f", pole.lat, pole.lon), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

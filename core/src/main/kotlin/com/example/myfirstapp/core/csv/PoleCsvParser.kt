@@ -7,14 +7,14 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
-/** 전주 CSV 가져오기(F-01, F-03, 4.1). */
+/** 전주 CSV·엑셀 가져오기(F-01, F-02, F-03, 4.1, 4.5). */
 object PoleCsvParser {
 
     /** 대한민국 좌표 범위(도서 지역 포함, 여유 있게). */
     val LAT_RANGE = 32.0..39.5
     val LON_RANGE = 124.0..132.0
 
-    enum class Column { POLE_ID, LAT, LON, LINE_NAME, NOTE }
+    enum class Column { POLE_ID, LAT, LON, LINE_NAME, NOTE, LINE_NO, LENGTH, EQUIPMENT, VOLTAGE, FORM, INSTALLED }
 
     private val REQUIRED = listOf(Column.POLE_ID, Column.LAT, Column.LON)
 
@@ -24,12 +24,27 @@ object PoleCsvParser {
         Column.LAT to setOf("lat", "latitude", "위도", "y"),
         Column.LON to setOf("lon", "lng", "long", "longitude", "경도", "x"),
         Column.LINE_NAME to setOf("linename", "line", "선로명", "선로", "선로이름"),
-        Column.NOTE to setOf("note", "memo", "remark", "비고", "메모"),
+        Column.NOTE to setOf("note", "memo", "remark", "비고", "메모", "특기사항"),
+        // 배전 설비 엑셀(4.5)
+        Column.LINE_NO to setOf("선로번호", "lineno"),
+        Column.LENGTH to setOf("전주규격", "규격", "전주길이", "length"),
+        Column.EQUIPMENT to setOf("설치기기", "equipment"),
+        Column.VOLTAGE to setOf("고/저압"),
+        Column.FORM to setOf("전주형태"),
+        Column.INSTALLED to setOf("설치년월"),
     )
 
+    /** .xlsx(zip)면 첫 시트를, 아니면 CSV로 읽는다. */
     fun parse(bytes: ByteArray): CsvImportResult {
+        if (XlsxReader.isXlsx(bytes)) {
+            val rows = XlsxReader.firstSheetRows(bytes).mapIndexed { i, f -> Row(i + 1, f) }
+            return parseRows(rows, "XLSX")
+        }
         val (text, encoding) = decode(bytes)
-        val rows = splitRows(text)
+        return parseRows(splitRows(text), encoding)
+    }
+
+    private fun parseRows(rows: List<Row>, encoding: String): CsvImportResult {
         if (rows.isEmpty()) return CsvImportResult.HeaderError(encoding, REQUIRED, emptyList())
 
         val header = rows.first().fields
@@ -56,8 +71,8 @@ object PoleCsvParser {
                 issues += CsvIssue(row.line, id.ifEmpty { null }, CsvIssue.Kind.MISSING_VALUE, "값 없음: ${missingNames.joinToString()}")
                 continue
             }
-            val lat = latText.toDoubleOrNull()
-            val lon = lonText.toDoubleOrNull()
+            val lat = coordinate(latText)
+            val lon = coordinate(lonText)
             if (lat == null || lon == null) {
                 issues += CsvIssue(row.line, id, CsvIssue.Kind.INVALID_NUMBER, "좌표가 숫자가 아님: $latText, $lonText")
                 continue
@@ -76,9 +91,26 @@ object PoleCsvParser {
                 position = GeoPoint(lat, lon),
                 lineName = field(Column.LINE_NAME).ifEmpty { null },
                 note = field(Column.NOTE).ifEmpty { null },
+                lineNo = field(Column.LINE_NO).ifEmpty { null },
+                lengthM = Regex("""\d+(\.\d+)?""").find(field(Column.LENGTH))?.value?.toDouble(),
+                equipment = field(Column.EQUIPMENT).ifEmpty { null },
+                guy = field(Column.VOLTAGE) == GUY || field(Column.FORM) == GUY,
+                installedYm = field(Column.INSTALLED).ifEmpty { null },
             )
         }
         return CsvImportResult.Success(encoding, poles, issues)
+    }
+
+    private const val GUY = "지선주"
+
+    /** 십진수(`36.4755`) 또는 설비 엑셀의 도.분.초(`127.21.50.09` = 127°21'50.09"). */
+    fun coordinate(text: String): Double? {
+        val parts = text.split('.')
+        if (parts.size < 3) return text.toDoubleOrNull()
+        val d = parts[0].toIntOrNull() ?: return null
+        val m = parts[1].toIntOrNull() ?: return null
+        val sec = parts.drop(2).joinToString(".").toDoubleOrNull() ?: return null
+        return d + m / 60.0 + sec / 3600.0
     }
 
     /** 헤더 인식. 열 이름 → 열 번호. 같은 열이 여러 번 나오면 첫 번째를 쓴다. */

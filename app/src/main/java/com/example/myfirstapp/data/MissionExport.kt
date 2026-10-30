@@ -40,12 +40,12 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
 
     val csv = buildString {
         append('﻿')
-        append("소티,순서,전주번호,위도,경도,선로명,상태,건너뛴 이유,도착 시각,사진 수,검출 수,검출 대상,1차 판정,판정 대상,메모\r\n")
+        append("소티,순서,전주번호,위도,경도,선로명,선로번호,전주규격,설치기기,상태,건너뛴 이유,도착 시각,사진 수,검출 수,검출 대상,1차 판정,판정 대상,메모\r\n")
         rows.forEach { r ->
             val labels = capturesByVisit[r.visitId].orEmpty().flatMap { c -> detections[c.id].orEmpty().filter { it.alert }.map { it.label } }.distinct()
             val review = reviews[r.visitId]
             listOf(
-                r.seq, r.order, r.poleId, r.lat, r.lon, r.lineName, r.status, r.skipReason,
+                r.seq, r.order, r.poleId, r.lat, r.lon, r.lineName, r.lineNo, r.lengthM?.let { "${it.toInt()}M" }, r.equipment, r.status, r.skipReason,
                 r.arrivedAt?.let { timeFormat.format(Date(it)) }, r.photoCount, r.detectCount, labels.joinToString(";", transform = TargetLabels::title),
                 review?.let { ReviewVerdict.valueOf(it.verdict).title },
                 review?.tags?.split(';')?.filter { it.isNotEmpty() }?.joinToString(";", transform = TargetLabels::title), review?.memo,
@@ -69,7 +69,8 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
                 .put("endedAt", s.endedAt ?: JSONObject.NULL)
         }))
         .put("poles", JSONArray(rows.map { r ->
-            JSONObject().put("sortie", r.seq).put("order", r.order).put("poleId", r.poleId).put("lat", r.lat).put("lon", r.lon)
+            JSONObject().put("sortie", r.seq).put("order", r.order).put("poleId", r.poleId).put("lineNo", r.lineNo ?: JSONObject.NULL).put("lengthM", r.lengthM ?: JSONObject.NULL)
+                .put("equipment", r.equipment ?: JSONObject.NULL).put("lat", r.lat).put("lon", r.lon)
                 .put("status", r.status).put("skipReason", r.skipReason ?: JSONObject.NULL)
                 .put("arrivedAt", r.arrivedAt ?: JSONObject.NULL)
                 .put("review", reviews[r.visitId]?.let { v ->

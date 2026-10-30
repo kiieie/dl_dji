@@ -47,12 +47,13 @@ object Viewpoints {
      */
     private fun diagonal(poles: List<Pole>, p: FlightParams, start: GeoPoint): List<Viewpoint> {
         if (poles.isEmpty()) return emptyList()
-        val pitch = -Math.toDegrees(atan2(p.diagonalAltitudeM - p.aimHeightM, p.diagonalDistanceM))
+        // 조준 높이: 설비 엑셀의 전주 길이로 구한 지상 높이(4.5), 없으면 설정값
+        fun pitch(pole: Pole) = -Math.toDegrees(atan2(p.diagonalAltitudeM - aimHeight(pole, p), p.diagonalDistanceM))
         // 가까운 끝에서 출발
         val line = if (LocalProjection.distanceM(start, poles.last().position) < LocalProjection.distanceM(start, poles.first().position)) poles.reversed() else poles
         fun corner(i: Int, k: Int): Viewpoint {
             val b = lineBearing(line, i) + 45.0 + 90.0 * k
-            return Viewpoint(line[i], k, offset(line[i].position, b, p.diagonalDistanceM), p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch)
+            return Viewpoint(line[i], k, offset(line[i].position, b, p.diagonalDistanceM), p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch(line[i]))
         }
         val forward = line.indices
         val back = line.indices.reversed()
@@ -62,6 +63,9 @@ object Viewpoints {
         return forward.map { corner(it, a.first) } + back.map { corner(it, a.second) } +
             forward.map { corner(it, b.first) } + back.map { corner(it, b.second) }
     }
+
+    /** 전주 머리 높이(m, 지상): 전주 길이를 알면 지상 높이, 모르면 [FlightParams.aimHeightM]. */
+    fun aimHeight(pole: Pole, p: FlightParams) = pole.aboveGroundM ?: p.aimHeightM
 
     /** 선로 방향: 앞뒤 전주를 이은 방위. 이웃이 하나면 그쪽, 없으면 정북. */
     private fun lineBearing(poles: List<Pole>, i: Int): Double {

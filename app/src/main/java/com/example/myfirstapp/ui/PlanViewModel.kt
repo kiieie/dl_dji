@@ -161,7 +161,10 @@ class PlanViewModel(
     }
 
     fun startArea() = OpLog.log("plan", "startArea").let { _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, selected = null, tool = Tool.AREA) } }
-    fun finishArea() = _state.update { it.copy(tool = Tool.NONE, focus = it.vertices) }.also { OpLog.log("plan", "finishArea", mapOf("vertices" to _state.value.vertices.size)) }
+    /** 영역을 다 그리면 그 안의 지선주는 기본으로 뺀다(4.5). 전주를 눌러 다시 넣을 수 있다. */
+    fun finishArea() = _state.update { s ->
+        s.copy(tool = Tool.NONE, focus = s.vertices).let { it.copy(excluded = it.excluded + it.inArea.filter { p -> p.guy }.map { p -> p.poleId }) }
+    }.also { OpLog.log("plan", "finishArea", mapOf("vertices" to _state.value.vertices.size)) }
     fun undoVertex() = _state.update { it.copy(vertices = it.vertices.dropLast(1), plan = null) }
     /** 영역과 제외를 모두 지운다(Pilot 2 웨이포인트 지우기). */
     fun clearArea() = OpLog.log("plan", "clearArea").let { _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, tool = Tool.NONE) } }

@@ -349,7 +349,7 @@ private fun RoutePill(s: FlightUiState, vm: FlightViewModel, modifier: Modifier)
     val ui = s.exec
     val sortieVisits = ui.visits.filter { it.sortieIndex == ui.sortieIndex }
     val done = sortieVisits.count { it.status == VisitStatus.DONE || it.status == VisitStatus.SKIPPED || it.status == VisitStatus.FAILED }
-    val target = ui.target?.let { "${it.pole.poleId} (${it.order + 1}/${sortieVisits.size})" } ?: "전주 ${sortieVisits.size}개"
+    val target = ui.target?.let { "${it.pole.displayName} (${it.order + 1}/${sortieVisits.size})" } ?: "전주 ${sortieVisits.size}개"
     val paused = ui.state == ExecState.Paused
     val canPause = ui.state.airborne && !paused && ui.state != ExecState.ReturningHome
     Column(modifier.widthIn(max = 340.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

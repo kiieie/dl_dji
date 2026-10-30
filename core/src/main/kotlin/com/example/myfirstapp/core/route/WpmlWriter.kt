@@ -71,7 +71,7 @@ object WpmlWriter {
     } else {
         // 관심점 = 전주 머리(위도,경도,조준 높이)
         "<wpml:waypointHeadingParam><wpml:waypointHeadingMode>towardPOI</wpml:waypointHeadingMode><wpml:waypointHeadingAngle>${heading(v.headingDeg)}</wpml:waypointHeadingAngle>" +
-            "<wpml:waypointPoiPoint>${f(poi.position.lat)},${f(poi.position.lon)},${n(p.aimHeightM)}</wpml:waypointPoiPoint><wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode></wpml:waypointHeadingParam>"
+            "<wpml:waypointPoiPoint>${f(poi.position.lat)},${f(poi.position.lon)},${n(Viewpoints.aimHeight(poi, p))}</wpml:waypointPoiPoint><wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode></wpml:waypointHeadingParam>"
     }
 
     private const val TURN =

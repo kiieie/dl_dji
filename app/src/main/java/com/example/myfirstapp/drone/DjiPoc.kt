@@ -209,7 +209,7 @@ object DjiPoc {
         val mission = dao.latestMission() ?: error("저장한 미션이 없습니다")
         val rows = dao.missionVisits(mission.id)
         val seq = rows.minOf { it.seq }
-        val poles = rows.filter { it.seq == seq }.map { Pole(it.poleId, GeoPoint(it.lat, it.lon), it.lineName) }
+        val poles = rows.filter { it.seq == seq }.map { it.toPole() }
         val params = flightParamsFromJson(mission.flightParams).copy(shotMode = mode)
         params.validate().firstOrNull()?.let { error(it) }
         val points = Viewpoints.expand(poles, params, GeoPoint(mission.homeLat, mission.homeLon))

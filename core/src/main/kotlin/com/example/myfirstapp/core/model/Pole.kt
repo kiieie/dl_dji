@@ -3,13 +3,30 @@ package com.example.myfirstapp.core.model
 /** WGS84 좌표(십진수 도). */
 data class GeoPoint(val lat: Double, val lon: Double)
 
-/** 전주 한 개. [poleId]는 전주번호로 프로젝트 안에서 유일하다(4.1). */
+/**
+ * 전주 한 개. [poleId]는 전주번호(설비 엑셀의 전산화번호)로 프로젝트 안에서 유일하다(4.1).
+ * 설비 엑셀(4.5)에서 오는 값: [lineNo] 선로번호, [lengthM] 전주 길이(규격), [equipment] 설치기기, [guy] 지선주, [installedYm] 설치년월.
+ */
 data class Pole(
     val poleId: String,
     val position: GeoPoint,
     val lineName: String? = null,
     val note: String? = null,
-)
+    val lineNo: String? = null,
+    val lengthM: Double? = null,
+    val equipment: String? = null,
+    val guy: Boolean = false,
+    val installedYm: String? = null,
+) {
+    val displayName: String get() = poleDisplayName(poleId, lineName, lineNo)
+
+    /** 지상 높이(m): 길이 − 근입(15m 이하 길이/6, 넘으면 2.5m). 길이를 모르면 null. */
+    val aboveGroundM: Double? get() = lengthM?.let { it - if (it <= 15.0) it / 6.0 else 2.5 }
+}
+
+/** 전주 화면 이름(4.5): 선로번호가 있으면 "대평선 13", 없으면 전주번호. */
+fun poleDisplayName(poleId: String, lineName: String?, lineNo: String?) =
+    if (lineNo.isNullOrBlank()) poleId else listOfNotNull(lineName, lineNo).joinToString(" ")
 
 /** 방문 상태(4.2 `VISIT.status`). */
 enum class VisitStatus { PENDING, IN_PROGRESS, DONE, SKIPPED, FAILED }
