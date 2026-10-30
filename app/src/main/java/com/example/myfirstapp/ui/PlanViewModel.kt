@@ -10,6 +10,7 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.route.EnergyModel
 import com.example.myfirstapp.core.route.EnergyParams
+import com.example.myfirstapp.core.route.LineNumbers
 import com.example.myfirstapp.core.route.Polygon
 import com.example.myfirstapp.core.route.RoutePlan
 import com.example.myfirstapp.core.route.RoutePlanner
@@ -186,7 +187,8 @@ class PlanViewModel(
         try {
             val t0 = System.nanoTime()
             val inArea = s.inArea
-            val targets = inArea.filter { it.poleId !in s.excluded }.map { it.toPole() }
+            // 선로 방향(4방향 사선)은 영역 밖 이웃까지 포함한 전체 전주의 선로번호로 정한다(4.5.6)
+            val targets = LineNumbers.withBearings(inArea.filter { it.poleId !in s.excluded }.map { it.toPole() }, s.poles.orEmpty().map { it.toPole() })
             // ponytail: 에너지 모델은 기본값(EnergyParams)이다. 보정값 설정은 ⑥ 설정 화면에서 붙인다.
             val result = withContext(Dispatchers.Default) { RoutePlanner(EnergyModel(EnergyParams(), s.params)).plan(start, targets) }
             val ms = (System.nanoTime() - t0) / 1_000_000

@@ -54,8 +54,9 @@ data class PoleEntity(
     val equipment: String? = null,
     @ColumnInfo(defaultValue = "0") val guy: Boolean = false,
     val installedYm: String? = null,
+    val voltage: String? = null,
 ) {
-    fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note, lineNo, lengthM, equipment, guy, installedYm)
+    fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note, lineNo, lengthM, equipment, guy, installedYm, voltage)
 }
 
 @Entity(
@@ -467,7 +468,7 @@ interface ProjectDao {
     @Transaction
     suspend fun importProject(name: String, poles: List<Pole>, now: Long = System.currentTimeMillis()): Long {
         val projectId = insertProject(ProjectEntity(name = name, createdAt = now))
-        insertPoles(poles.map { PoleEntity(0, projectId, it.poleId, it.position.lat, it.position.lon, it.lineName, it.note, it.lineNo, it.lengthM, it.equipment, it.guy, it.installedYm) })
+        insertPoles(poles.map { PoleEntity(0, projectId, it.poleId, it.position.lat, it.position.lon, it.lineName, it.note, it.lineNo, it.lengthM, it.equipment, it.guy, it.installedYm, it.voltage) })
         return projectId
     }
 }
@@ -477,7 +478,7 @@ interface ProjectDao {
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -485,7 +486,12 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+
+        /** 3 → 4(2026-10-30): 고/저압(앨범 기호, 4.5). */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) = db.execSQL("ALTER TABLE `pole` ADD COLUMN `voltage` TEXT")
+        }
 
         /** 2 → 3(2026-10-30): 설비 엑셀의 전주 속성(4.5). */
         val MIGRATION_2_3 = object : Migration(2, 3) {

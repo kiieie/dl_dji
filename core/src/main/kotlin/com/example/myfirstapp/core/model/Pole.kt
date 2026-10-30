@@ -5,7 +5,8 @@ data class GeoPoint(val lat: Double, val lon: Double)
 
 /**
  * 전주 한 개. [poleId]는 전주번호(설비 엑셀의 전산화번호)로 프로젝트 안에서 유일하다(4.1).
- * 설비 엑셀(4.5)에서 오는 값: [lineNo] 선로번호, [lengthM] 전주 길이(규격), [equipment] 설치기기, [guy] 지선주, [installedYm] 설치년월.
+ * 설비 엑셀(4.5)에서 오는 값: [lineNo] 선로번호, [lengthM] 전주 길이(규격), [equipment] 설치기기, [guy] 지선주, [installedYm] 설치년월,
+ * [voltage] 고/저압(고압·저압·고저압). [lineBearingDeg]는 저장하지 않고 계획 때 선로번호로 구한다(4.5.6).
  */
 data class Pole(
     val poleId: String,
@@ -17,6 +18,8 @@ data class Pole(
     val equipment: String? = null,
     val guy: Boolean = false,
     val installedYm: String? = null,
+    val voltage: String? = null,
+    val lineBearingDeg: Double? = null,
 ) {
     val displayName: String get() = poleDisplayName(poleId, lineName, lineNo)
 

@@ -95,6 +95,7 @@ object PoleCsvParser {
                 lengthM = Regex("""\d+(\.\d+)?""").find(field(Column.LENGTH))?.value?.toDouble(),
                 equipment = field(Column.EQUIPMENT).ifEmpty { null },
                 guy = field(Column.VOLTAGE) == GUY || field(Column.FORM) == GUY,
+                voltage = field(Column.VOLTAGE).takeIf { it.isNotEmpty() && it != GUY },
                 installedYm = field(Column.INSTALLED).ifEmpty { null },
             )
         }

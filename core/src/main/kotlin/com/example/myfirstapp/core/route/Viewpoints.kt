@@ -43,7 +43,8 @@ object Viewpoints {
      * 4패스(현장 대평선 비행 방법): 선로 한쪽 평행선을 따라 갔다 오고, 반대쪽을 따라 갔다 온다. 지나가며 전주마다 대각선에서 한 장씩.
      * - 갈 때는 전주 뒤쪽 대각선(앞을 45° 보고), 올 때는 앞쪽 대각선에서 찍는다. 기수가 선로 쪽 45°로 유지되어 크게 돌지 않는다.
      * - 이륙 지점에서 가까운 끝·가까운 쪽부터 시작한다. 전선은 패스 2 → 3에서 한 번만 넘는다(고도는 전선보다 10m 이상 위, 5.6).
-     * 지점 번호(`viewpoint`)는 선로 방향 θ 기준 0: θ+45°(앞-오른쪽), 1: θ+135°(뒤-오른쪽), 2: θ+225°(뒤-왼쪽), 3: θ+315°(앞-왼쪽).
+     * 지점 번호(`viewpoint`)는 선로 방향 θ(전원측 → 부하측) 기준 0: θ+45°(부하측 우), 1: θ+135°(전원측 우), 2: θ+225°(전원측 좌), 3: θ+315°(부하측 좌).
+     * θ는 선로번호로 구한 [Pole.lineBearingDeg](4.5.6)을 먼저 쓰고, 없으면 방문 순서의 앞뒤 전주로 정한다.
      */
     private fun diagonal(poles: List<Pole>, p: FlightParams, start: GeoPoint): List<Viewpoint> {
         if (poles.isEmpty()) return emptyList()
@@ -51,9 +52,14 @@ object Viewpoints {
         fun pitch(pole: Pole) = -Math.toDegrees(atan2(p.diagonalAltitudeM - aimHeight(pole, p), p.diagonalDistanceM))
         // 가까운 끝에서 출발
         val line = if (LocalProjection.distanceM(start, poles.last().position) < LocalProjection.distanceM(start, poles.first().position)) poles.reversed() else poles
+        // 패스(같은 쪽을 따라감)는 방문 방향 기준 k로 고르고, 실제 지점·번호는 선로번호 방향(있으면)의 가장 가까운 대각선으로 맞춘다.
+        // 그래야 번호 방향이 방문 방향과 반대이거나 일부 전주에만 있어도 한 패스가 전선을 넘지 않는다.
         fun corner(i: Int, k: Int): Viewpoint {
-            val b = lineBearing(line, i) + 45.0 + 90.0 * k
-            return Viewpoint(line[i], k, offset(line[i].position, b, p.diagonalDistanceM), p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch(line[i]))
+            val travel = lineBearing(line, i) + 45.0 + 90.0 * k
+            val theta = line[i].lineBearingDeg
+            val idx = if (theta == null) k else (0..3).minBy { j -> angleDiff(theta + 45.0 + 90.0 * j, travel) }
+            val b = (theta ?: lineBearing(line, i)) + 45.0 + 90.0 * idx
+            return Viewpoint(line[i], idx, offset(line[i].position, b, p.diagonalDistanceM), p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch(line[i]))
         }
         val forward = line.indices
         val back = line.indices.reversed()
@@ -63,6 +69,9 @@ object Viewpoints {
         return forward.map { corner(it, a.first) } + back.map { corner(it, a.second) } +
             forward.map { corner(it, b.first) } + back.map { corner(it, b.second) }
     }
+
+    /** 두 방위 사이 각(0~180°). */
+    private fun angleDiff(a: Double, b: Double) = ((a - b).mod(360.0)).let { if (it > 180.0) 360.0 - it else it }
 
     /** 전주 머리 높이(m, 지상): 전주 길이를 알면 지상 높이, 모르면 [FlightParams.aimHeightM]. */
     fun aimHeight(pole: Pole, p: FlightParams) = pole.aboveGroundM ?: p.aimHeightM

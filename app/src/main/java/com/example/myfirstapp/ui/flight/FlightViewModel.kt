@@ -32,6 +32,7 @@ import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.core.port.StorageMonitor
 import com.example.myfirstapp.core.route.EnergyModel
 import com.example.myfirstapp.core.route.EnergyParams
+import com.example.myfirstapp.core.route.LineNumbers
 import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.route.SortiePlan
 import com.example.myfirstapp.data.ProjectDao
@@ -164,8 +165,10 @@ class FlightViewModel(
         val groups = dbSorties.filter { it.id in bySortie || it.id == open?.id }.map { it.id to bySortie[it.id].orEmpty() }
         sortieVisits = groups.map { (_, g) -> g.map { it.visitId } }
         flightParams = params
+        // 4방향 사선의 선로 방향은 프로젝트 전체 전주의 선로번호로 정한다(4.5.6)
+        val bearings = LineNumbers.bearings(dao.observePoles(projectId).first().map { it.toPole() })
         val sorties = groups.map { (_, g) ->
-            val poles = g.map { it.toPole() }
+            val poles = g.map { it.toPole().copy(lineBearingDeg = bearings[it.poleId]) }
             val route = listOf(home) + poles.map { it.position } + home
             val dist = route.zipWithNext { a, b -> LocalProjection.distanceM(a, b) }.sum()
             SortiePlan(poles, dist, energy.sortieCost(dist, poles.size), energy.sortieDurationSec(dist, poles.size))
