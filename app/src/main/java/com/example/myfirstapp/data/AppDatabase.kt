@@ -14,8 +14,10 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.myfirstapp.core.csv.diffPoleAttributes
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
@@ -338,6 +340,12 @@ interface ProjectDao {
     @Query("SELECT * FROM pole WHERE projectId = :projectId ORDER BY poleId")
     fun observePoles(projectId: Long): Flow<List<PoleEntity>>
 
+    @Query("SELECT * FROM pole WHERE projectId = :projectId")
+    suspend fun polesOf(projectId: Long): List<PoleEntity>
+
+    @Update
+    suspend fun updatePoles(poles: List<PoleEntity>)
+
     @Insert
     suspend fun insertProject(project: ProjectEntity): Long
 
@@ -519,6 +527,20 @@ interface ProjectDao {
         val projectId = insertProject(ProjectEntity(name = name, createdAt = now))
         insertPoles(poles.map { PoleEntity(0, projectId, it.poleId, it.position.lat, it.position.lon, it.lineName, it.note, it.lineNo, it.lengthM, it.equipment, it.guy, it.installedYm, it.voltage) })
         return projectId
+    }
+
+    /** 전주 속성 갱신(4.5.7): 전산화번호로 맞춘 전주의 속성만 바꾼다. 좌표·미션·방문·사진·판독은 그대로. 바꾼 전주 수를 돌려준다. */
+    @Transaction
+    suspend fun updatePoleAttributes(projectId: Long, file: List<Pole>): Int {
+        val rows = polesOf(projectId)
+        val changed = diffPoleAttributes(rows.map { it.toPole() }, file).changed.associateBy { it.poleId }
+        val updated = rows.mapNotNull { e ->
+            changed[e.poleId]?.let {
+                e.copy(lineName = it.lineName, note = it.note, lineNo = it.lineNo, lengthM = it.lengthM, equipment = it.equipment, guy = it.guy, installedYm = it.installedYm, voltage = it.voltage)
+            }
+        }
+        updatePoles(updated)
+        return updated.size
     }
 }
 
