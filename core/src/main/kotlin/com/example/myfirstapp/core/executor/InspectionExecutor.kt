@@ -365,7 +365,10 @@ class InspectionExecutor(
         enter(PreflightCheck, "소티 ${next + 1} 시작")
     }
 
-    /** 앱 재시작 복구(6.4): 기체가 떠 있으면 일시정지로 돌아가 운용자가 [재개]하게 하고, 내려와 있으면 소티를 닫는다. */
+    /**
+     * 앱 재시작 복구(6.4): 기체가 떠 있으면 일시정지로 돌아가 운용자가 [재개]하게 하고, 내려와 있으면 소티를 닫는다.
+     * 기체가 아직 미션을 날고 있으면(앱만 죽음) 먼저 미션을 멈춘다. 재개하면 옛 미션을 끝내고 남은 전주로 새로 올린다.
+     */
     private suspend fun recover(index: Int) {
         if (state != Idle) return
         sortieIndex = index
@@ -376,6 +379,8 @@ class InspectionExecutor(
                 enter(LinkLost, "앱 재시작 복구: 연결 없음")
             }
             t.isFlying -> {
+                if (t.flightMode == FlightMode.MISSION) drone.pauseMission()
+                stopMissionBeforeLeg = true
                 message = "앱이 다시 시작되었습니다. 기체 위치를 확인하고 재개하세요."
                 enter(Paused, "앱 재시작 복구")
             }

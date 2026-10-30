@@ -3,6 +3,7 @@ package com.example.myfirstapp.core.executor
 import com.example.myfirstapp.core.fake.FakeDroneGateway
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.Detection
+import com.example.myfirstapp.core.model.FlightMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
@@ -421,6 +422,20 @@ class InspectionExecutorTest {
         assertEquals("A", h.executor.uiState.value.target?.pole?.poleId)
         h.awaitState(ExecState.MissionDone)
         assertTrue(h.executor.uiState.value.visits.all { it.status == VisitStatus.DONE })
+    }
+
+    @Test
+    fun `앱 재시작 복구 - 기체가 아직 미션을 날고 있으면 먼저 멈추고, 재개하면 옛 미션을 끝내고 다시 올린다`() = runTest {
+        val h = harness(
+            config = sortieMode, recoverSortie = 0,
+            droneConfig = FakeDroneGateway.Config(airborneAt = threePoles[0].position, airborneMode = FlightMode.MISSION),
+        )
+        assertEquals(ExecState.Paused, h.state)
+        assertEquals(listOf("pauseMission"), h.drone.calls)
+        h.send(Command.Resume)
+        h.awaitState(ExecState.FlyingLeg)
+        val i = h.drone.calls.indexOf("stopMission")
+        assertTrue(i >= 0 && i < h.drone.calls.indexOfFirst { it.startsWith("startSortie") })
     }
 
     @Test

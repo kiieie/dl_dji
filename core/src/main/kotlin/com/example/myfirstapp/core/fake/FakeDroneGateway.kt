@@ -57,11 +57,13 @@ class FakeDroneGateway(
         /** 앱 재시작 복구 시연용: 값이 있으면 이 위치 상공에서 호버 중인 상태로 시작한다(실제 기체는 앱이 죽어도 떠 있음). */
         val airborneAt: GeoPoint? = null,
         val airborneAltitudeM: Double = 30.0,
+        /** 떠 있는 채 시작할 때의 비행 모드(앱만 죽고 기체는 미션을 계속 나는 경우 MISSION). */
+        val airborneMode: FlightMode = FlightMode.MANUAL,
     )
 
     private val proj = LocalProjection(homePoint)
     private val _telemetry = MutableStateFlow(
-        config.airborneAt?.let { Telemetry(it, config.airborneAltitudeM, 0.0, 100.0, FlightMode.MANUAL, 5, true, homePoint) }
+        config.airborneAt?.let { Telemetry(it, config.airborneAltitudeM, 0.0, 100.0, config.airborneMode, 5, true, homePoint) }
             ?: Telemetry(homePoint, 0.0, 0.0, 100.0, FlightMode.ON_GROUND, 5, true, homePoint),
     )
 
