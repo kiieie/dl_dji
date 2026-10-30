@@ -6,6 +6,7 @@
 
 - 설계서 v1.0이 **승인**되었습니다(2026-09-29, 현재 v1.3). 구현은 `docs/design/07-test-roadmap.md` 13장의 단계 순서를 따릅니다.
 - **2026-10-30**: PoC ①③④⑥ 완료(시뮬레이터), 6.1 방식 A(소티 KMZ 하나로 계속 비행, 사진마다 뒤에서 다운로드·탐지) 확정, `drone/DjiDroneGateway.kt`로 실제 기체 연결, FPV(`drone/DjiFpv.kt`), Room 2(촬영 지점·비행 궤적), 촬영 방식 옵션(전주 위/4방향 사선, 5.6, `core/route/Viewpoints.kt`·`WpmlWriter.kt`), Pilot 2식 홈·카메라 뷰·비행 전 점검·기체 설정(`ui/home`, `ui/flight`, `ui/settings/SettingsHub.kt`). 현장 시험 자료 `docs/drone_dl_test`(.zip)는 실제 전주 좌표라 git 제외. 같은 날 저녁: 배전 설비 엑셀(.xlsx) 직접 가져오기와 선로번호 활용(4.5, `core/csv/XlsxReader.kt`, `core/route/LineNumbers.kt`), 4방향 사선 기본·전주마다 4점(5.6), Claude Design 시안 확정(10.4, `docs/design/10-ui-pilot2.md`)과 테마(Barlow 글꼴). 같은 날 밤: 시안 8화면(홈·비행경로·계획·자동/수동 카메라 뷰·판독·앨범 `ui/album`·기체 점검 `drone/DjiCheck.kt`) 다시 그리기 완료, 카메라 뷰 공통 틀 `ui/flight/CameraChrome.kt`, 줌 +/−·사진/영상 녹화(`CameraControl.kt`, 실기체 줌 확인), RC 셔터·수동 비행 사진을 가까운 전주 `MANUAL`로(20m). 실시간 지형 추적 기본(`realTimeFollowSurface`)·먼 구간 이동 고도는 진행 중, 현장 PoC 필요.
+- **2026-10-31**(계획 `docs/plan/2026-10-31.md`, 기체 꺼 둔 채 RC·모의 기체로): 조작(5D 확대 `core/input` `fiveD()`, RTH 1초, ⋯ 메뉴 비포커스 팝업 `MENU_PROPERTIES`), 지형 추적 시작 거절 → 이륙 기준 확인 창, 광각+망원 동시·설비 조준 사진(`_E`), 사진 순서(`MediaClassifier` 늦은 파일), 재시작 복구 보강, 미션 상태 `PARTIAL`(남은 전주 있음)·`REPLACED`(새 계획으로 대체), LDM 꺼지면 시작 막음, 충돌 경고(`core/model/Obstacles.kt`), 속성 갱신(4.5.7), lint 0, 데이터 주권 점검(`docs/evidence/2026-10-31-sovereignty`). Room 7. **기체를 켜고 시뮬레이터 회귀가 남음**(`docs/evidence/2026-10-31-ops` README).
 - **RC Pro Enterprise 실기기를 쓰고 있고 M3E 기체도 확보할 수 있습니다**(2026-10-28). RC Pro에서 DJI SDK 등록, PoC ⑤(TFLite 약 0.4초/장)·⑦(adb) 완료, ⑥ 하드웨어 버튼은 기체 없이 감지까지 확인했습니다(`docs/evidence/2026-10-28-rcpro`). 다음은 기체를 연결해 PoC ④ LDM, ⑥ 미션 중 일시정지·C1 재개(프로펠러 제거, 시뮬레이터), ①~③입니다. 기체가 필요한 항목(6.1 방식 B 등)은 PoC 전까지 가정으로 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
@@ -147,6 +148,5 @@ docs/
 ## 알려진 이슈 (현재 검증 코드)
 
 - 연동 검증 화면(`MainActivity`의 `VerificationPanel`)은 PoC용이라 `ViewModel` 없이 Compose 상태를 씁니다. 지도 위 전주·경로 색은 데이터 시각화 색으로 직접 씁니다(10.1).
-- DJI SDK 초기화·등록(`init` → `INITIALIZE_COMPLETE` → `registerApp`)은 `InspectionApp`이 앱 시작 때 합니다(2026-10-29). LDM은 아직 적용되어 있지 않습니다. RC 버튼은 `drone/DjiRcButtons.kt`(포트 `core/port/RcButtons.kt`)가 SDK 등록 뒤 받아 비행 화면에 매핑합니다(일시정지, C1 재개, RTH는 모의만). 검증 화면은 SDK 상태와 버튼 누름(로그 태그 `RcKey`)만 보여 줍니다.
-- `:app`의 테스트는 Room 계측 테스트 6개(`ProjectDaoTest`, 에뮬레이터 필요)와 템플릿 예제뿐입니다(`:core`는 단위 테스트 55개).
-- TFLite·DJI 의존성이 `libs.*`가 아니라 문자열 좌표로 선언되어 있습니다(코드 규칙 위반, 정리 필요).
+- DJI SDK 초기화·등록(`init` → `INITIALIZE_COMPLETE` → `registerApp`)은 `InspectionApp`이 앱 시작 때 합니다(2026-10-29). LDM은 라이선스 로드 → `enableLDM` 순서로 켜고(7.2), 꺼져 있으면 비행 시작을 막습니다(2026-10-31). RC 버튼은 `drone/DjiRcButtons.kt`(포트 `core/port/RcButtons.kt`)가 SDK 등록 뒤 받아 비행 화면에 매핑합니다(일시정지, C1 재개, RTH는 모의만). 검증 화면은 SDK 상태와 버튼 누름(로그 태그 `RcKey`)만 보여 줍니다.
+- `:app`의 테스트는 Room 계측 테스트 6개(`ProjectDaoTest`, 에뮬레이터 필요)와 템플릿 예제뿐입니다(`:core`는 단위 테스트 약 130개).
