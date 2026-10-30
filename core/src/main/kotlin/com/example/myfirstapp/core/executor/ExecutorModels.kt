@@ -57,6 +57,8 @@ data class ExecutorUiState(
     /** 운용자에게 보여 줄 마지막 안내·경고. */
     val message: String? = null,
     val preflightFailures: List<String> = emptyList(),
+    /** 방식 A: 다운로드·탐지를 기다리는 사진 수. */
+    val photosInProgress: Int = 0,
 )
 
 /**

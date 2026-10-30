@@ -7,6 +7,7 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.Detector
@@ -96,6 +97,7 @@ class InspectionExecutorTest {
         params: FlightParams = FlightParams(),
         droneConfig: FakeDroneGateway.Config = FakeDroneGateway.Config(),
         recoverSortie: Int? = null,
+        config: ExecutorConfig = ExecutorConfig(),
         prepare: (FakeDroneGateway) -> Unit = {},
     ): Harness {
         val drone = FakeDroneGateway(backgroundScope, home, droneConfig).also(prepare)
@@ -104,7 +106,7 @@ class InspectionExecutorTest {
         val energy = EnergyModel(EnergyParams(), params)
         val plans = sorties.map { SortiePlan(it, 0.0, 10.0, 0.0) }
         val executor = InspectionExecutor(
-            backgroundScope, drone, recorder, { sounds += it }, { true }, energy, detector, plans, recoverSortie = recoverSortie,
+            backgroundScope, drone, recorder, { sounds += it }, { true }, energy, detector, plans, config = config, recoverSortie = recoverSortie,
         )
         executor.start()
         runCurrent()
@@ -430,5 +432,81 @@ class InspectionExecutorTest {
         val sd = listOf(media("M1", 900), media("M2", 1_000), media("M3", 1_500))
         assertEquals(listOf("M3"), recoveredCaptures(1_000, sd, setOf("M2")).map { it.mediaId })
         assertTrue(recoveredCaptures(null, sd, emptySet()).isEmpty())
+    }
+
+    // ---------------------------------------------------------------- 6.1 방식 A(소티 미션, 계속 비행)
+
+    private val sortieMode = ExecutorConfig(sortieMission = true)
+
+    @Test
+    fun `방식 A - 소티 미션 하나로 날며 지점마다 찍힌 사진을 처리하고 복귀`() = runTest {
+        val h = harness(config = sortieMode)
+        h.send(Command.Start)
+        h.awaitState(ExecState.MissionDone)
+
+        h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+        assertEquals(listOf("startSortie:3"), h.drone.calls.filter { it.startsWith("start") })
+        assertTrue(h.drone.calls.none { it.startsWith("capture") }) // 미션 동작이 찍는다
+        assertEquals(3, h.recorder.captures.size)
+        h.awaitUntil { h.recorder.images.size == 3 } // 다운로드·탐지는 비행과 병렬, 착륙 뒤에도 끝까지
+        assertEquals(3, h.recorder.detections.size)
+        assertEquals(3, h.sounds.count { it == Sound.ARRIVED })
+        assertTrue("returnHome" !in h.drone.calls) // 완료 동작 RTH는 기체가 한다
+    }
+
+    @Test
+    fun `방식 A - 4방향 사선은 전주마다 4장`() = runTest {
+        val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.DIAGONAL4))
+        h.send(Command.Start)
+        h.awaitState(ExecState.MissionDone)
+        assertTrue("startSortie:12" in h.drone.calls)
+        assertEquals(listOf(4, 4, 4), h.recorder.captures.groupBy { it.first }.values.map { it.size })
+        h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+    }
+
+    @Test
+    fun `방식 A - RC 일시정지 후 재개하면 기체의 미션을 이어 간다`() = runTest {
+        val h = harness(config = sortieMode)
+        h.send(Command.Start)
+        h.awaitState(ExecState.FlyingLeg)
+        h.drone.pressRcPause()
+        h.scope.runCurrent()
+        assertEquals(ExecState.Paused, h.state)
+
+        h.send(Command.Resume)
+        h.awaitState(ExecState.FlyingLeg)
+        assertTrue("resumeMission" in h.drone.calls)
+        assertEquals(1, h.drone.calls.count { it.startsWith("startSortie") }) // 새 미션을 올리지 않는다
+        h.awaitState(ExecState.MissionDone)
+        h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+    }
+
+    @Test
+    fun `방식 A - 화면 일시정지는 미션을 끝내지 않고 멈춘다`() = runTest {
+        val h = harness(config = sortieMode)
+        h.send(Command.Start)
+        h.awaitState(ExecState.FlyingLeg)
+        h.send(Command.Pause)
+        h.awaitUntil { "pauseMission" in h.drone.calls }
+        assertEquals(ExecState.Paused, h.state)
+        assertTrue("stopMission" !in h.drone.calls)
+    }
+
+    @Test
+    fun `방식 A - 사진이 안 찍힌 전주는 지나가면 실패로 남는다`() = runTest {
+        val h = harness(config = sortieMode) { it.failNextCaptures = 1 }
+        h.send(Command.Start)
+        h.awaitState(ExecState.MissionDone)
+        assertEquals(VisitStatus.FAILED, h.visit("A").status)
+        assertEquals(VisitStatus.DONE, h.visit("B").status)
+        assertEquals(2, h.recorder.captures.size)
+    }
+
+    @Test
+    fun `방식 A - 경고 탐지는 경고음`() = runTest {
+        val h = harness(config = sortieMode, detector = FixedDetector(listOf(Detection("nest", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true))))
+        h.send(Command.Start)
+        h.awaitState(ExecState.MissionDone)
+        h.awaitUntil { h.sounds.count { it == Sound.ANOMALY } == 3 }
     }
 }

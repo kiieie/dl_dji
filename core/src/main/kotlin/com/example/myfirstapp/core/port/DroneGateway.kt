@@ -1,9 +1,11 @@
 package com.example.myfirstapp.core.port
 
 import com.example.myfirstapp.core.model.DownloadMode
+import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Telemetry
+import com.example.myfirstapp.core.route.Viewpoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -24,6 +26,19 @@ interface DroneGateway {
 
     /** 구간 미션(6.1 방식 B)을 생성·업로드·시작한다. 완료는 [DroneEvent.LegCompleted]로 알린다. */
     suspend fun startLeg(leg: LegMission): Result<Unit>
+
+    /**
+     * 방식 A(6.1): 소티의 촬영 지점 전체를 미션 하나로 만들어 올리고 시작한다. 지점마다 기체가 짐벌을 맞추고 찍는다.
+     * 진행은 [DroneEvent.WaypointReached], [DroneEvent.PhotoTaken], [DroneEvent.MissionFinished]로 알린다.
+     */
+    suspend fun startSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> =
+        Result.failure(UnsupportedOperationException("소티 미션 미지원"))
+
+    /** 미션을 멈추고 제자리 호버(화면 일시정지). */
+    suspend fun pauseMission(): Result<Unit> = stopMission()
+
+    /** 멈춘 미션을 이어 간다. 기체는 멈춘 지점으로 돌아간 뒤 계속한다(PoC ⑥). */
+    suspend fun resumeMission(): Result<Unit> = Result.failure(UnsupportedOperationException("미션 재개 미지원"))
 
     /** 진행 중이거나 일시정지된 미션을 종료한다. 미션이 없으면 성공으로 본다. */
     suspend fun stopMission(): Result<Unit>
@@ -47,7 +62,7 @@ data class LegMission(
     val rthAltitudeM: Double,
 )
 
-/** 카메라 SD에 저장된 사진 정보. [mediaId]로 비행 후 원본을 다시 찾는다. */
+/** 카메라 SD에 저장된 사진 정보. [mediaId]로 비행 후 원본을 다시 찾는다. [viewpoint]는 촬영 지점 번호(5.6, `CAPTURE.viewpoint`). */
 data class CaptureInfo(
     val mediaId: String,
     val lens: Lens,
@@ -56,11 +71,21 @@ data class CaptureInfo(
     val gimbalPitchDeg: Double,
     val headingDeg: Double,
     val takenAtMs: Long,
+    val viewpoint: Int? = null,
 )
 
 sealed interface DroneEvent {
     data object LegCompleted : DroneEvent
     data class LegFailed(val reason: String) : DroneEvent
+
+    /** 방식 A: 소티 미션의 [index]번 지점에 도착(지점 번호는 [DroneGateway.startSortie]에 넘긴 순서). */
+    data class WaypointReached(val index: Int) : DroneEvent
+
+    /** 방식 A: [index]번 지점에서 미션 동작으로 사진이 찍힘. */
+    data class PhotoTaken(val index: Int, val capture: CaptureInfo) : DroneEvent
+
+    /** 방식 A: 마지막 지점을 지나 미션이 끝남(완료 동작 RTH가 이어짐). */
+    data object MissionFinished : DroneEvent
 
     /** RC 하드웨어 일시정지 버튼으로 미션이 일시정지됨(비행 모드로 감지). */
     data object PausedByRc : DroneEvent

@@ -35,6 +35,8 @@ import com.example.myfirstapp.core.route.Enu
 import com.example.myfirstapp.core.route.EnergyModel
 import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.route.SortiePlan
+import com.example.myfirstapp.core.route.Viewpoint
+import com.example.myfirstapp.core.route.Viewpoints
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -55,6 +57,11 @@ data class ExecutorConfig(
     val legRetryDelayMs: Long = 2_000,
     /** RTH 권고 후 무응답이면 자동 RTH까지의 시간(5.5). */
     val rthPromptSec: Int = 10,
+    /**
+     * 6.1 방식 A: 소티 전체를 미션 하나로 날고(`startSortie`), 지점마다 찍힌 사진을 비행과 병렬로 처리한다.
+     * false면 방식 B(전주마다 구간 미션, 도착 후 촬영·다운로드·분석·대기).
+     */
+    val sortieMission: Boolean = false,
 )
 
 /**
@@ -96,6 +103,9 @@ class InspectionExecutor(
         data class Rth(val token: Int, val sec: Int) : Msg
         data class ArrivalTimeout(val token: Int) : Msg
         data class Recover(val sortieIndex: Int) : Msg
+
+        /** 방식 A 사진 처리 결과(다운로드 실패면 [bytes]가 null). */
+        data class Photo(val captureId: Long, val bytes: ByteArray?, val detections: List<Detection>?, val error: String?) : Msg
     }
 
     private sealed interface StepResult {
@@ -106,6 +116,7 @@ class InspectionExecutor(
         data class Downloaded(val images: List<Pair<Long, ByteArray>>) : StepResult
         data class Analyzed(val detections: Map<Long, List<Detection>>, val error: String?) : StepResult
         data object WaitDone : StepResult
+        data class Resumed(val ok: Boolean) : StepResult
         data class RthCommanded(val ok: Boolean) : StepResult
         data class ManualCaptured(val capture: CaptureInfo?, val image: ByteArray?) : StepResult
         data class Crashed(val message: String) : StepResult
@@ -136,8 +147,17 @@ class InspectionExecutor(
     private var rthJob: Job? = null
     private var rthCountdown: Int? = null
 
+    // 방식 A: 올린 소티 미션의 지점과 그 지점의 방문, 미션이 기체에 살아 있는지, 처리 대기 사진
+    private var missionPoints: List<Viewpoint> = emptyList()
+    private var missionVisits: List<Visit> = emptyList()
+    private var missionActive = false
+    private var photosInProgress = 0
+    private val photoQueue = Channel<Pair<Long, CaptureInfo>>(Channel.UNLIMITED)
+
     fun start() {
         scope.launch { drone.events.collect { inbox.send(Msg.Drone(it)) } }
+        // 사진 처리(방식 A)는 상태와 무관하게 차례로 한다. 착륙한 뒤에도 남은 사진을 끝까지 처리한다
+        if (config.sortieMission) scope.launch { for ((id, info) in photoQueue) inbox.send(processPhoto(id, info)) }
         scope.launch { drone.telemetry.collect { inbox.send(Msg.Tele(it)) } }
         recoverSortie?.let { inbox.trySend(Msg.Recover(it)) }
         scope.launch { for (m in inbox) handle(m) }
@@ -162,6 +182,7 @@ class InspectionExecutor(
             }
             is Msg.ArrivalTimeout -> if (m.token == arrivalToken) onArrivalTimeout()
             is Msg.Recover -> recover(m.sortieIndex)
+            is Msg.Photo -> onPhotoProcessed(m)
         }
         publish()
     }
@@ -200,12 +221,21 @@ class InspectionExecutor(
     private suspend fun onDrone(e: DroneEvent) {
         when (e) {
             DroneEvent.LegCompleted -> if (state == FlyingLeg) enter(Arrived, "구간 미션 완료")
+            is DroneEvent.WaypointReached -> if (missionActive) onWaypoint(e.index)
+            is DroneEvent.PhotoTaken -> if (missionPoints.isNotEmpty()) onPhoto(e.index, e.capture)
+            DroneEvent.MissionFinished -> if (missionActive) {
+                missionActive = false
+                if (state == FlyingLeg) {
+                    appInitiatedRth = false // KMZ 완료 동작(goHome)이 기체에서 이어진다
+                    enter(ReturningHome, "소티 미션 완료")
+                }
+            }
             is DroneEvent.LegFailed -> if (state == FlyingLeg) pauseWithWarning("구간 실패: ${e.reason}")
             DroneEvent.PausedByRc -> requestPause("RC 일시정지 버튼", byRc = true)
             DroneEvent.ResumeByRc -> resume()
             DroneEvent.ObstacleAvoidance -> if (state == FlyingLeg) pauseWithWarning("장애물 회피 동작")
             DroneEvent.GpsDegraded -> if (state == FlyingLeg || state == PreparingLeg) pauseWithWarning("GPS 품질 저하")
-            DroneEvent.GoHomeStarted -> if (state.airborne || state == LinkLost) {
+            DroneEvent.GoHomeStarted -> if ((state.airborne || state == LinkLost) && state != ReturningHome) {
                 appInitiatedRth = false
                 enter(ReturningHome, "기체 주도 RTH 감지")
             }
@@ -251,7 +281,22 @@ class InspectionExecutor(
                 }
             }
             is StepResult.TakeoffDone -> if (r.ok) enter(PreparingLeg, "이륙 완료") else pauseWithWarning("이륙 실패")
-            is StepResult.LegReady -> if (r.ok) enter(FlyingLeg, "구간 시작") else pauseWithWarning(r.reason)
+            is StepResult.LegReady -> if (r.ok) {
+                if (config.sortieMission) missionActive = true
+                enter(FlyingLeg, if (config.sortieMission) "소티 미션 시작" else "구간 시작")
+            } else {
+                pauseWithWarning(r.reason)
+            }
+            is StepResult.Resumed -> if (state == Paused) {
+                if (r.ok) {
+                    enter(FlyingLeg, "미션 재개")
+                } else {
+                    // 미션이 기체에 없으면(앱 재시작 등) 남은 전주로 새 소티 미션을 올린다
+                    missionActive = false
+                    stopMissionBeforeLeg = true
+                    enter(PreparingLeg, "재개: 남은 전주로 새 미션")
+                }
+            }
             is StepResult.Captured -> onCaptured(r.captures)
             is StepResult.Downloaded -> {
                 r.images.forEach { (id, bytes) -> recorder.saveImage(id, bytes) }
@@ -332,9 +377,10 @@ class InspectionExecutor(
             Takeoff, PreparingLeg, FlyingLeg, Arrived, Waiting -> {
                 if (!byRc) {
                     val old = stepJob
+                    val pauseOnly = config.sortieMission && missionActive
                     scope.launch {
                         old?.join()
-                        drone.stopMission()
+                        if (pauseOnly) drone.pauseMission() else drone.stopMission()
                     }
                 }
                 enter(Paused, reason)
@@ -363,6 +409,11 @@ class InspectionExecutor(
             return
         }
         notifier.play(Sound.RESUMED)
+        if (config.sortieMission && missionActive) {
+            // 방식 A: 기체에 남은 미션을 이어 간다(멈춘 지점으로 돌아간 뒤 계속, 6.1)
+            launchStep { StepResult.Resumed(drone.resumeMission().isSuccess) }
+            return
+        }
         // 하드웨어 일시정지는 미션을 종료하지 않았으므로 새 구간 전에 stopMission으로 끝낸다(6.4)
         stopMissionBeforeLeg = true
         enter(PreparingLeg, "재개")
@@ -461,6 +512,80 @@ class InspectionExecutor(
         message = "${visit.pole.poleId} 수동 촬영 저장"
     }
 
+    // ---------------------------------------------------------------- 방식 A(소티 미션)
+
+    /** 지점 도착: 새 전주면 진행 중으로 두고, 지나온 전주는 사진 유무로 마무리한다. */
+    private suspend fun onWaypoint(index: Int) {
+        val v = missionVisits.getOrNull(index) ?: return
+        missionVisits.take(index).distinct().filter { it !== v }.forEach { settle(it) }
+        if (v.status == VisitStatus.PENDING) {
+            setStatus(v, VisitStatus.IN_PROGRESS)
+            recorder.recordTransition(sortieIndex, state.name, Arrived.name, "지점 도착", v.pole.poleId) // VISIT.arrivedAt
+            notifier.play(Sound.ARRIVED)
+        }
+        target = v
+    }
+
+    /** 미션 동작으로 찍힌 사진: 바로 기록하고(사진이 있으므로 그 전주는 완료 가능) 처리 줄에 넣는다. */
+    private suspend fun onPhoto(index: Int, info: CaptureInfo) {
+        val v = missionVisits.getOrNull(index) ?: return
+        val capture = info.copy(viewpoint = missionPoints[index].index)
+        val id = recorder.saveCapture(v.sortieIndex, v.order, capture, CaptureSource.AUTO)
+        v.captureCount++
+        if (v.status == VisitStatus.PENDING) setStatus(v, VisitStatus.IN_PROGRESS)
+        photosInProgress++
+        photoQueue.send(id to capture)
+    }
+
+    /** 다운로드 → 탐지. 실패는 비행을 막지 않는다(6.5). */
+    private suspend fun processPhoto(id: Long, info: CaptureInfo): Msg.Photo {
+        val bytes = drone.download(info, params.downloadMode).getOrNull() ?: return Msg.Photo(id, null, null, "다운로드 실패")
+        val det = detector ?: return Msg.Photo(id, bytes, null, "탐지 모델 없음")
+        return try {
+            Msg.Photo(id, bytes, det.detect(bytes), null)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Msg.Photo(id, bytes, null, e.message ?: e::class.simpleName)
+        }
+    }
+
+    private suspend fun onPhotoProcessed(m: Msg.Photo) {
+        photosInProgress--
+        m.bytes?.let { recorder.saveImage(m.captureId, it) }
+        m.detections?.let {
+            recorder.saveDetections(m.captureId, detector?.modelVersion.orEmpty(), it)
+            lastDetections = it
+            if (it.any { d -> d.alert }) notifier.play(Sound.ANOMALY)
+        }
+        if (m.bytes == null) message = "사진 다운로드 실패 — 비행 후 원본을 받으세요."
+    }
+
+    /** 지나온 전주 마무리: 사진이 있으면 완료, 진행 중이었는데 사진이 없으면 실패(6.4 사진 없는 완료 금지). */
+    private suspend fun settle(v: Visit) {
+        when {
+            v.status != VisitStatus.IN_PROGRESS -> Unit
+            v.captureCount > 0 -> setStatus(v, VisitStatus.DONE)
+            else -> setStatus(v, VisitStatus.FAILED, "사진 없음")
+        }
+    }
+
+    /** 내려오거나 복귀할 때 진행 중인 전주: 사진이 있으면 완료, 없으면 다음 소티로 남긴다. */
+    private suspend fun settleInProgress() {
+        visits.filter { it.status == VisitStatus.IN_PROGRESS }
+            .forEach { setStatus(it, if (it.captureCount > 0) VisitStatus.DONE else VisitStatus.PENDING) }
+    }
+
+    private suspend fun prepareSortie(points: List<Viewpoint>, stopFirst: Boolean): StepResult {
+        if (stopFirst) drone.stopMission()
+        if (!storage.hasEnoughSpace()) return StepResult.LegReady(false, "저장 공간 부족")
+        repeat(config.legRetries + 1) { attempt ->
+            if (drone.startSortie(points, params).isSuccess) return StepResult.LegReady(true, "")
+            if (attempt < config.legRetries) delay(config.legRetryDelayMs)
+        }
+        return StepResult.LegReady(false, "미션 업로드 실패(재시도 ${config.legRetries}회 초과)")
+    }
+
     // ---------------------------------------------------------------- RTH
 
     private fun promptRth(reason: String) {
@@ -517,7 +642,22 @@ class InspectionExecutor(
             Takeoff -> launchStep {
                 StepResult.TakeoffDone(drone.telemetry.value.isFlying || drone.takeoff().isSuccess)
             }
-            PreparingLeg -> {
+            PreparingLeg -> if (config.sortieMission) {
+                // 방식 A: 이 소티의 남은 전주 전체를 촬영 지점으로 펼쳐 미션 하나로 올린다
+                val remaining = visits.filter {
+                    it.sortieIndex == sortieIndex && (it.status == VisitStatus.PENDING || it.status == VisitStatus.IN_PROGRESS)
+                }
+                if (remaining.isEmpty()) return startRth("남은 전주 없음")
+                val start = drone.telemetry.value.position ?: homePoint() ?: remaining.first().pole.position
+                val byPole = remaining.associateBy { it.pole }
+                missionPoints = Viewpoints.expand(remaining.map { it.pole }, params, start)
+                missionVisits = missionPoints.map { byPole.getValue(it.pole) }
+                target = remaining.first()
+                val stopFirst = stopMissionBeforeLeg
+                stopMissionBeforeLeg = false
+                val points = missionPoints
+                launchStep { prepareSortie(points, stopFirst) }
+            } else {
                 val visit = nextTarget() ?: return startRth("남은 전주 없음")
                 target = visit
                 if (visit.status == VisitStatus.PENDING) setStatus(visit, VisitStatus.IN_PROGRESS)
@@ -560,6 +700,10 @@ class InspectionExecutor(
             }
             Paused -> notifier.play(Sound.PAUSED)
             ReturningHome -> {
+                if (config.sortieMission) {
+                    if (appInitiatedRth) missionActive = false
+                    settleInProgress()
+                }
                 target?.let { if (it.status == VisitStatus.IN_PROGRESS) setStatus(it, VisitStatus.PENDING) }
                 if (appInitiatedRth) launchStep {
                     drone.stopMission()
@@ -567,7 +711,8 @@ class InspectionExecutor(
                 }
             }
             SortieDone -> {
-                visits.filter { it.status == VisitStatus.IN_PROGRESS }.forEach { setStatus(it, VisitStatus.PENDING) }
+                missionActive = false
+                settleInProgress()
                 target = null
                 if (visits.none { it.status == VisitStatus.PENDING }) enter(MissionDone, "남은 전주 없음")
             }
@@ -629,6 +774,7 @@ class InspectionExecutor(
             lastDetections = lastDetections,
             message = message,
             preflightFailures = preflightFailures,
+            photosInProgress = photosInProgress,
         )
     }
 }

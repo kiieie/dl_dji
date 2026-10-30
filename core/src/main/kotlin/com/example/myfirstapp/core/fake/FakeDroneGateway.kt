@@ -1,6 +1,7 @@
 package com.example.myfirstapp.core.fake
 
 import com.example.myfirstapp.core.model.DownloadMode
+import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.FlightMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
@@ -12,6 +13,7 @@ import com.example.myfirstapp.core.port.LegMission
 import com.example.myfirstapp.core.port.PreflightReport
 import com.example.myfirstapp.core.route.Enu
 import com.example.myfirstapp.core.route.LocalProjection
+import com.example.myfirstapp.core.route.Viewpoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -117,6 +119,56 @@ class FakeDroneGateway(
             _telemetry.update { it.copy(flightMode = FlightMode.MANUAL, speedMps = 0.0) }
             _events.emit(DroneEvent.LegCompleted)
         }
+        return Result.success(Unit)
+    }
+
+    /** 방식 A: 지점을 차례로 날며 도착·촬영을 알리고, 끝나면 RTH(KMZ 완료 동작과 같음). */
+    override suspend fun startSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> {
+        calls += "startSortie:${points.size}"
+        if (!connected()) return Result.failure(IllegalStateException("연결 없음"))
+        delay(config.legStartMs)
+        if (failNextLegStarts > 0) {
+            failNextLegStarts--
+            return Result.failure(IllegalStateException("모의 업로드 실패"))
+        }
+        missionPaused = false
+        _telemetry.update { it.copy(flightMode = FlightMode.MISSION) }
+        motionJob?.cancel()
+        motionJob = scope.launch {
+            points.forEachIndexed { i, p ->
+                climbTo(p.altitudeM, params.speedMps)
+                moveTo(proj.toEnu(p.position), params.speedMps)
+                _events.emit(DroneEvent.WaypointReached(i))
+                tick()
+                if (failNextCaptures > 0) {
+                    failNextCaptures--
+                } else {
+                    val t = _telemetry.value
+                    val info = CaptureInfo("FAKE_${++mediaSeq}", Lens.WIDE, t.position, t.altitudeM, p.gimbalPitchDeg, p.headingDeg, System.currentTimeMillis())
+                    sdCard += info
+                    _events.emit(DroneEvent.PhotoTaken(i, info))
+                }
+            }
+            _events.emit(DroneEvent.MissionFinished)
+            startGoHome()
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun pauseMission(): Result<Unit> {
+        calls += "pauseMission"
+        if (_telemetry.value.flightMode == FlightMode.MISSION) {
+            missionPaused = true
+            _telemetry.update { it.copy(flightMode = FlightMode.MISSION_PAUSED, speedMps = 0.0) }
+        }
+        return Result.success(Unit)
+    }
+
+    override suspend fun resumeMission(): Result<Unit> {
+        calls += "resumeMission"
+        if (!missionPaused || motionJob?.isActive != true) return Result.failure(IllegalStateException("멈춘 미션 없음"))
+        missionPaused = false
+        _telemetry.update { it.copy(flightMode = FlightMode.MISSION) }
         return Result.success(Unit)
     }
 
