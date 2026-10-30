@@ -76,6 +76,8 @@ data class MissionEntity(
     val flightParams: String,
     val modelVersion: String?,
     val status: String,
+    /** 실제로 날아간 고도 방식(5.6): TERRAIN 지형 추적, TAKEOFF 이륙 지점 기준. 아직 안 날았으면 null. */
+    val flownHeightMode: String? = null,
 )
 
 @Entity(
@@ -399,6 +401,9 @@ interface ProjectDao {
     @Query("UPDATE mission SET status = :status WHERE id = :missionId")
     suspend fun setMissionStatus(missionId: Long, status: String)
 
+    @Query("UPDATE mission SET flownHeightMode = :mode WHERE id = :missionId")
+    suspend fun setFlownHeightMode(missionId: Long, mode: String)
+
     @Query("UPDATE mission SET modelVersion = :version WHERE id = :missionId")
     suspend fun setModelVersion(missionId: Long, version: String)
 
@@ -527,7 +532,7 @@ interface ProjectDao {
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -535,7 +540,12 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
+
+        /** 4 → 5(2026-10-31): 실제로 날아간 고도 방식(지형 추적 거절 시 이륙 기준, 5.6). */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) = db.execSQL("ALTER TABLE `mission` ADD COLUMN `flownHeightMode` TEXT")
+        }
 
         /** 3 → 4(2026-10-30): 고/저압(앨범 기호, 4.5). */
         val MIGRATION_3_4 = object : Migration(3, 4) {

@@ -293,6 +293,9 @@ class FlightViewModel(
     /** 화면 셔터: 영상 모드면 녹화 시작·정지, 사진이면 수동 촬영(일시정지 중). */
     fun shutter() { if (_state.value.videoMode) toggleRecording() else manualCapture() }
     fun skip() = send(Command.Skip())
+    /** 지형 추적 시작 거절 창(5.6): [이륙 기준으로 시작] / [취소]. */
+    fun flyTakeoffHeight() = send(Command.FlyTakeoffHeight)
+    fun dismissTerrainFallback() = send(Command.DismissTerrainFallback)
     fun markDone() = send(Command.MarkDone)
     /**
      * [RTH 길게]: 미션 중이면 실행기가 처리한다(방문 정리 포함). 실행기는 대기인데 기체가 떠 있으면

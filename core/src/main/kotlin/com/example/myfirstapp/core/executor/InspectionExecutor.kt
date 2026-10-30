@@ -28,6 +28,7 @@ import com.example.myfirstapp.core.port.DroneEvent
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.InspectionRecorder
 import com.example.myfirstapp.core.port.LegMission
+import com.example.myfirstapp.core.port.MissionStartRejected
 import com.example.myfirstapp.core.port.Notifier
 import com.example.myfirstapp.core.port.Sound
 import com.example.myfirstapp.core.port.StorageMonitor
@@ -84,7 +85,8 @@ class InspectionExecutor(
     /** 앱 재시작 복구(6.4): 비정상 종료 때 진행 중이던 소티 번호. 값이 있으면 시작하자마자 기체 상태로 복귀 상태를 정한다. */
     private val recoverSortie: Int? = null,
 ) {
-    private val params = energy.flight
+    /** 비행 파라미터. 지형 추적 시작이 거절되어 운용자가 이륙 기준을 고르면 `terrainFollow`만 끈다(5.6). */
+    private var params = energy.flight
 
     private class Visit(val sortieIndex: Int, val order: Int, val pole: Pole) {
         var status = VisitStatus.PENDING
@@ -111,7 +113,8 @@ class InspectionExecutor(
     private sealed interface StepResult {
         data class PreflightDone(val failures: List<String>, val home: GeoPoint?) : StepResult
         data class TakeoffDone(val ok: Boolean) : StepResult
-        data class LegReady(val ok: Boolean, val reason: String) : StepResult
+        /** [terrainRejected]: 지형 추적 미션을 기체가 시작하지 않음(이륙 기준으로 바꿀지 묻는다). */
+        data class LegReady(val ok: Boolean, val reason: String, val terrainRejected: Boolean = false) : StepResult
         data class Captured(val captures: List<CaptureInfo>) : StepResult
         data class Downloaded(val images: List<Pair<Long, ByteArray>>) : StepResult
         data class Analyzed(val detections: Map<Long, List<Detection>>, val error: String?) : StepResult
@@ -141,6 +144,7 @@ class InspectionExecutor(
     private var preflightFailures: List<String> = emptyList()
     private var lastDetections: List<Detection> = emptyList()
     private var captured: List<Pair<Long, CaptureInfo>> = emptyList()
+    private var terrainFallbackAsk = false
 
     private var arrivalToken = 0
     private var arrivalJob: Job? = null
@@ -219,6 +223,14 @@ class InspectionExecutor(
                 StepResult.ManualCaptured(info, image)
             }
             Command.EndMission -> if (state == SortieDone) enter(MissionDone, "운용자 미션 종료")
+            Command.FlyTakeoffHeight -> if (state == Paused && terrainFallbackAsk) {
+                terrainFallbackAsk = false
+                params = params.copy(terrainFollow = false)
+                message = "이륙 지점 기준으로 다시 올립니다."
+                stopMissionBeforeLeg = true
+                enter(PreparingLeg, "지형 추적 거절 → 이륙 기준")
+            }
+            Command.DismissTerrainFallback -> terrainFallbackAsk = false
         }
     }
 
@@ -290,9 +302,14 @@ class InspectionExecutor(
             }
             is StepResult.TakeoffDone -> if (r.ok) enter(PreparingLeg, "이륙 완료") else pauseWithWarning("이륙 실패")
             is StepResult.LegReady -> if (r.ok) {
-                if (config.sortieMission) missionActive = true
+                if (config.sortieMission) {
+                    missionActive = true
+                    recorder.recordHeightMode(params.terrainFollow)
+                }
                 enter(FlyingLeg, if (config.sortieMission) "소티 미션 시작" else "구간 시작")
             } else {
+                // 운용자가 고를 때까지 일시정지(호버). [재개]하면 지형 추적으로 한 번 더 해 본다
+                terrainFallbackAsk = r.terrainRejected
                 pauseWithWarning(r.reason)
             }
             is StepResult.Resumed -> if (state == Paused) {
@@ -605,7 +622,12 @@ class InspectionExecutor(
         if (stopFirst) drone.stopMission()
         if (!storage.hasEnoughSpace()) return StepResult.LegReady(false, "저장 공간 부족")
         repeat(config.legRetries + 1) { attempt ->
-            if (drone.startSortie(points, params).isSuccess) return StepResult.LegReady(true, "")
+            val r = drone.startSortie(points, params)
+            if (r.isSuccess) return StepResult.LegReady(true, "")
+            // 올라갔는데 시작만 거절: 같은 KMZ는 다시 올려도 같다. 지형 추적이면 운용자에게 이륙 기준을 묻는다
+            if (r.exceptionOrNull() is MissionStartRejected && params.terrainFollow) {
+                return StepResult.LegReady(false, "지형 추적으로 시작하지 못했습니다. 이륙 지점 기준으로 다시 올리고 시작할까요?", terrainRejected = true)
+            }
             if (attempt < config.legRetries) delay(config.legRetryDelayMs)
         }
         return StepResult.LegReady(false, "미션 업로드 실패(재시도 ${config.legRetries}회 초과)")
@@ -654,6 +676,7 @@ class InspectionExecutor(
         }
         if (to in setOf(Paused, LinkLost, ReturningHome, SortieDone, MissionDone, Idle)) cancelRthPrompt()
         if (to == Paused || to == LinkLost) pausePending = false
+        if (to != Paused) terrainFallbackAsk = false
 
         when (to) {
             PreflightCheck -> {
@@ -803,6 +826,7 @@ class InspectionExecutor(
             message = message,
             preflightFailures = preflightFailures,
             photosInProgress = photosInProgress,
+            terrainFallbackAsk = terrainFallbackAsk,
         )
     }
 }

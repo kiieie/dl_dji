@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -57,6 +58,8 @@ class InspectionExecutorTest {
         override suspend fun saveDetections(captureId: Long, modelVersion: String, detections: List<Detection>) {
             this.detections[captureId] = detections
         }
+        val heightModes = mutableListOf<Boolean>()
+        override suspend fun recordHeightMode(terrainFollow: Boolean) { heightModes += terrainFollow }
     }
 
     private class Harness(
@@ -462,6 +465,41 @@ class InspectionExecutorTest {
         assertTrue("startSortie:12" in h.drone.calls)
         assertEquals(listOf(4, 4, 4), h.recorder.captures.groupBy { it.first }.values.map { it.size })
         h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+    }
+
+    @Test
+    fun `방식 A - 지형 추적 시작이 거절되면 다시 올리지 않고 묻고, 이륙 기준을 고르면 그 방식으로 날고 기록한다`() = runTest {
+        val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.OVERHEAD, terrainFollow = true)) { it.rejectTerrainStarts = true }
+        h.send(Command.Start)
+        h.awaitState(ExecState.Paused)
+        assertTrue(h.executor.uiState.value.terrainFallbackAsk)
+        assertEquals(1, h.drone.calls.count { it.startsWith("startSortie") }) // 같은 KMZ 재시도 없음
+
+        h.send(Command.FlyTakeoffHeight)
+        h.awaitState(ExecState.MissionDone)
+        assertEquals(listOf("terrain:true", "terrain:false"), h.drone.calls.filter { it.startsWith("terrain:") })
+        assertEquals(listOf(false), h.recorder.heightModes)
+        h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+    }
+
+    @Test
+    fun `방식 A - 지형 추적 거절 창을 취소하면 일시정지로 남는다`() = runTest {
+        val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.OVERHEAD, terrainFollow = true)) { it.rejectTerrainStarts = true }
+        h.send(Command.Start)
+        h.awaitState(ExecState.Paused)
+        h.send(Command.DismissTerrainFallback)
+        assertEquals(ExecState.Paused, h.state)
+        assertFalse(h.executor.uiState.value.terrainFallbackAsk)
+        h.send(Command.FlyTakeoffHeight) // 묻지 않을 때는 무시
+        assertEquals(1, h.drone.calls.count { it.startsWith("startSortie") })
+    }
+
+    @Test
+    fun `방식 A - 지형 추적으로 시작하면 그 방식을 기록한다`() = runTest {
+        val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.OVERHEAD, terrainFollow = true))
+        h.send(Command.Start)
+        h.awaitState(ExecState.FlyingLeg)
+        assertEquals(listOf(true), h.recorder.heightModes)
     }
 
     @Test

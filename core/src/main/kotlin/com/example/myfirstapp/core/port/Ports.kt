@@ -34,4 +34,7 @@ interface InspectionRecorder {
     suspend fun saveCapture(sortieIndex: Int, order: Int, capture: CaptureInfo, source: CaptureSource): Long
     suspend fun saveImage(captureId: Long, bytes: ByteArray)
     suspend fun saveDetections(captureId: Long, modelVersion: String, detections: List<Detection>)
+
+    /** 소티 미션을 시작한 고도 방식(5.6): 지형 추적이면 true, 이륙 지점 기준이면 false. 지형 추적이 거절되어 바꿔 날면 미션에 남는다. */
+    suspend fun recordHeightMode(terrainFollow: Boolean) {}
 }

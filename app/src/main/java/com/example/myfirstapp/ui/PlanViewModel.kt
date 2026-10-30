@@ -72,6 +72,8 @@ data class PlanUiState(
     val flyMissionId: Long? = null,
     /** 미션을 저장하는 중. 장갑으로 두 번 눌러도 한 번만 저장한다. */
     val saving: Boolean = false,
+    /** 기체가 시뮬레이터 모드: 새 계획의 지형 추적 기본을 끈다(시뮬레이터는 지형 추적 미션을 시작하지 않음, 2026-10-30). */
+    val simulator: Boolean = false,
     /** 5D로 고른 미션 설정 항목(10.4.3). 처음 ↕를 누르기 전에는 null. */
     val paramFocus: ParamItem? = null,
 ) {
@@ -96,6 +98,8 @@ class PlanViewModel(
     private val settings: SettingsStore,
     /** 지금 위치(기체 GPS → 조종기 GPS). 새 계획의 이륙 지점과 지도 초기 위치가 된다. */
     private val currentLocation: suspend () -> GeoPoint? = { null },
+    /** 기체가 시뮬레이터 모드인지(DJI SimulatorManager). */
+    private val simulatorOn: () -> Boolean = { false },
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlanUiState(mapFiles = listMbtiles(mapsDir)))
     val state: StateFlow<PlanUiState> = _state.asStateFlow()
@@ -103,7 +107,11 @@ class PlanViewModel(
     init {
         viewModelScope.launch { _state.update { it.copy(projectName = dao.projectName(projectId).orEmpty()) } }
         // 새 계획의 파라미터 초기값은 ⑥ 설정의 비행 기본값이다
-        viewModelScope.launch { settings.flightDefaults.first().let { p -> _state.update { it.copy(params = p) } } }
+        // 시뮬레이터 모드면 지형 추적을 끄고 화면에 알린다(운용자가 다시 켤 수 있음)
+        viewModelScope.launch {
+            val sim = simulatorOn()
+            settings.flightDefaults.first().let { p -> _state.update { it.copy(params = if (sim) p.copy(terrainFollow = false) else p, simulator = sim) } }
+        }
         viewModelScope.launch {
             dao.observePoles(projectId).collect { list -> _state.update { it.copy(poles = list) } }
         }
@@ -272,7 +280,7 @@ class PlanViewModel(
     companion object {
         fun factory(
             dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, settings: SettingsStore,
-            currentLocation: suspend () -> GeoPoint?,
-        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, currentLocation) } }
+            currentLocation: suspend () -> GeoPoint?, simulatorOn: () -> Boolean,
+        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, currentLocation, simulatorOn) } }
     }
 }

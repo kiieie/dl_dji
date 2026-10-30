@@ -45,6 +45,12 @@ sealed interface Command {
 
     /** SortieDone에서 남은 전주를 포기하고 미션 종료. */
     data object EndMission : Command
+
+    /** 지형 추적 시작 거절 확인 창(5.6): [이륙 기준으로 시작] — 이륙 지점 기준 KMZ로 다시 올리고 시작한다. */
+    data object FlyTakeoffHeight : Command
+
+    /** 지형 추적 시작 거절 확인 창의 [취소]: 일시정지로 남는다(수동 조종·RTH). */
+    data object DismissTerrainFallback : Command
 }
 
 data class VisitView(val sortieIndex: Int, val order: Int, val pole: Pole, val status: VisitStatus, val captureCount: Int)
@@ -64,6 +70,8 @@ data class ExecutorUiState(
     val preflightFailures: List<String> = emptyList(),
     /** 방식 A: 다운로드·탐지를 기다리는 사진 수. */
     val photosInProgress: Int = 0,
+    /** 지형 추적 미션 시작이 거절되어 이륙 기준으로 바꿀지 묻는 중(5.6, 2026-10-30 사용자 결정). */
+    val terrainFallbackAsk: Boolean = false,
 )
 
 /**

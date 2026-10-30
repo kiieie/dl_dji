@@ -71,6 +71,9 @@ interface DroneGateway {
     suspend fun setRecording(on: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException("녹화 미지원"))
 }
 
+/** 미션은 올렸지만 기체가 시작을 거절함([DroneGateway.startSortie]). 다시 올려도 같으므로 재시도하지 않는다(지형 추적 KMZ, 2026-10-30 시뮬레이터). */
+class MissionStartRejected(message: String, cause: Throwable? = null) : Exception(message, cause)
+
 /** 줌 단계(10.4.3). */
 val ZOOM_STEPS = listOf(1.0, 2.0, 4.0, 7.0, 14.0, 28.0)
 

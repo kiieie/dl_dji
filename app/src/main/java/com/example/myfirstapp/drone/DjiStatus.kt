@@ -67,6 +67,9 @@ suspend fun djiAircraftStatus(): AircraftStatus = runCatching {
     )
 }.getOrDefault(AircraftStatus())
 
+/** 기체가 DJI 시뮬레이터 모드인지. SDK가 없으면(에뮬레이터) false. */
+fun djiSimulatorOn(): Boolean = runCatching { SimulatorManager.getInstance().isSimulatorEnabled }.getOrDefault(false)
+
 internal fun modelName(type: String) = when (type) {
     "DJI_MAVIC_3_ENTERPRISE_SERIES" -> "Mavic 3 Enterprise"
     else -> type

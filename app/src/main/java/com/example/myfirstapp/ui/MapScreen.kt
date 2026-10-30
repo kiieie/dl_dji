@@ -89,6 +89,7 @@ import com.example.myfirstapp.data.PoleEntity
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.drone.djiCurrentLocation
+import com.example.myfirstapp.drone.djiSimulatorOn
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.poleDisplayName
@@ -160,7 +161,7 @@ fun MapScreen(
     val vm: PlanViewModel = viewModel(
         factory = PlanViewModel.factory(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() },
-            (context.applicationContext as InspectionApp).settings, ::djiCurrentLocation,
+            (context.applicationContext as InspectionApp).settings, ::djiCurrentLocation, ::djiSimulatorOn,
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
@@ -340,7 +341,7 @@ private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewMode
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         val scroll = rememberScrollState()
         Column(Modifier.weight(1f).verticalScroll(scroll)) {
-            ParamRows(s.params, pole, enabled = s.tool == Tool.NONE, focus = s.paramFocus, onChange = vm::updateParams)
+            ParamRows(s.params, pole, enabled = s.tool == Tool.NONE, focus = s.paramFocus, simulator = s.simulator, onChange = vm::updateParams)
             s.paramErrors.forEach { Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) }
             s.plan?.let { PlanSummary(it, s.planMs, s.params) }
         }
@@ -396,7 +397,7 @@ internal fun perPole(p: FlightParams) = if (p.shotMode == ShotMode.DIAGONAL4) 4 
  * 전주 위는 점검 고도·속도. 아래에 이동 고도·예비율. 범위 검증은 [FlightParams.validate]. 영역·이륙 지점을 찍는 동안에는 잠근다.
  */
 @Composable
-private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, focus: ParamItem?, onChange: (FlightParams) -> Unit) {
+private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, focus: ParamItem?, simulator: Boolean, onChange: (FlightParams) -> Unit) {
     fun step(item: ParamItem): (Int) -> Unit = { onChange(p.step(item, it)) }
     Row(
         Modifier.focusMark(focus == ParamItem.SHOT_MODE).padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 6.dp),
@@ -435,7 +436,10 @@ private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, focu
         ParamRow("이동 고도", "${p.transitAltitudeM.toInt()}", "m", enabled, focus == ParamItem.TRANSIT_ALTITUDE, step(ParamItem.TRANSIT_ALTITUDE))
         ParamRow("배터리 예비율", "${p.batteryReservePct.toInt()}", "%", enabled, focus == ParamItem.BATTERY_RESERVE, step(ParamItem.BATTERY_RESERVE))
         Row(Modifier.fillMaxWidth().height(40.dp).focusMark(focus == ParamItem.TERRAIN_FOLLOW), verticalAlignment = Alignment.CenterVertically) {
-            Text("실시간 지형 추적", Modifier.weight(1f), fontSize = 12.sp, color = TextSoft)
+            Column(Modifier.weight(1f)) {
+                Text("실시간 지형 추적", fontSize = 12.sp, color = TextSoft)
+                if (simulator) Text("시뮬레이터: 지형 추적 끔", fontSize = 10.sp, color = Warning)
+            }
             Switch(checked = p.terrainFollow, onCheckedChange = { onChange(p.copy(terrainFollow = it)) }, enabled = enabled)
         }
     }

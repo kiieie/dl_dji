@@ -10,6 +10,7 @@ import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.DroneEvent
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.LegMission
+import com.example.myfirstapp.core.port.MissionStartRejected
 import com.example.myfirstapp.core.port.PreflightReport
 import com.example.myfirstapp.core.route.Enu
 import com.example.myfirstapp.core.route.LocalProjection
@@ -77,6 +78,9 @@ class FakeDroneGateway(
         rthAltitudeM = 60.0, lostLinkActionIsRth = true, home = homePoint,
     )
     var failNextLegStarts = 0
+
+    /** 지형 추적 미션 시작을 거절한다(2026-10-30 시뮬레이터에서 본 동작). */
+    var rejectTerrainStarts = false
     var failNextCaptures = 0
     var failNextDownloads = 0
 
@@ -131,6 +135,8 @@ class FakeDroneGateway(
             failNextLegStarts--
             return Result.failure(IllegalStateException("모의 업로드 실패"))
         }
+        calls += "terrain:${params.terrainFollow}"
+        if (rejectTerrainStarts && params.terrainFollow) return Result.failure(MissionStartRejected("모의 지형 추적 시작 거절"))
         missionPaused = false
         _telemetry.update { it.copy(flightMode = FlightMode.MISSION) }
         motionJob?.cancel()

@@ -64,6 +64,11 @@ class RoomRecorder(
         dao.setCaptureFile(captureId, file.absolutePath, original = downloadMode == DownloadMode.ORIGINAL)
     }
 
+    override suspend fun recordHeightMode(terrainFollow: Boolean) {
+        OpLog.log("exec", "heightMode", mapOf("terrain" to terrainFollow, "mission" to missionId))
+        dao.setFlownHeightMode(missionId, if (terrainFollow) "TERRAIN" else "TAKEOFF")
+    }
+
     override suspend fun saveDetections(captureId: Long, modelVersion: String, detections: List<Detection>) {
         OpLog.log("detect", modelVersion, mapOf("capture" to captureId, "count" to detections.size, "alert" to detections.count { it.alert }))
         dao.setModelVersion(missionId, modelVersion)

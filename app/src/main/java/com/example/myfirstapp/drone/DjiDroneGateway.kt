@@ -13,6 +13,7 @@ import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.DroneEvent
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.LegMission
+import com.example.myfirstapp.core.port.MissionStartRejected
 import com.example.myfirstapp.core.port.PreflightReport
 import com.example.myfirstapp.core.route.Viewpoint
 import com.example.myfirstapp.core.route.WpmlWriter
@@ -291,7 +292,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         kmzWaypoints = wps
         owners.sortieStarted()
         missionName = name
-        djiDone { missions.startMission(name, it) }
+        // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
+        runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected("미션 시작 거절: ${it.message}", it) }
         Log.i(TAG, "소티 미션 시작 $name 촬영 지점 ${points.size}개, 웨이포인트 ${wps.size}개")
         Unit
     }.onFailure { missionName = null; Log.w(TAG, "소티 미션 실패: ${it.message}"); OpLog.log("error", "startSortie", mapOf("message" to it.message)) }

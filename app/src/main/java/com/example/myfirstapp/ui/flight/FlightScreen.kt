@@ -7,6 +7,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.perPole
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.Error
@@ -177,7 +178,20 @@ private fun FlightContent(
 
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
         s.preflight?.let { PreflightSheet(it, vm) }
+        if (ui.terrainFallbackAsk) TerrainFallbackDialog(vm)
     }
+}
+
+/** 지형 추적 시작 거절(5.6, 2026-10-30 사용자 결정): 이륙 지점 기준으로 다시 올릴지 묻는다. 그동안 기체는 멈춰 호버링한다. */
+@Composable
+private fun TerrainFallbackDialog(vm: FlightViewModel) {
+    FullscreenAlertDialog(
+        onDismissRequest = vm::dismissTerrainFallback,
+        title = { Text("지형 추적으로 시작하지 못했습니다") },
+        text = { Text("이륙 지점 기준으로 다시 올리고 시작할까요? 비탈에서는 지면과의 거리가 달라지니 고도를 확인하세요. 취소하면 일시정지로 남습니다(수동 조종·RTH).") },
+        confirmButton = { Button(onClick = vm::flyTakeoffHeight) { Text("이륙 기준으로 시작") } },
+        dismissButton = { TextButton(onClick = vm::dismissTerrainFallback) { Text("취소") } },
+    )
 }
 
 /**
