@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,7 +39,7 @@ import com.example.myfirstapp.data.ProjectSummary
 import java.text.DateFormat
 import java.util.Date
 
-/** 10장 ① 프로젝트 목록(왼쪽)과 ② 데이터 가져오기(오른쪽). 가로 화면 한 장에 둔다. */
+/** 비행경로 라이브러리(Pilot 2 비행경로, 10장 ①): 프로젝트 목록(왼쪽)과 ② 데이터 가져오기(오른쪽). 가로 화면 한 장에 둔다. */
 @Composable
 fun ProjectScreen(
     dao: ProjectDao,
@@ -54,12 +56,15 @@ fun ProjectScreen(
     Row(modifier.fillMaxSize().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("프로젝트", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+                Text("비행경로", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
                 TextButton(onClick = onOpenVerification) { Text("연동 검증") }
                 OutlinedButton(onClick = onOpenSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("설정") }
             }
             if (s.projects.isEmpty()) Text("프로젝트가 없습니다. 오른쪽에서 전주 CSV를 가져오세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 새 프로젝트는 맨 위에 생긴다. 목록이 보던 항목에 고정되어 새 항목이 화면 위로 밀리지 않게 맨 위로 올린다
+            val listState = rememberLazyListState()
+            LaunchedEffect(s.projects.firstOrNull()?.id) { listState.scrollToItem(0) }
+            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(s.projects, key = { it.id }) { project ->
                     Card(
                         onClick = { onOpenProject(project) },

@@ -25,6 +25,7 @@ import com.example.myfirstapp.drone.DjiPoc
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
+import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
@@ -68,16 +69,30 @@ class MainActivity : ComponentActivity() {
                 nav.navigate("flight/${it.projectId}/${it.missionId}")
             }
         }
-        // RC 5D ← = 뒤로(10장). 첫 화면(앱 종료), 비행 화면(안전), 판독 화면(←→ 판정)은 제외한다.
+        // RC 5D ← = 뒤로(10장). 첫 화면(홈, 앱 종료), 비행 화면(안전), 판독 화면(←→ 판정)은 제외한다.
         LaunchedEffect(Unit) {
             (application as InspectionApp).rcButtons.collect { b ->
                 val route = nav.currentDestination?.route ?: return@collect
-                if (b == RcButton.FIVE_D_LEFT && route != "projects" && !route.startsWith("flight") && !route.startsWith("result")) {
+                if (b == RcButton.FIVE_D_LEFT && route != "home" && !route.startsWith("flight") && !route.startsWith("result")) {
                     onBackPressedDispatcher.onBackPressed()
                 }
             }
         }
-        NavHost(nav, startDestination = "projects") {
+        NavHost(nav, startDestination = "home") {
+            // 홈(Pilot 2 홈페이지, 10장): 비행경로·앨범·설정 타일, 기체 상태, 카메라 뷰로 들어가기
+            composable("home") {
+                HomeScreen(
+                    dao,
+                    onRoutes = { nav.navigate("projects") },
+                    onAlbum = { pid, mid -> nav.navigate("result/$pid/$mid") },
+                    onFlight = { pid, mid ->
+                        nav.navigate("missions/$pid")
+                        nav.navigate("flight/$pid/$mid")
+                    },
+                    onSettings = { nav.navigate("settings") },
+                    onVerification = { nav.navigate("verify") },
+                )
+            }
             composable("projects") {
                 ProjectScreen(
                     dao,
