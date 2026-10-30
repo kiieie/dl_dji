@@ -35,3 +35,7 @@ suspend fun djiCurrentLocation(): GeoPoint? = runCatching {
         ?.takeIf { it.isValid == true && valid(it.location?.latitude, it.location?.longitude) }
         ?.let { GeoPoint(it.location.latitude, it.location.longitude) }
 }.getOrNull()
+
+/** 기체가 SDK에 연결되어 있는지. SDK가 없거나 등록 전이면 false. */
+fun djiAircraftConnected(): Boolean =
+    runCatching { KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false) }.getOrDefault(false)

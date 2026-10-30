@@ -12,6 +12,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
@@ -128,6 +130,8 @@ data class CaptureEntity(
     val heading: Double,
     val takenAt: Long,
     val originalDownloaded: Boolean = false,
+    /** 촬영 지점 번호(5.6): 전주 위 0, 4방향 사선 0~3, 수동 촬영은 null. */
+    val viewpoint: Int? = null,
 )
 
 @Entity(
@@ -179,6 +183,26 @@ data class FlightEventEntity(
     val reason: String,
     val visitId: Long?,
     val at: Long,
+)
+
+/** 비행 궤적 한 점(1초 간격, 4.2). 내보내기의 실제 비행 궤적과 에너지 보정(5.5)에 쓴다. */
+@Entity(
+    tableName = "telemetry_sample",
+    foreignKeys = [ForeignKey(SortieEntity::class, ["id"], ["sortieId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("sortieId")],
+)
+data class TelemetrySampleEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sortieId: Long,
+    val at: Long,
+    val lat: Double?,
+    val lon: Double?,
+    val altRel: Double,
+    val speed: Double,
+    val heading: Double,
+    val gimbalPitch: Double,
+    val batteryPct: Int,
+    val flightMode: String,
 )
 
 /** 비행 화면이 읽는 방문 한 건(소티 순서, 방문 순서대로). */
@@ -339,6 +363,12 @@ interface ProjectDao {
     suspend fun insertEvent(event: FlightEventEntity)
 
     @Insert
+    suspend fun insertTelemetry(sample: TelemetrySampleEntity)
+
+    @Query("SELECT * FROM telemetry_sample WHERE sortieId = :sortieId ORDER BY at")
+    suspend fun telemetry(sortieId: Long): List<TelemetrySampleEntity>
+
+    @Insert
     suspend fun insertCapture(capture: CaptureEntity): Long
 
     @Query("UPDATE capture SET filePath = :path, originalDownloaded = :original WHERE id = :captureId")
@@ -423,9 +453,9 @@ interface ProjectDao {
 @Database(
     entities = [
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
-        CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class,
+        CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -433,6 +463,20 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2).build()
+
+        /** 1 → 2(2026-10-30): 촬영 지점 번호와 비행 궤적. 현장 시험 데이터를 지우지 않으려고 마이그레이션한다. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `capture` ADD COLUMN `viewpoint` INTEGER")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `telemetry_sample` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sortieId` INTEGER NOT NULL, " +
+                        "`at` INTEGER NOT NULL, `lat` REAL, `lon` REAL, `altRel` REAL NOT NULL, `speed` REAL NOT NULL, `heading` REAL NOT NULL, " +
+                        "`gimbalPitch` REAL NOT NULL, `batteryPct` INTEGER NOT NULL, `flightMode` TEXT NOT NULL, " +
+                        "FOREIGN KEY(`sortieId`) REFERENCES `sortie`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_telemetry_sample_sortieId` ON `telemetry_sample` (`sortieId`)")
+            }
+        }
     }
 }

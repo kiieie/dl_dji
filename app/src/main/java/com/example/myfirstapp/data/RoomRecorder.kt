@@ -52,8 +52,8 @@ class RoomRecorder(
 
     override suspend fun saveImage(captureId: Long, bytes: ByteArray) {
         val c = dao.capture(captureId) ?: return
-        // 4.3 파일 이름 규칙: <poleId>_<timestamp>_<lens>.jpg
-        val file = File(imagesDir, "${poleIdOfVisit[c.visitId]}_${c.takenAt}_${c.lens}.jpg")
+        // 4.3 파일 이름 규칙: <poleId>_<viewpoint>_<timestamp>_<lens>.jpg (수동 촬영은 지점 m)
+        val file = File(imagesDir, "${poleIdOfVisit[c.visitId]}_${c.viewpoint ?: "m"}_${c.takenAt}_${c.lens}.jpg")
         withContext(Dispatchers.IO) {
             imagesDir.mkdirs()
             file.writeBytes(bytes)
@@ -71,5 +71,5 @@ class RoomRecorder(
 fun CaptureInfo.toEntity(visitId: Long, source: CaptureSource) = CaptureEntity(
     visitId = visitId, mediaId = mediaId, lens = lens.name, source = source.name,
     lat = position?.lat, lon = position?.lon, altRel = altitudeM,
-    gimbalPitch = gimbalPitchDeg, heading = headingDeg, takenAt = takenAtMs,
+    gimbalPitch = gimbalPitchDeg, heading = headingDeg, takenAt = takenAtMs, viewpoint = viewpoint,
 )

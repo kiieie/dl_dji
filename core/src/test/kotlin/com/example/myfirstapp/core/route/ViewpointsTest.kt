@@ -76,4 +76,13 @@ class ViewpointsTest {
         val headings = Regex("<wpml:waypointHeadingAngle>([-0-9.]+)<").findAll(wpml).map { it.groupValues[1].toDouble() }.toList()
         assertTrue(headings.all { it in -180.0..180.0 })
     }
+
+    @Test
+    fun `지점이 하나면 촬영 없는 마무리 지점을 덧붙인다(웨이포인트 2개 이상)`() {
+        val v = Viewpoints.expand(poles.take(1), FlightParams(), home)
+        val bytes = ByteArrayOutputStream().also { WpmlWriter.write(v, FlightParams(), it, nowMs = 0) }.toByteArray()
+        val wpml = ZipInputStream(bytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name.endsWith("wpml") }.let { z.readBytes().decodeToString() } }
+        assertEquals(2, Regex("<Placemark>").findAll(wpml).count())
+        assertEquals(1, Regex("takePhoto").findAll(wpml).count())
+    }
 }

@@ -1,5 +1,10 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.core.executor.ExecutorConfig
+import com.example.myfirstapp.data.TelemetrySampleEntity
+import com.example.myfirstapp.drone.DjiDroneGateway
+import com.example.myfirstapp.drone.djiAircraftConnected
+import kotlinx.coroutines.delay
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -166,9 +171,26 @@ class FlightViewModel(
         val detector = model ?: FakeDetector()
         val executor = InspectionExecutor(
             viewModelScope, drone, recorder, notifier, storage, energy, detector, sorties,
+            // 6.1 방식 A: 소티 미션 하나로 계속 비행(모의 기체도 같은 흐름)
+            config = ExecutorConfig(sortieMission = true),
             recoverSortie = open?.let { o -> groups.indexOfFirst { it.first == o.id } },
         ).also { executor = it }
         executor.start()
+        // 비행 궤적(TELEMETRY_SAMPLE, 4.2): 떠 있는 동안 1초마다 그 소티에 남긴다
+        viewModelScope.launch {
+            while (true) {
+                delay(1_000)
+                val t = drone.telemetry.value
+                val sortieId = groups.getOrNull(executor.uiState.value.sortieIndex)?.first
+                if (sortieId != null && t.isFlying) dao.insertTelemetry(
+                    TelemetrySampleEntity(
+                        sortieId = sortieId, at = System.currentTimeMillis(), lat = t.position?.lat, lon = t.position?.lon,
+                        altRel = t.altitudeM, speed = t.speedMps, heading = t.headingDeg, gimbalPitch = t.gimbalPitchDeg,
+                        batteryPct = t.batteryPct.toInt(), flightMode = t.flightMode.name,
+                    ),
+                )
+            }
+        }
         _state.update {
             it.copy(
                 loading = false, home = home, poles = sorties.flatMap { s -> s.poles },
@@ -225,6 +247,12 @@ class FlightViewModel(
     fun markDone() = send(Command.MarkDone)
     fun returnHome() = send(Command.ReturnHome)
 
+    /** 착륙 보호 확인(기체가 지면 가까이에서 기다릴 때). 실행기 상태와 무관한 기체 명령이다. */
+    fun confirmLanding() {
+        val d = drone ?: return
+        viewModelScope.launch { d.confirmLanding().onFailure { e -> Log.w("Flight", "착륙 확인 실패: ${e.message}") } }
+    }
+
     // RC 하드웨어 버튼을 대신하는 모의 조작(기체 연동 전 전용)
     fun rcPause() = (drone as? FakeDroneGateway)?.pressRcPause()
     fun rcResume() = (drone as? FakeDroneGateway)?.pressRcResume()
@@ -233,13 +261,25 @@ class FlightViewModel(
     private fun send(c: Command) = executor?.send(c)
 
     override fun onCleared() {
+        (drone as? DjiDroneGateway)?.close()
         notifier.release()
         model?.close()
     }
 
     companion object {
+        /** 기체가 연결돼 있으면 실제 기체([DjiDroneGateway]), 아니면 모의 기체. 올린 KMZ는 미션 폴더 `kmz/`에 남는다(4.3). */
         fun factory(dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore, rcButtons: Flow<RcButton>) =
-            viewModelFactory { initializer { FlightViewModel(dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons) } }
+            viewModelFactory {
+                initializer {
+                    FlightViewModel(
+                        dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons,
+                        droneFactory = { scope, home, dir, airborneAt ->
+                            if (djiAircraftConnected()) DjiDroneGateway(scope, File(dir, "projects/$projectId/missions/$missionId/kmz"))
+                            else fakeDrone(scope, home, dir, airborneAt)
+                        },
+                    )
+                }
+            }
     }
 }
 

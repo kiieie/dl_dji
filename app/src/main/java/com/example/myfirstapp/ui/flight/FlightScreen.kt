@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.drone.DjiFpvView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -151,9 +152,10 @@ private fun FlightContent(s: FlightUiState, vm: FlightViewModel, onExit: () -> U
     }
 }
 
-/** FPV 영상 자리. 기체 연동 뒤 DJI UX SDK의 FPV 위젯으로 바꾼다(10장). */
+/** FPV 영상. 실제 기체는 카메라 스트림, 모의 기체는 안내 문구(10장). */
 @Composable
 private fun FpvView(simulated: Boolean, modifier: Modifier) {
+    if (!simulated) return DjiFpvView(modifier.background(Color.Black))
     Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
         Text(
             if (simulated) "FPV 영상 (모의 기체: 영상 없음)" else "FPV 영상",
@@ -223,6 +225,12 @@ private fun SideControls(s: FlightUiState, vm: FlightViewModel) {
 /** 화면 아래 가운데의 큰 버튼: 비행 시작, 보조용 [재개](일시정지 때만, 초록), 미션 완료(10장). */
 @Composable
 private fun BottomAction(s: FlightUiState, vm: FlightViewModel, onShowResult: () -> Unit) {
+    if (s.telemetry?.landingConfirmNeeded == true) {
+        // 착륙 보호: 지면 바로 위에서 기체가 확인을 기다린다(Pilot 2 [착륙 확인]). RC 왼쪽 스틱을 내려도 된다
+        return Button(onClick = vm::confirmLanding, modifier = Modifier.size(240.dp, 80.dp), shape = RoundedCornerShape(16.dp)) {
+            Text("착륙 확인", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        }
+    }
     when (s.exec.state) {
         ExecState.Idle -> Button(onClick = vm::start, modifier = Modifier.size(240.dp, 64.dp)) {
             Text("비행 시작", fontSize = 22.sp, fontWeight = FontWeight.Bold)

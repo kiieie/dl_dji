@@ -51,6 +51,9 @@ interface DroneGateway {
     suspend fun listMedia(sinceMs: Long): Result<List<CaptureInfo>>
 
     suspend fun returnHome(): Result<Unit>
+
+    /** 착륙 보호 확인: [Telemetry.landingConfirmNeeded]일 때 마저 내려앉는다. */
+    suspend fun confirmLanding(): Result<Unit> = Result.failure(UnsupportedOperationException("착륙 확인 미지원"))
 }
 
 /** 구간 미션: 현재 위치에서 이동 고도로 목표 상공까지 간 뒤 점검 고도로 내려간다(6.2). */

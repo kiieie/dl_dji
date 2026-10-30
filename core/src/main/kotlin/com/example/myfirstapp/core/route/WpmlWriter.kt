@@ -23,11 +23,14 @@ object WpmlWriter {
 
     fun write(points: List<Viewpoint>, params: FlightParams, out: OutputStream, nowMs: Long = System.currentTimeMillis()) {
         require(points.isNotEmpty()) { "촬영 지점이 없습니다." }
+        val shots = points.size
+        // 기체는 웨이포인트를 2개 이상 요구한다(2026-10-30 시뮬레이터). 지점이 하나면 촬영 없는 마무리 지점을 1m 북쪽에 덧붙인다
+        val points = if (points.size > 1) points else points + points[0].copy(position = LocalProjection(points[0].position).toGeo(Enu(0.0, 1.0)))
         ZipOutputStream(out).use { zip ->
             zip.putNextEntry(ZipEntry("wpmz/template.kml"))
-            zip.write(template(points, params, nowMs).toByteArray())
+            zip.write(template(points, params, nowMs, shots).toByteArray())
             zip.putNextEntry(ZipEntry("wpmz/waylines.wpml"))
-            zip.write(waylines(points, params).toByteArray())
+            zip.write(waylines(points, params, shots).toByteArray())
             zip.closeEntry()
         }
     }
@@ -60,7 +63,8 @@ object WpmlWriter {
     private const val TURN =
         "<wpml:waypointTurnParam><wpml:waypointTurnMode>toPointAndStopWithDiscontinuityCurvature</wpml:waypointTurnMode><wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist></wpml:waypointTurnParam>"
 
-    private fun template(points: List<Viewpoint>, p: FlightParams, nowMs: Long) = buildString {
+    /** [shots] 뒤의 덧붙인 지점에는 동작을 넣지 않는다. */
+    private fun template(points: List<Viewpoint>, p: FlightParams, nowMs: Long, shots: Int) = buildString {
         append("""<?xml version="1.0" encoding="UTF-8"?>
 <kml $NS>
 <Document>
@@ -81,13 +85,13 @@ object WpmlWriter {
         <wpml:useGlobalHeight>0</wpml:useGlobalHeight><wpml:useGlobalSpeed>1</wpml:useGlobalSpeed><wpml:useGlobalHeadingParam>0</wpml:useGlobalHeadingParam>
         ${headingParam(v)}
         <wpml:useGlobalTurnParam>0</wpml:useGlobalTurnParam>$TURN<wpml:useStraightLine>1</wpml:useStraightLine><wpml:gimbalPitchAngle>${n(v.gimbalPitchDeg)}</wpml:gimbalPitchAngle>
-${actions(i, v)}
+${if (i < shots) actions(i, v) else ""}
       </Placemark>""")
         }
         append("\n  </Folder>\n</Document>\n</kml>\n")
     }
 
-    private fun waylines(points: List<Viewpoint>, p: FlightParams) = buildString {
+    private fun waylines(points: List<Viewpoint>, p: FlightParams, shots: Int) = buildString {
         append("""<?xml version="1.0" encoding="UTF-8"?>
 <kml $NS>
 <Document>""")
@@ -103,7 +107,7 @@ ${actions(i, v)}
         ${headingParam(v)}
         $TURN
         <wpml:useStraightLine>1</wpml:useStraightLine>
-${actions(i, v)}
+${if (i < shots) actions(i, v) else ""}
       </Placemark>""")
         }
         append("\n  </Folder>\n</Document>\n</kml>\n")

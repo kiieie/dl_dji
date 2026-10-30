@@ -13,6 +13,11 @@ data class Telemetry(
     val gpsLevel: Int,
     val connected: Boolean,
     val home: GeoPoint?,
+    /** 기수(정북 0°, 시계 방향)와 짐벌 피치. 내비게이션 표시와 비행 궤적 기록에 쓴다. */
+    val headingDeg: Double = 0.0,
+    val gimbalPitchDeg: Double = 0.0,
+    /** 착륙 직전(지면 약 0.5~2m) 기체가 조종사 확인을 기다림(착륙 보호). Pilot 2의 [착륙 확인]과 같다. */
+    val landingConfirmNeeded: Boolean = false,
 ) {
     val isFlying: Boolean get() = flightMode != FlightMode.ON_GROUND && flightMode != FlightMode.UNKNOWN
 
