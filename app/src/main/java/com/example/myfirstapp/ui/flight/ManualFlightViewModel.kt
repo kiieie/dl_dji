@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.myfirstapp.core.executor.SHUTTER_POLE_LINK_M
 import com.example.myfirstapp.core.executor.SHUTTER_SETTLE_MS
 import com.example.myfirstapp.core.executor.SHUTTER_SKEW_MS
 import com.example.myfirstapp.core.executor.shutterPhoto
@@ -56,7 +57,7 @@ data class ManualFlightUiState(
 
 /**
  * 수동 비행 카메라 뷰(Pilot 2 카메라 뷰, 10.0): 미션 없이 기체 영상·계기·지도를 보고 조종사가 스틱으로 난다.
- * 셔터(화면 버튼·RC 셔터)는 언제든 찍고 원본을 받는다. 남은 전주가 있는 최근 미션의 전주가 [POLE_LINK_M] 안이면 그 전주의 수동 사진으로,
+ * 셔터(화면 버튼·RC 셔터)는 언제든 찍고 원본을 받는다. 남은 전주가 있는 최근 미션의 전주가 [SHUTTER_POLE_LINK_M] 안이면 그 전주의 수동 사진으로,
  * 아니면 `manual/<날짜>/`에 둔다(6.4 RC 셔터). 자동 점검 비행은 미션의 [비행 시작]으로 한다.
  */
 class ManualFlightViewModel(
@@ -143,7 +144,7 @@ class ManualFlightViewModel(
     /** 최근 미션 전주가 가까우면 그 방문의 수동 사진(4.3 미션 `images/`), 아니면 `manual/<날짜>/`. 저장한 곳을 돌려준다. */
     private suspend fun store(info: CaptureInfo, bytes: ByteArray, t: Telemetry, lens: Lens): String {
         val m = dao.latestOpenMission()
-        val v = if (m == null) null else t.position?.let { p -> nearestWithin(p, dao.missionVisits(m.id), POLE_LINK_M) { GeoPoint(it.lat, it.lon) } }
+        val v = if (m == null) null else t.position?.let { p -> nearestWithin(p, dao.missionVisits(m.id), SHUTTER_POLE_LINK_M) { GeoPoint(it.lat, it.lon) } }
         if (m != null && v != null) {
             val rec = RoomRecorder(
                 dao, m.id, listOf(RecorderSortie(v.sortieId, listOf(v.visitId to v.poleId))),
@@ -184,9 +185,6 @@ class ManualFlightViewModel(
     }
 
     companion object {
-        /** 수동 사진을 전주에 붙이는 거리(6.4 RC 셔터). */
-        const val POLE_LINK_M = 50.0
-
         fun factory(dao: ProjectDao, appFilesDir: File?, rcButtons: Flow<RcButton>) =
             viewModelFactory { initializer { ManualFlightViewModel(dao, appFilesDir, rcButtons) } }
     }

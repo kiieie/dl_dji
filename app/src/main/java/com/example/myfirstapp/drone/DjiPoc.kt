@@ -215,7 +215,8 @@ object DjiPoc {
         val points = Viewpoints.expand(poles, params, GeoPoint(mission.homeLat, mission.homeLon))
         dir.mkdirs()
         val kmz = File(dir, "plan_${mission.id}_$seq.kmz")
-        kmz.outputStream().use { WpmlWriter.write(points, params, it) }
+        val home = GeoPoint(mission.homeLat, mission.homeLon)
+        kmz.outputStream().use { WpmlWriter.write(points, params, it, start = home) }
         return kmz to log("KMZ 생성 미션 #${mission.id} 소티 $seq: 전주 ${poles.size}개 → 촬영 지점 ${points.size}개($mode), ${kmz.length() / 1024}KB")
     }
 }

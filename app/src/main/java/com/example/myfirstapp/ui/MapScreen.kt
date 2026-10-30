@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.style.TextOverflow
@@ -419,6 +420,10 @@ private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, onCh
         ParamRow("속도", "${p.speedMps.toInt()}", "m/s", enabled) { onChange(p.copy(speedMps = p.speedMps + it)) }
         ParamRow("이동 고도", "${p.transitAltitudeM.toInt()}", "m", enabled) { onChange(p.copy(transitAltitudeM = p.transitAltitudeM + it * 5)) }
         ParamRow("배터리 예비율", "${p.batteryReservePct.toInt()}", "%", enabled) { onChange(p.copy(batteryReservePct = p.batteryReservePct + it * 5)) }
+        Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("실시간 지형 추적", Modifier.weight(1f), fontSize = 12.sp, color = TextSoft)
+            Switch(checked = p.terrainFollow, onCheckedChange = { onChange(p.copy(terrainFollow = it)) }, enabled = enabled)
+        }
     }
 }
 
