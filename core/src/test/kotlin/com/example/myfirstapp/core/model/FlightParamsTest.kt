@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.model
 
+import com.example.myfirstapp.core.model.ShotMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,11 +22,11 @@ class FlightParamsTest {
     }
 
     @Test
-    fun `사선 고도 하한은 지형 추적이면 24_5m, 아니면 27m`() {
-        val d = FlightParams(shotMode = ShotMode.DIAGONAL4, diagonalAltitudeM = 25.0)
+    fun `사선 고도 하한은 지형 추적이어도 27m(현장 PoC 전), 이동 고도 이하`() {
+        val d = FlightParams(shotMode = ShotMode.DIAGONAL4)
         assertTrue(d.validate().isEmpty())
-        assertTrue(d.copy(diagonalAltitudeM = 24.0).validate().any { it.contains("사선 고도") })
-        assertTrue(d.copy(terrainFollow = false).validate().any { it.contains("사선 고도") })
-        assertTrue(d.copy(terrainFollow = false, diagonalAltitudeM = 27.0).validate().isEmpty())
+        assertTrue(d.copy(diagonalAltitudeM = 24.5).validate().any { "27m" in it })
+        assertTrue(d.copy(terrainFollow = false, diagonalAltitudeM = 24.5).validate().any { "27m" in it })
+        assertTrue(d.copy(diagonalAltitudeM = 60.0).validate().any { "이동 고도 이하" in it })
     }
 }

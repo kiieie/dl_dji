@@ -234,8 +234,11 @@ data class MissionVisitRow(
     fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note, lineNo, lengthM, equipment)
 }
 
-/** `MISSION.flightParams`(JSON)를 읽는다. 없는 필드는 기본값을 쓴다. */
-fun flightParamsFromJson(json: String): FlightParams {
+/**
+ * `MISSION.flightParams`(JSON)를 읽는다. 없는 필드는 기본값을 쓴다. 지형 추적 필드가 없는 옛 미션은 계획 당시 방식(이륙 지점 기준)으로
+ * 읽는다([legacyTerrainFollow] 거짓, 2026-10-30 사용자 결정). 설정 기본값은 새 계획에 쓰이므로 켬으로 읽는다.
+ */
+fun flightParamsFromJson(json: String, legacyTerrainFollow: Boolean = false): FlightParams {
     val o = JSONObject(json)
     val d = FlightParams()
     return FlightParams(
@@ -255,7 +258,7 @@ fun flightParamsFromJson(json: String): FlightParams {
         diagonalAltitudeM = o.optDouble("diagonalAltitudeM", d.diagonalAltitudeM),
         diagonalDistanceM = o.optDouble("diagonalDistanceM", d.diagonalDistanceM),
         aimHeightM = o.optDouble("aimHeightM", d.aimHeightM),
-        terrainFollow = o.optBoolean("terrainFollow", d.terrainFollow),
+        terrainFollow = o.optBoolean("terrainFollow", legacyTerrainFollow),
     )
 }
 

@@ -66,7 +66,7 @@ class ViewpointsTest {
     @Test
     fun `4방향 사선 고도가 전선에 가까우면 검증에서 막는다`() {
         assertTrue(diagonal.validate().isEmpty())
-        assertTrue(diagonal.copy(diagonalAltitudeM = 20.0).validate().any { "24.5m" in it }) // 지형 추적(기본)
+        assertTrue(diagonal.copy(diagonalAltitudeM = 20.0).validate().any { "27m" in it }) // 지형 추적이어도 27m(현장 PoC 전)
         assertTrue(diagonal.copy(diagonalAltitudeM = 20.0, terrainFollow = false).validate().any { "27m" in it })
     }
 

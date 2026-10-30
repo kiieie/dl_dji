@@ -96,4 +96,14 @@ class WpmlTransitTest {
         assertEquals(2, e.longJumps(listOf(50.0, 60.0, 60.1, 150.0)))
         assertEquals(e.sortieCost(1000.0, 3) + 2 * 40.0 / 3.0 * EnergyParams().hoverPctPerSec, e.sortieCost(1000.0, 3, 2), 1e-9)
     }
+
+    @Test
+    fun `이동 고도가 촬영 고도보다 2m 넘게 높지 않으면 이동 지점을 끼우지 않는다(같은 자리 겹침 방지)`() {
+        val p = FlightParams(shotMode = ShotMode.OVERHEAD, inspectAltitudeM = 50.0, transitAltitudeM = 50.0)
+        val far = (0..2).map { i -> Pole("P$i", LocalProjection(GeoPoint(36.48, 127.33)).toGeo(Enu(200.0 * (i + 1), 0.0))) }
+        val v = Viewpoints.expand(far, p, GeoPoint(36.48, 127.33))
+        val wps = WpmlWriter.waypoints(v, p, GeoPoint(36.48, 127.33))
+        assertTrue(wps.all { it.shot != null })
+        assertTrue(wps.zipWithNext().none { (a, b) -> a.position == b.position && a.altitudeM == b.altitudeM })
+    }
 }

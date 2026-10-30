@@ -16,7 +16,7 @@ class SettingsStore(context: Context) {
 
     /** 새 계획의 파라미터 초기값. 저장한 적이 없거나 읽을 수 없으면 설계 기본값(6.3)이다. */
     val flightDefaults: Flow<FlightParams> = store.data.map { p ->
-        p[FLIGHT]?.let { runCatching { flightParamsFromJson(it) }.getOrNull() } ?: FlightParams()
+        p[FLIGHT]?.let { runCatching { flightParamsFromJson(it, legacyTerrainFollow = true) }.getOrNull() } ?: FlightParams()
     }
 
     /** 고른 모델 폴더 이름(`models/<이름>/`). null이면 이름이 가장 뒤인 모델을 쓴다(9.1). */
