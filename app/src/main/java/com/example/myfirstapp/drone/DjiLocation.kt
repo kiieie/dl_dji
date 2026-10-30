@@ -12,9 +12,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
- * 지금 위치: 조종기 GPS → 기체 GPS(위성 6개 이상일 때만) → 없음. 계획 화면의 이륙 지점·지도 초기 위치에 쓴다.
- * 조종사가 이륙 지점 옆에 서므로 조종기를 먼저 본다(2026-10-30 사용자 요청). 기체는 GPS가 없어도 마지막 위치(예: 꺼진 시뮬레이터 위치)를
- * 주므로 위성 수로 거른다. SDK가 없거나(에뮬레이터) 답이 없으면 null.
+ * 지금 위치: 기체 GPS(위성 6개 이상일 때만) → 조종기 GPS → 없음(지도에서 선택). 계획 화면의 이륙 지점·지도 초기 위치에 쓴다(2026-10-30 사용자 지정).
+ * 기체는 GPS가 없어도 마지막 위치(예: 꺼진 시뮬레이터 위치)를 주므로 위성 수로 거른다. SDK가 없거나(에뮬레이터) 답이 없으면 null.
  */
 suspend fun djiCurrentLocation(): GeoPoint? = runCatching {
     val keys = KeyManager.getInstance()
@@ -26,16 +25,16 @@ suspend fun djiCurrentLocation(): GeoPoint? = runCatching {
             })
         }
     }
-    val rc = read(KeyTools.createKey(RemoteControllerKey.KeyRcGPSInfo))
-        ?.takeIf { it.isValid == true && validGeo(it.location?.latitude, it.location?.longitude) }
-        ?.let { GeoPoint(it.location.latitude, it.location.longitude) }
-    rc ?: if (keys.getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false) &&
+    val aircraft = if (keys.getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false) &&
         (read(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount)) ?: 0) >= 6
     ) {
         read(KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D))?.takeIf { validGeo(it.latitude, it.longitude) }?.let { GeoPoint(it.latitude, it.longitude) }
     } else {
         null
     }
+    aircraft ?: read(KeyTools.createKey(RemoteControllerKey.KeyRcGPSInfo))
+        ?.takeIf { it.isValid == true && validGeo(it.location?.latitude, it.location?.longitude) }
+        ?.let { GeoPoint(it.location.latitude, it.location.longitude) }
 }.getOrNull()
 
 /** 기체가 SDK에 연결되어 있는지. SDK가 없거나 등록 전이면 false. */

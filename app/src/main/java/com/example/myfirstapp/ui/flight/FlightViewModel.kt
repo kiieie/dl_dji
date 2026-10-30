@@ -266,10 +266,10 @@ class FlightViewModel(
 
     fun closePreflight() = _state.update { it.copy(preflight = null) }
 
-    /** 체크리스트 확인 → 업로드·시작. */
-    fun confirmPreflight() {
+    /** 체크리스트 확인 → 업로드·시작. [ignoreWarnings]면 ▲ 항목을 운용자가 확인하고 그대로 시작한다(기체 연결은 필요). */
+    fun confirmPreflight(ignoreWarnings: Boolean = false) {
         closePreflight()
-        start()
+        send(if (ignoreWarnings) Command.StartIgnoringWarnings else Command.Start)
     }
 
     /** 배터리를 교체했다고 보고 다음 소티를 시작한다(모의 기체는 배터리를 100%로 채운다). */

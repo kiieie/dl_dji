@@ -20,6 +20,9 @@ sealed interface Command {
     /** 비행 시작(Idle) 또는 배터리 교체 후 다음 소티(SortieDone). */
     data object Start : Command
 
+    /** 비행 전 점검 경고를 운용자가 확인하고 그대로 시작(Pilot 2처럼 판단은 조종사, 2026-10-30 사용자 요청). 기체 연결은 여전히 필요하다. */
+    data object StartIgnoringWarnings : Command
+
     /** 화면 [일시정지] 버튼(보조 수단). */
     data object Pause : Command
 

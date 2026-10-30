@@ -193,10 +193,20 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 12.dp)) {
-                    Button(onClick = vm::confirmPreflight, enabled = ok, modifier = Modifier.heightIn(min = 56.dp)) { Text("업로드 후 시작") }
+                val connected = items.firstOrNull()?.ok == true
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 12.dp)) {
+                    if (ok) {
+                        Button(onClick = { vm.confirmPreflight() }, modifier = Modifier.heightIn(min = 56.dp)) { Text("업로드 후 시작") }
+                    } else {
+                        // Pilot 2처럼 경고가 있어도 조종사가 확인하고 시작할 수 있다. 기체 연결이 없으면 시작할 수 없다
+                        Button(
+                            onClick = { vm.confirmPreflight(ignoreWarnings = true) }, enabled = connected,
+                            colors = ButtonDefaults.buttonColors(containerColor = PolePending, contentColor = Color.Black),
+                            modifier = Modifier.heightIn(min = 56.dp),
+                        ) { Text("경고 확인하고 시작") }
+                    }
                     OutlinedButton(onClick = vm::closePreflight, modifier = Modifier.heightIn(min = 56.dp)) { Text("취소") }
-                    if (!ok) Text("▲ 항목을 해결하세요", color = PoleFailed, modifier = Modifier.align(Alignment.CenterVertically))
+                    if (!ok) Text("▲ ${items.count { !it.ok }}개 항목을 확인하세요", color = PoleFailed, maxLines = 1)
                 }
             }
         }

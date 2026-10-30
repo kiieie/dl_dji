@@ -135,6 +135,7 @@ class InspectionExecutor(
     private var pausePending = false
     private var stopMissionBeforeLeg = false
     private var appInitiatedRth = false
+    private var ignoreWarnings = false
     private var countdown: Int? = null
     private var message: String? = null
     private var preflightFailures: List<String> = emptyList()
@@ -189,8 +190,11 @@ class InspectionExecutor(
 
     private suspend fun onCommand(c: Command) {
         when (c) {
-            Command.Start -> when (state) {
-                Idle, SortieDone -> startSortie()
+            Command.Start, Command.StartIgnoringWarnings -> when (state) {
+                Idle, SortieDone -> {
+                    ignoreWarnings = c == Command.StartIgnoringWarnings
+                    startSortie()
+                }
                 else -> Unit
             }
             Command.Pause -> requestPause("화면 일시정지 버튼", byRc = false)
@@ -272,7 +276,9 @@ class InspectionExecutor(
         when (r) {
             is StepResult.PreflightDone -> {
                 preflightFailures = r.failures
-                if (r.failures.isEmpty()) {
+                // 운용자가 경고를 확인하고 시작했으면 연결 문제만 막는다
+                if (r.failures.isEmpty() || (ignoreWarnings && drone.telemetry.value.connected)) {
+                    if (r.failures.isNotEmpty()) message = "점검 경고 ${r.failures.size}개를 확인하고 시작했습니다."
                     home = r.home
                     enter(Takeoff, "비행 전 점검 통과")
                 } else {

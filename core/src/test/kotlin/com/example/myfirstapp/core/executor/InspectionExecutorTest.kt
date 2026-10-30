@@ -509,4 +509,14 @@ class InspectionExecutorTest {
         h.awaitState(ExecState.MissionDone)
         h.awaitUntil { h.sounds.count { it == Sound.ANOMALY } == 3 }
     }
+
+    @Test
+    fun `비행 전 점검 경고를 확인하고 시작하면 그대로 비행한다(연결은 필수)`() = runTest {
+        val h = harness(config = sortieMode) { it.preflightReport = it.preflightReport.copy(gpsSatellites = 3) }
+        h.send(Command.Start)
+        h.awaitState(ExecState.Idle)
+        assertTrue(h.executor.uiState.value.preflightFailures.isNotEmpty())
+        h.send(Command.StartIgnoringWarnings)
+        h.awaitState(ExecState.FlyingLeg)
+    }
 }
