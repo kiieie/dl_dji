@@ -34,6 +34,10 @@ class LocalProjection(val origin: GeoPoint) {
     }
 }
 
+/** [from]에서 [maxM] 안에 있는 가장 가까운 항목. 거리가 같으면 목록 앞쪽, 없으면 null. */
+fun <T> nearestWithin(from: GeoPoint, items: List<T>, maxM: Double = Double.POSITIVE_INFINITY, position: (T) -> GeoPoint): T? =
+    items.map { it to LocalProjection.distanceM(from, position(it)) }.filter { it.second <= maxM }.minByOrNull { it.second }?.first
+
 /** 점검 영역 다각형. 사각형도 꼭짓점 4개인 다각형으로 다룬다(5.2). */
 class Polygon(val vertices: List<GeoPoint>) {
     init {

@@ -51,4 +51,14 @@ class GeoTest {
         val concave = listOf(a, b, GeoPoint(0.5, 0.5), c, d)
         assertEquals(concave, Polygon.untangle(concave))
     }
+
+    @Test
+    fun `가장 가까운 전주 - 반경 안, 같은 거리는 앞쪽, 없으면 null`() {
+        val p = LocalProjection(home)
+        val poles = listOf("A" to p.toGeo(Enu(30.0, 0.0)), "B" to p.toGeo(Enu(0.0, 20.0)), "C" to p.toGeo(Enu(0.0, 20.0)))
+        assertEquals("B", nearestWithin(home, poles) { it.second }?.first) // B·C가 같은 자리면 앞쪽
+        assertEquals("A", nearestWithin(p.toGeo(Enu(40.0, 0.0)), poles, 50.0) { it.second }?.first)
+        assertEquals(null, nearestWithin(p.toGeo(Enu(200.0, 0.0)), poles, 50.0) { it.second })
+        assertEquals(null, nearestWithin(home, emptyList<Pair<String, GeoPoint>>()) { it.second })
+    }
 }

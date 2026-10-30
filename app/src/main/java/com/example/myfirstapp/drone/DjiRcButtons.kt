@@ -19,6 +19,8 @@ fun djiRcButtonPresses(): Flow<RcButton> = callbackFlow {
         // 위쪽 ○ 버튼(C3)은 확인 = 5D 누름과 같게 쓴다(사용자 결정 2026-10-30)
         RcButton.FIVE_D_CENTER to RemoteControllerKey.KeyCustomButton3Down,
         RcButton.RTH to RemoteControllerKey.KeyGoHomeButtonDown,
+        // 셔터는 기체가 직접 찍는다. 앱은 SD에서 그 사진을 찾아 받는다(6.4 RC 셔터)
+        RcButton.SHUTTER to RemoteControllerKey.KeyShutterButtonDown,
     )
     for ((button, info) in keys) {
         KeyManager.getInstance().listen(KeyTools.createKey(info), holder) { _, down -> if (down == true) trySend(button) }
