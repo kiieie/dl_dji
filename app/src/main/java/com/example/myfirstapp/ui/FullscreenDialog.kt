@@ -3,7 +3,8 @@ package com.example.myfirstapp.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
+import android.view.ViewTreeObserver
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
@@ -39,11 +40,18 @@ fun FullscreenAlertDialog(
 @Composable
 private fun HideSystemBarsInDialog() {
     val view = LocalView.current
-    SideEffect {
-        val window = ((view as? DialogWindowProvider) ?: (view.parent as? DialogWindowProvider))?.window ?: return@SideEffect
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            hide(WindowInsetsCompat.Type.systemBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    // 다른 창(파일 선택 등)에서 돌아오면 바가 다시 나오므로 대화상자 창이 포커스를 받을 때마다 숨긴다
+    DisposableEffect(view) {
+        val window = ((view as? DialogWindowProvider) ?: (view.parent as? DialogWindowProvider))?.window
+        fun hide() = window?.let {
+            WindowCompat.getInsetsController(it, it.decorView).apply {
+                hide(WindowInsetsCompat.Type.systemBars())
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
         }
+        hide()
+        val listener = ViewTreeObserver.OnWindowFocusChangeListener { if (it) hide() }
+        view.viewTreeObserver.addOnWindowFocusChangeListener(listener)
+        onDispose { view.viewTreeObserver.removeOnWindowFocusChangeListener(listener) }
     }
 }

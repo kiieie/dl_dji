@@ -16,6 +16,8 @@ fun djiRcButtonPresses(): Flow<RcButton> = callbackFlow {
         RcButton.PAUSE to RemoteControllerKey.KeyPauseButtonDown,
         RcButton.C1 to RemoteControllerKey.KeyCustomButton1Down,
         RcButton.C2 to RemoteControllerKey.KeyCustomButton2Down,
+        // 위쪽 ○ 버튼(C3)은 확인 = 5D 누름과 같게 쓴다(사용자 결정 2026-10-30)
+        RcButton.FIVE_D_CENTER to RemoteControllerKey.KeyCustomButton3Down,
         RcButton.RTH to RemoteControllerKey.KeyGoHomeButtonDown,
     )
     for ((button, info) in keys) {

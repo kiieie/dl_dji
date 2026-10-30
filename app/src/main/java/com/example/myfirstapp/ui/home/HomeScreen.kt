@@ -25,7 +25,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +71,18 @@ fun HomeScreen(
     LaunchedEffect(Unit) { vm.refresh() }
     val latest = s.latest
     var showAircraft by remember { mutableStateOf(false) }
+    // RC `<`(안드로이드 뒤로)를 홈에서 누르면 바로 꺼지지 않고 묻는다(10.3)
+    var confirmExit by remember { mutableStateOf(false) }
+    BackHandler { confirmExit = true }
+    if (confirmExit) {
+        val activity = LocalContext.current as? Activity
+        FullscreenAlertDialog(
+            onDismissRequest = { confirmExit = false },
+            title = { Text("앱을 종료할까요?") },
+            confirmButton = { TextButton(onClick = { activity?.finish() }) { Text("종료") } },
+            dismissButton = { TextButton(onClick = { confirmExit = false }) { Text("취소") } },
+        )
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

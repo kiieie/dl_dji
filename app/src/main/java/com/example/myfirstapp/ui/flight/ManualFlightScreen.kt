@@ -1,5 +1,7 @@
 package com.example.myfirstapp.ui.flight
 
+import androidx.activity.compose.BackHandler
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -47,6 +49,12 @@ fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -
     val s by vm.state.collectAsStateWithLifecycle()
     val f = s.flight
     var mapMain by rememberSaveable { mutableStateOf(false) }
+    // 날고 있으면 RC `<`(안드로이드 뒤로)로 카메라 뷰를 떠나지 않는다(10.3). 화면 ‹ 버튼은 그대로
+    BackHandler(enabled = f.telemetry?.isFlying == true) {}
+    LifecycleResumeEffect(vm) {
+        vm.active = true
+        onPauseOrDispose { vm.active = false }
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val fpv: @Composable (Modifier) -> Unit = { m ->

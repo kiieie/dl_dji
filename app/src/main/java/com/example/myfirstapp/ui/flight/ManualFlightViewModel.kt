@@ -66,9 +66,20 @@ class ManualFlightViewModel(
             _state.update { it.copy(flight = it.flight.copy(onlineTiles = tiles)) }
         }
         viewModelScope.launch { loadLatestMission(dao)?.let { m -> _state.update { it.copy(latest = m) } } }
-        // RC: 셔터 버튼은 기체가 직접 찍는다. C2는 짐벌 전환(비행 화면과 같음)
-        viewModelScope.launch { rcButtons.collect { if (it == RcButton.C2) toggleGimbal() } }
+        // RC: 셔터 버튼은 기체가 직접 찍는다. C2는 짐벌 전환(비행 화면과 같음).
+        // 이 화면 위에 설정 등이 열려 있을 때([active] 거짓)는 받지 않는다
+        viewModelScope.launch { rcButtons.collect {
+            if (!active) return@collect
+            when (it) {
+                RcButton.C2 -> toggleGimbal()
+                RcButton.FIVE_D_CENTER -> shoot() // ○(C3)도 5D 누름으로 온다
+                else -> {}
+            }
+        } }
     }
+
+    /** 화면이 맨 위에 보이는 동안만 참(화면이 [LifecycleResumeEffect]로 바꾼다). */
+    var active = false
 
     /** 셔터: 찍고 원본을 앱 폴더에 받는다. */
     fun shoot() {
