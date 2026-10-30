@@ -60,7 +60,7 @@
 | PoC ⑦ APK 설치·adb | 완료 | RC Pro(Android 10, Snapdragon 865)에 USB adb로 설치·디버깅 가능. 시스템 파일 선택 창은 adb 탭에 반응하지 않으나 손가락으로는 정상 |
 | PoC ⑤ TFLite 시간(RC Pro) | 완료 | COCO yolo11n fp16, CPU 4스레드, M3E 원본 사진(7MB): 전처리 약 185ms, 추론 약 205ms, 후처리 약 4ms, 합계 약 0.4초(목표 1초). C++ 전환 불필요(9.4). GPU delegate 미적용 |
 | PoC ⑥ 하드웨어 버튼 | 완료(10-30, 시뮬레이터) | SDK 키로만 감지(Android 키 이벤트 아님). 미션 중 일시정지 버튼 → 37ms 만에 `INTERRUPTED`(`USER_BREAK`), C1 → `resumeMission` → 중단 웨이포인트부터 재개(`docs/evidence/2026-10-30-aircraft-poc`) |
-| PoC ① 미션 업로드·시작 | 완료(10-30, 시뮬레이터) | 현장 KMZ M1(웨이포인트 68개) 업로드 1.2초, 시작 명령 0.4초, 이륙 포함 웨이라인 실행까지 25.6초. 구간 미션(방식 B)의 짧은 KMZ 지연은 ②와 함께 잰다 |
+| PoC ① 미션 업로드·시작 | 완료(10-30, 시뮬레이터) | 현장 KMZ M1(웨이포인트 68개) 업로드 1.2초, 시작 명령 0.4초, 이륙 포함 웨이라인 실행까지 25.6초. 수동 조종 뒤 C1 재개는 중단 지점 복귀 후 진행. 6.1 방식 A를 1차 기본으로 변경(방식 B는 선택지) |
 | PoC ④ LDM | 완료(10-30) | 라이선스 로드 → `enableLDM` → 등록 성공, Wi-Fi를 끄고도 등록, 앱 외부 연결 없음(`docs/evidence/2026-10-30-aircraft-poc`). 첫 설치 상태 오프라인 등록은 남음 |
 | PoC ③ 촬영·다운로드 | 완료(10-30, 근거리) | M3E 원본 약 8.7MB 1.4~2.1초, 미리보기 약 0.2초(시뮬레이터, 조종기 옆). 새 사진은 `KeyNewlyGeneratedMediaFile`로 집는다. 비행 거리에서 다시 잼 |
 | 배경 지도 Cesium ion 위성(온라인, 임시) | 완료(10-29) | 7.4 임시 결정(Google 대체). ion 자산 2(Bing Aerial)를 MapLibre 래스터로. RC Pro에서 확인, `docs/evidence/2026-10-29-cesium` |
