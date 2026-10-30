@@ -103,17 +103,17 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     // 1. TensorFlow Lite (YOLO TFLite 모델 실행용)
-    implementation("org.tensorflow:tensorflow-lite:2.17.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.17.0") {
+    implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.gpu) {
         exclude(group = "org.tensorflow")
     }
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4") {
+    implementation(libs.tensorflow.lite.support) {
         exclude(group = "org.tensorflow")
     }
 
     // 2. DJI Mobile SDK V5 의존성
-    implementation("com.dji:dji-sdk-v5-aircraft:5.18.0") {
+    implementation(libs.dji.sdk.aircraft) {
         exclude(group = "org.tensorflow")
     }
-    compileOnly("com.dji:dji-sdk-v5-aircraft-provided:5.18.0")
+    compileOnly(libs.dji.sdk.aircraft.provided)
 }
