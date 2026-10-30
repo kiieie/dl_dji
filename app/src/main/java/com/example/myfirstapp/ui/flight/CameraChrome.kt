@@ -200,36 +200,67 @@ internal fun ZoomBox(lens: Lens, zoomRatio: Double, modifier: Modifier) {
 }
 
 /**
- * 오른쪽 한 열(10.4.3): 렌즈 W/Z → 촬영 → 앨범. 줌은 RC 오른쪽 다이얼, 짐벌은 왼쪽 다이얼로 한다(10.4.4).
- * [onAlbum]이 null이면 앨범 버튼을 숨긴다. [shotsLabel]은 셔터 아래 촬영 수(수동 비행).
+ * 오른쪽 한 열(10.4.3): 렌즈 W/Z → 사진/영상 → 촬영 → 앨범 → 줌 +/−(사이에 지금 배율). 짐벌은 RC 왼쪽 다이얼(10.4.4).
+ * 영상 모드에서 셔터는 녹화 시작·정지([recordingSinceMs]가 있으면 빨간 네모와 경과 mm:ss).
+ * [cameraEnabled]가 거짓이면 사진/영상·줌을 막는다(자동 비행은 일시정지 중에만). [onAlbum]이 null이면 앨범을 숨긴다.
  */
 @Composable
 internal fun CameraColumn(
-    lens: Lens, onLens: (Lens) -> Unit, shutterEnabled: Boolean, onShutter: () -> Unit,
+    s: FlightUiState, onLens: (Lens) -> Unit, shutterEnabled: Boolean, onShutter: () -> Unit,
+    cameraEnabled: Boolean, onVideoMode: (Boolean) -> Unit, onZoom: (Boolean) -> Unit,
     modifier: Modifier, onAlbum: (() -> Unit)? = null, shotsLabel: String? = null,
 ) {
-    Column(modifier.width(44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(Modifier.width(40.dp).background(CardBg, RoundedCornerShape(4.dp)).padding(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            listOf(Lens.WIDE to "W", Lens.ZOOM to "Z").forEach { (l, t) ->
-                val on = lens == l
-                Box(
-                    Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(3.dp)).background(if (on) Color.White.copy(alpha = 0.92f) else Color.Transparent)
-                        .clickable(onClickLabel = if (l == Lens.WIDE) "광각" else "망원") { onLens(l) },
-                    contentAlignment = Alignment.Center,
-                ) { Text(t, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (on) Color.Black else Color.White) }
+    Column(modifier.width(44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Segments(listOf(Lens.WIDE to "W", Lens.ZOOM to "Z"), s.lens, enabled = true, height = 28.dp, fontSize = 11, onPick = onLens) { if (it == Lens.WIDE) "광각" else "망원" }
+        Segments(listOf(false to "사진", true to "영상"), s.videoMode, enabled = cameraEnabled && s.recordingSinceMs == null, height = 22.dp, fontSize = 10, onPick = onVideoMode) { if (it) "영상 모드" else "사진 모드" }
+        val since = s.recordingSinceMs
+        val ring = if (shutterEnabled) Color.White else Color(0xFF555555)
+        Box(
+            Modifier.size(44.dp).clip(CircleShape).border(2.dp, ring, CircleShape)
+                .clickable(enabled = shutterEnabled, onClickLabel = if (!s.videoMode) "촬영" else if (since == null) "녹화 시작" else "녹화 정지", onClick = onShutter),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                since != null -> Box(Modifier.size(16.dp).clip(RoundedCornerShape(2.dp)).background(Error))
+                s.videoMode -> Box(Modifier.size(34.dp).clip(CircleShape).background(if (shutterEnabled) Error else Color(0xFF555555)))
+                else -> Box(Modifier.size(34.dp).clip(CircleShape).background(ring))
             }
         }
-        Box(
-            Modifier.size(44.dp).clip(CircleShape).border(2.dp, if (shutterEnabled) Color.White else Color(0xFF555555), CircleShape)
-                .clickable(enabled = shutterEnabled, onClickLabel = "촬영", onClick = onShutter),
-            contentAlignment = Alignment.Center,
-        ) { Box(Modifier.size(34.dp).clip(CircleShape).background(if (shutterEnabled) Color.White else Color(0xFF555555))) }
-        shotsLabel?.let { Text(it, style = numberStyle(12.sp), color = Color.White) }
+        if (since != null) {
+            val now by produceState(System.currentTimeMillis(), since) { while (true) { value = System.currentTimeMillis(); delay(500) } }
+            val sec = ((now - since) / 1000).coerceAtLeast(0)
+            Text("%02d:%02d".format(sec / 60, sec % 60), style = numberStyle(12.sp), color = Error)
+        } else shotsLabel?.let { Text(it, style = numberStyle(12.sp), color = Color.White) }
         if (onAlbum != null) {
             Box(
                 Modifier.size(32.dp, 26.dp).clip(RoundedCornerShape(3.dp)).background(CardBg).clickable(onClickLabel = "앨범", onClick = onAlbum),
                 contentAlignment = Alignment.Center,
             ) { Icon(painterResource(R.drawable.ic_play), contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White) }
+        }
+        Column(Modifier.width(40.dp).background(CardBg, RoundedCornerShape(4.dp)), horizontalAlignment = Alignment.CenterHorizontally) {
+            val c = if (cameraEnabled) Color.White else Color(0xFF555555)
+            listOf(true to "+", false to "−").forEach { (up, t) ->
+                if (!up) Text(if (s.lens == Lens.WIDE) "1.0X" else "%.1fX".format(s.zoomRatio), style = numberStyle(11.sp), color = Tertiary)
+                Box(
+                    Modifier.fillMaxWidth().height(26.dp).clickable(enabled = cameraEnabled, onClickLabel = if (up) "줌 확대" else "줌 축소") { onZoom(up) },
+                    contentAlignment = Alignment.Center,
+                ) { Text(t, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = c) }
+            }
+        }
+    }
+}
+
+/** 세로 두 칸 고르기(렌즈 W/Z, 사진/영상). 고른 칸은 흰 바탕. */
+@Composable
+private fun <T> Segments(items: List<Pair<T, String>>, selected: T, enabled: Boolean, height: Dp, fontSize: Int, onPick: (T) -> Unit, label: (T) -> String) {
+    Column(Modifier.width(40.dp).background(CardBg, RoundedCornerShape(4.dp)).padding(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        items.forEach { (v, t) ->
+            val on = selected == v
+            Box(
+                Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(3.dp)).background(if (on) Color.White.copy(alpha = 0.92f) else Color.Transparent)
+                    .clickable(enabled = enabled, onClickLabel = label(v)) { onPick(v) },
+                contentAlignment = Alignment.Center,
+            ) { Text(t, fontSize = fontSize.sp, fontWeight = FontWeight.Bold, color = if (on) Color.Black else if (enabled) Color.White else Color(0xFF777777)) }
         }
     }
 }

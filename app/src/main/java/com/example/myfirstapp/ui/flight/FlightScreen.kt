@@ -146,7 +146,7 @@ private fun FlightContent(
         }
 
         TopBar(s, onExit, onOpenSettings)
-        ZoomBox(s.lens, s.params?.zoomRatio ?: 7.0, Modifier.align(Alignment.TopCenter).padding(top = TOP_BAR_HEIGHT + 9.dp))
+        ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = TOP_BAR_HEIGHT + 9.dp))
 
         if (ui.state != ExecState.SortieDone) {
             Column(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = TOP_BAR_HEIGHT + 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -156,8 +156,9 @@ private fun FlightContent(
             }
         }
         CameraColumn(
-            lens = s.lens, onLens = vm::setLens,
-            shutterEnabled = ui.state == ExecState.Paused, onShutter = vm::manualCapture,
+            s = s, onLens = vm::setLens,
+            shutterEnabled = ui.state == ExecState.Paused || s.recordingSinceMs != null, onShutter = vm::shutter,
+            cameraEnabled = ui.state == ExecState.Paused, onVideoMode = vm::setVideoMode, onZoom = vm::zoom,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = TOP_BAR_HEIGHT + 37.dp, end = 6.dp),
             onAlbum = if (s.canExit) onShowResult else null,
         )

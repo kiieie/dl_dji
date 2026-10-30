@@ -60,7 +60,24 @@ interface DroneGateway {
 
     /** 짐벌 중앙 ↔ 아래 전환(Pilot 2 짐벌 모드, RC C2). */
     suspend fun toggleGimbal(): Result<Unit> = Result.failure(UnsupportedOperationException("짐벌 전환 미지원"))
+
+    /** 망원 렌즈 줌 배율(10.4.3 줌 +/−). */
+    suspend fun setZoom(ratio: Double): Result<Unit> = Result.failure(UnsupportedOperationException("줌 미지원"))
+
+    /** 카메라 사진 ↔ 영상 모드(10.4.3 사진/영상). */
+    suspend fun setVideoMode(on: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException("영상 모드 미지원"))
+
+    /** 녹화 시작·정지. 영상은 SD에만 남는다(받지 않음). */
+    suspend fun setRecording(on: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException("녹화 미지원"))
 }
+
+/** 줌 단계(10.4.3). */
+val ZOOM_STEPS = listOf(1.0, 2.0, 4.0, 7.0, 14.0, 28.0)
+
+/** [current]에서 한 단계 위([up]) 또는 아래. 단계 사이 값이면 가장 가까운 다음 단계로 간다. */
+fun nextZoom(current: Double, up: Boolean): Double =
+    if (up) ZOOM_STEPS.firstOrNull { it > current + 1e-6 } ?: ZOOM_STEPS.last()
+    else ZOOM_STEPS.lastOrNull { it < current - 1e-6 } ?: ZOOM_STEPS.first()
 
 /** 구간 미션: 현재 위치에서 이동 고도로 목표 상공까지 간 뒤 점검 고도로 내려간다(6.2). */
 data class LegMission(
