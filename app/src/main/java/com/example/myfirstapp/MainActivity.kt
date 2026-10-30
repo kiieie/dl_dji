@@ -132,6 +132,7 @@ class MainActivity : ComponentActivity() {
                     onRoutes = { nav.navigate("projects") },
                     onAlbum = { pid, mid -> nav.navigate("result/$pid/$mid") },
                     onFlight = ::openFlight,
+                    onNewPlan = { pid -> nav.navigate("map/$pid") },
                     onCamera = { nav.navigate("camera") },
                     onSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onVerification = { nav.navigate("verify") },

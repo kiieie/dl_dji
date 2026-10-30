@@ -87,6 +87,7 @@ fun HomeScreen(
     onRoutes: () -> Unit,
     onAlbum: (projectId: Long, missionId: Long) -> Unit,
     onFlight: (projectId: Long, missionId: Long) -> Unit,
+    onNewPlan: (projectId: Long) -> Unit,
     onCamera: () -> Unit,
     onSettings: () -> Unit,
     onVerification: () -> Unit,
@@ -130,7 +131,7 @@ fun HomeScreen(
             }
         }
         Row(Modifier.weight(1f).padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MissionCard(latest, Modifier.weight(1.45f).fillMaxHeight(), onRoutes, onFlight, onAlbum)
+            MissionCard(latest, Modifier.weight(1.45f).fillMaxHeight(), onRoutes, onFlight, onNewPlan)
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     HomeTile(R.drawable.ic_camera, "수동 비행", "카메라 뷰", Modifier.weight(1f), iconTint = Accent, onClick = onCamera)
@@ -149,14 +150,14 @@ fun HomeScreen(
     if (showAircraft) AircraftDialog(s.aircraft) { showAircraft = false }
 }
 
-/** 최근 미션 카드: 위 경로 미리보기, 아래 이름·수치·채운 버튼. 미션이 없으면 비행경로로 안내. */
+/** 최근 미션 카드: 위 경로 미리보기, 아래 이름·수치·채운 버튼. 판독은 앨범에서만 하므로 끝난 미션은 [새 계획]. 미션이 없으면 비행경로로 안내. */
 @Composable
 private fun MissionCard(
     m: LatestMission?,
     modifier: Modifier,
     onRoutes: () -> Unit,
     onFlight: (Long, Long) -> Unit,
-    onAlbum: (Long, Long) -> Unit,
+    onNewPlan: (Long) -> Unit,
 ) {
     Surface(modifier, shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Box {
@@ -188,7 +189,7 @@ private fun MissionCard(
                     when {
                         m.total == 0 -> MainButton("비행경로 열기", onRoutes)
                         m.remaining > 0 -> MainButton(if (m.done == 0) "미션 비행 시작" else "미션 이어서 비행", { onFlight(m.projectId, m.missionId) }, play = true)
-                        else -> MainButton("결과 판독", { onAlbum(m.projectId, m.missionId) })
+                        else -> MainButton("새 계획", { onNewPlan(m.projectId) })
                     }
                 }
             }
