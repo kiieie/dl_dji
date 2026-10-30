@@ -1,6 +1,7 @@
 package com.example.myfirstapp.core.route
 
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import org.junit.Assert.assertEquals
@@ -15,7 +16,7 @@ class RoutePlannerTest {
 
     private fun pole(id: String, east: Double, north: Double) = Pole(id, proj.toGeo(Enu(east, north)))
 
-    private fun planner(params: FlightParams = FlightParams(), energy: EnergyParams = EnergyParams()) =
+    private fun planner(params: FlightParams = FlightParams(shotMode = ShotMode.OVERHEAD), energy: EnergyParams = EnergyParams()) =
         RoutePlanner(EnergyModel(energy, params))
 
     @Test
@@ -33,7 +34,7 @@ class RoutePlannerTest {
     fun `배터리 예산을 넘으면 여러 소티로 나누고 모든 전주를 정확히 한 번 넣는다`() {
         val rnd = Random(3)
         val poles = List(120) { pole("P$it", rnd.nextDouble(-450.0, 450.0), rnd.nextDouble(-200.0, 200.0)) }
-        val model = EnergyModel(EnergyParams(), FlightParams())
+        val model = EnergyModel(EnergyParams(), FlightParams(shotMode = ShotMode.OVERHEAD))
         val plan = RoutePlanner(model).plan(home, poles)
         assertTrue(plan.sorties.size > 1)
         assertEquals(poles.map { it.poleId }.toSet(), plan.sorties.flatMap { s -> s.poles.map { it.poleId } }.toSet())
@@ -43,7 +44,7 @@ class RoutePlannerTest {
 
     @Test
     fun `가시권 밖과 배터리 초과 전주는 도달 불가로 분류한다`() {
-        val params = FlightParams(vlosRadiusM = 500.0)
+        val params = FlightParams(vlosRadiusM = 500.0, shotMode = ShotMode.OVERHEAD)
         val far = pole("FAR", 600.0, 0.0)
         val near = pole("NEAR", 100.0, 0.0)
         val plan = planner(params).plan(home, listOf(far, near))
@@ -65,7 +66,7 @@ class RoutePlannerTest {
 
     @Test
     fun `실시간 검증 - 계속 진행과 복귀 판단`() {
-        val m = EnergyModel(EnergyParams(), FlightParams())
+        val m = EnergyModel(EnergyParams(), FlightParams(shotMode = ShotMode.OVERHEAD))
         assertTrue(m.canProceed(80.0, 100.0, 300.0))
         assertFalse(m.canProceed(31.0, 100.0, 300.0))
         assertFalse(m.mustReturn(40.0, 300.0))

@@ -20,7 +20,7 @@ class ViewpointsTest {
 
     @Test
     fun `전주 위는 전주마다 1곳이고 다음 전주를 바라본다`() {
-        val v = Viewpoints.expand(poles, FlightParams(), home)
+        val v = Viewpoints.expand(poles, FlightParams(shotMode = ShotMode.OVERHEAD), home)
         assertEquals(3, v.size)
         assertTrue(v.all { it.index == 0 && it.altitudeM == 30.0 && it.gimbalPitchDeg == -90.0 })
         assertEquals(90.0, v[0].headingDeg, 0.5)
@@ -86,12 +86,18 @@ class ViewpointsTest {
         assertTrue("coordinateTurn" !in wpml) // 모든 지점에서 멈춘 뒤 돈다(오류 1546 방지)
         val headings = Regex("<wpml:waypointHeadingAngle>([-0-9.]+)<").findAll(wpml).map { it.groupValues[1].toDouble() }.toList()
         assertTrue(headings.all { it in -180.0..180.0 })
+        // 이동 중에도 기수는 다음 촬영 전주(머리 높이)를 보고, 찍기 전에 이 전주로 돈다
+        val pois = Regex("<wpml:waypointPoiPoint>([-0-9.]+),([-0-9.]+),([-0-9.]+)<").findAll(wpml).map { it.groupValues }.toList()
+        assertEquals(12, Regex("towardPOI").findAll(wpml).count())
+        assertEquals(v[1].pole.position.lat, pois[0][1].toDouble(), 1e-7)
+        assertEquals(diagonal.aimHeightM, pois[0][3].toDouble(), 1e-9)
+        assertEquals(12, Regex("rotateYaw").findAll(wpml).count())
     }
 
     @Test
     fun `지점이 하나면 촬영 없는 마무리 지점을 덧붙인다(웨이포인트 2개 이상)`() {
-        val v = Viewpoints.expand(poles.take(1), FlightParams(), home)
-        val bytes = ByteArrayOutputStream().also { WpmlWriter.write(v, FlightParams(), it, nowMs = 0) }.toByteArray()
+        val v = Viewpoints.expand(poles.take(1), FlightParams(shotMode = ShotMode.OVERHEAD), home)
+        val bytes = ByteArrayOutputStream().also { WpmlWriter.write(v, FlightParams(shotMode = ShotMode.OVERHEAD), it, nowMs = 0) }.toByteArray()
         val wpml = ZipInputStream(bytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name.endsWith("wpml") }.let { z.readBytes().decodeToString() } }
         assertEquals(2, Regex("<Placemark>").findAll(wpml).count())
         assertEquals(1, Regex("takePhoto").findAll(wpml).count())
@@ -99,7 +105,7 @@ class ViewpointsTest {
 
     @Test
     fun `4방향 사선은 배터리 예측에서 전주 사이 구간만 4번, 사진은 4장으로 잡는다`() {
-        val over = EnergyModel(EnergyParams(), FlightParams())
+        val over = EnergyModel(EnergyParams(), FlightParams(shotMode = ShotMode.OVERHEAD))
         val diag = EnergyModel(EnergyParams(), diagonal)
         // 이륙 지점 왕복(200m)은 한 번, 전주 사이(1,000m)만 4번
         assertEquals(1200.0, over.pathM(200.0, 1000.0), 0.0)

@@ -1,6 +1,8 @@
 package com.example.myfirstapp.core.route
 
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.ShotMode
 import java.io.OutputStream
 import java.util.Locale
 import java.util.zip.ZipEntry
@@ -56,9 +58,21 @@ object WpmlWriter {
     <wpml:payloadInfo><wpml:payloadEnumValue>$PAYLOAD_ENUM</wpml:payloadEnumValue><wpml:payloadSubEnumValue>0</wpml:payloadSubEnumValue><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:payloadInfo>
   </wpml:missionConfig>"""
 
-    private fun headingParam(p: Viewpoint) =
-        "<wpml:waypointHeadingParam><wpml:waypointHeadingMode>smoothTransition</wpml:waypointHeadingMode><wpml:waypointHeadingAngle>${heading(p.headingDeg)}</wpml:waypointHeadingAngle>" +
+    /**
+     * 4방향 사선(5.6)에서 지점 [i]를 떠나 다음 지점까지 기수가 바라볼 전주: 다음 촬영 지점의 전주(이동 중에도 목표를 봄).
+     * 전주 위 방식은 null(기수를 지점 값으로 부드럽게 바꿈).
+     */
+    private fun poi(points: List<Viewpoint>, i: Int, shots: Int, p: FlightParams): Pole? =
+        if (p.shotMode == ShotMode.DIAGONAL4) points[minOf(i + 1, shots - 1)].pole else null
+
+    private fun headingParam(v: Viewpoint, poi: Pole?, p: FlightParams) = if (poi == null) {
+        "<wpml:waypointHeadingParam><wpml:waypointHeadingMode>smoothTransition</wpml:waypointHeadingMode><wpml:waypointHeadingAngle>${heading(v.headingDeg)}</wpml:waypointHeadingAngle>" +
             "<wpml:waypointPoiPoint>0.000000,0.000000,0.000000</wpml:waypointPoiPoint><wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode></wpml:waypointHeadingParam>"
+    } else {
+        // 관심점 = 전주 머리(위도,경도,조준 높이)
+        "<wpml:waypointHeadingParam><wpml:waypointHeadingMode>towardPOI</wpml:waypointHeadingMode><wpml:waypointHeadingAngle>${heading(v.headingDeg)}</wpml:waypointHeadingAngle>" +
+            "<wpml:waypointPoiPoint>${f(poi.position.lat)},${f(poi.position.lon)},${n(p.aimHeightM)}</wpml:waypointPoiPoint><wpml:waypointHeadingPathMode>followBadArc</wpml:waypointHeadingPathMode></wpml:waypointHeadingParam>"
+    }
 
     private const val TURN =
         "<wpml:waypointTurnParam><wpml:waypointTurnMode>toPointAndStopWithDiscontinuityCurvature</wpml:waypointTurnMode><wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist></wpml:waypointTurnParam>"
@@ -83,9 +97,9 @@ object WpmlWriter {
       <Placemark><Point><coordinates>${f(v.position.lon)},${f(v.position.lat)}</coordinates></Point>
         <wpml:index>$i</wpml:index><wpml:ellipsoidHeight>${n(v.altitudeM)}</wpml:ellipsoidHeight><wpml:height>${n(v.altitudeM)}</wpml:height>
         <wpml:useGlobalHeight>0</wpml:useGlobalHeight><wpml:useGlobalSpeed>1</wpml:useGlobalSpeed><wpml:useGlobalHeadingParam>0</wpml:useGlobalHeadingParam>
-        ${headingParam(v)}
+        ${headingParam(v, poi(points, i, shots, p), p)}
         <wpml:useGlobalTurnParam>0</wpml:useGlobalTurnParam>$TURN<wpml:useStraightLine>1</wpml:useStraightLine><wpml:gimbalPitchAngle>${n(v.gimbalPitchDeg)}</wpml:gimbalPitchAngle>
-${if (i < shots) actions(i, v) else ""}
+${if (i < shots) actions(i, v, poi(points, i, shots, p)) else ""}
       </Placemark>""")
         }
         append("\n  </Folder>\n</Document>\n</kml>\n")
@@ -104,18 +118,28 @@ ${if (i < shots) actions(i, v) else ""}
             append("""
       <Placemark><Point><coordinates>${f(v.position.lon)},${f(v.position.lat)}</coordinates></Point>
         <wpml:index>$i</wpml:index><wpml:executeHeight>${n(v.altitudeM)}</wpml:executeHeight><wpml:waypointSpeed>${n(p.speedMps)}</wpml:waypointSpeed>
-        ${headingParam(v)}
+        ${headingParam(v, poi(points, i, shots, p), p)}
         $TURN
         <wpml:useStraightLine>1</wpml:useStraightLine>
-${if (i < shots) actions(i, v) else ""}
+${if (i < shots) actions(i, v, poi(points, i, shots, p)) else ""}
       </Placemark>""")
         }
         append("\n  </Folder>\n</Document>\n</kml>\n")
     }
 
-    /** 도착하면 차례로: 짐벌 피치 맞추기 → 광각 1장 촬영. */
-    private fun actions(i: Int, v: Viewpoint) = """        <wpml:actionGroup><wpml:actionGroupId>$i</wpml:actionGroupId><wpml:actionGroupStartIndex>$i</wpml:actionGroupStartIndex><wpml:actionGroupEndIndex>$i</wpml:actionGroupEndIndex><wpml:actionGroupMode>sequence</wpml:actionGroupMode><wpml:actionTrigger><wpml:actionTriggerType>reachPoint</wpml:actionTriggerType></wpml:actionTrigger>
-          <wpml:action><wpml:actionId>0</wpml:actionId><wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:gimbalHeadingYawBase>north</wpml:gimbalHeadingYawBase><wpml:gimbalRotateMode>absoluteAngle</wpml:gimbalRotateMode><wpml:gimbalPitchRotateEnable>1</wpml:gimbalPitchRotateEnable><wpml:gimbalPitchRotateAngle>${n(v.gimbalPitchDeg)}</wpml:gimbalPitchRotateAngle><wpml:gimbalRollRotateEnable>0</wpml:gimbalRollRotateEnable><wpml:gimbalRollRotateAngle>0</wpml:gimbalRollRotateAngle><wpml:gimbalYawRotateEnable>0</wpml:gimbalYawRotateEnable><wpml:gimbalYawRotateAngle>0</wpml:gimbalYawRotateAngle><wpml:gimbalRotateTimeEnable>0</wpml:gimbalRotateTimeEnable><wpml:gimbalRotateTime>0</wpml:gimbalRotateTime><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:actionActuatorFuncParam></wpml:action>
-          <wpml:action><wpml:actionId>1</wpml:actionId><wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex><wpml:fileSuffix>${fileSuffix(v)}</wpml:fileSuffix><wpml:payloadLensIndex>wide</wpml:payloadLensIndex><wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex></wpml:actionActuatorFuncParam></wpml:action>
+    /**
+     * 도착하면 차례로: (사선) 기수를 이 지점의 전주로 → 짐벌 피치 맞추기 → 광각 1장 촬영.
+     * 사선은 구간 관심점이 다음 전주라 도착 뒤 기수가 그쪽으로 돌 수 있어, 찍기 전에 이 전주로 되돌린다(가까운 쪽으로).
+     */
+    private fun actions(i: Int, v: Viewpoint, poi: Pole?) = """        <wpml:actionGroup><wpml:actionGroupId>$i</wpml:actionGroupId><wpml:actionGroupStartIndex>$i</wpml:actionGroupStartIndex><wpml:actionGroupEndIndex>$i</wpml:actionGroupEndIndex><wpml:actionGroupMode>sequence</wpml:actionGroupMode><wpml:actionTrigger><wpml:actionTriggerType>reachPoint</wpml:actionTriggerType></wpml:actionTrigger>
+${if (poi != null) rotateYaw(v, poi) else ""}          <wpml:action><wpml:actionId>${if (poi != null) 1 else 0}</wpml:actionId><wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:gimbalHeadingYawBase>north</wpml:gimbalHeadingYawBase><wpml:gimbalRotateMode>absoluteAngle</wpml:gimbalRotateMode><wpml:gimbalPitchRotateEnable>1</wpml:gimbalPitchRotateEnable><wpml:gimbalPitchRotateAngle>${n(v.gimbalPitchDeg)}</wpml:gimbalPitchRotateAngle><wpml:gimbalRollRotateEnable>0</wpml:gimbalRollRotateEnable><wpml:gimbalRollRotateAngle>0</wpml:gimbalRollRotateAngle><wpml:gimbalYawRotateEnable>0</wpml:gimbalYawRotateEnable><wpml:gimbalYawRotateAngle>0</wpml:gimbalYawRotateAngle><wpml:gimbalRotateTimeEnable>0</wpml:gimbalRotateTimeEnable><wpml:gimbalRotateTime>0</wpml:gimbalRotateTime><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:actionActuatorFuncParam></wpml:action>
+          <wpml:action><wpml:actionId>${if (poi != null) 2 else 1}</wpml:actionId><wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex><wpml:fileSuffix>${fileSuffix(v)}</wpml:fileSuffix><wpml:payloadLensIndex>wide</wpml:payloadLensIndex><wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex></wpml:actionActuatorFuncParam></wpml:action>
         </wpml:actionGroup>"""
+
+    private fun rotateYaw(v: Viewpoint, poi: Pole): String {
+        val turn = (v.headingDeg - Viewpoints.bearing(v.position, poi.position)).mod(360.0)
+        val path = if (turn <= 180.0) "clockwise" else "counterClockwise"
+        return "          <wpml:action><wpml:actionId>0</wpml:actionId><wpml:actionActuatorFunc>rotateYaw</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam>" +
+            "<wpml:aircraftHeading>${heading(v.headingDeg)}</wpml:aircraftHeading><wpml:aircraftPathMode>$path</wpml:aircraftPathMode></wpml:actionActuatorFuncParam></wpml:action>\n"
+    }
 }

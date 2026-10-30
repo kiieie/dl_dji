@@ -22,7 +22,7 @@ data class FlightParams(
     val batteryReservePct: Double = 30.0,
     val vlosRadiusM: Double = 2000.0,
     val downloadMode: DownloadMode = DownloadMode.ORIGINAL,
-    val shotMode: ShotMode = ShotMode.OVERHEAD,
+    val shotMode: ShotMode = ShotMode.DIAGONAL4,
     /** 4방향 사선(5.6): 비행 고도(이륙 지점 기준), 전주까지 수평거리, 조준 높이(지상 기준). */
     val diagonalAltitudeM: Double = 27.0,
     val diagonalDistanceM: Double = 10.0,

@@ -94,7 +94,7 @@ class InspectionExecutorTest {
     private fun TestScope.harness(
         sorties: List<List<Pole>> = listOf(threePoles),
         detector: Detector? = FixedDetector(emptyList()),
-        params: FlightParams = FlightParams(),
+        params: FlightParams = FlightParams(shotMode = ShotMode.OVERHEAD),
         droneConfig: FakeDroneGateway.Config = FakeDroneGateway.Config(),
         recoverSortie: Int? = null,
         config: ExecutorConfig = ExecutorConfig(),
