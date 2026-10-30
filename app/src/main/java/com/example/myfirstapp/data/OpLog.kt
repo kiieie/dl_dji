@@ -90,3 +90,16 @@ object OpLog {
     fun files(fromMs: Long): List<File> =
         dir?.listFiles { f -> f.name.endsWith(".jsonl") || f.name.endsWith(".txt") }?.filter { it.lastModified() >= fromMs }?.sortedBy { it.name }.orEmpty()
 }
+
+/**
+ * 비행 궤적 한 줄(4.4, 떠 있는 동안 1초마다): 자동 비행은 DB `TELEMETRY_SAMPLE`에도 남고, 수동 비행은 운용 로그에만 남는다.
+ * 나중에 운용 로그만 보고도 조작·상태·위치를 함께 되짚을 수 있게 한다.
+ */
+fun logTelemetry(source: String, t: com.example.myfirstapp.core.model.Telemetry) = OpLog.log(
+    "tele", source,
+    mapOf(
+        "lat" to t.position?.lat, "lon" to t.position?.lon, "alt" to t.altitudeM, "spd" to t.speedMps, "vs" to t.verticalSpeedMps,
+        "hdg" to t.headingDeg, "gimbal" to t.gimbalPitchDeg, "bat" to t.batteryPct, "mode" to t.flightMode.name,
+        "sats" to t.satellites, "link" to t.signalPct,
+    ),
+)

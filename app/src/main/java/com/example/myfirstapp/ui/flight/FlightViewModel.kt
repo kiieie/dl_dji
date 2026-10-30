@@ -1,6 +1,7 @@
 package com.example.myfirstapp.ui.flight
 
 import com.example.myfirstapp.data.OpLog
+import com.example.myfirstapp.data.logTelemetry
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.executor.PreflightEvaluator
@@ -222,6 +223,7 @@ class FlightViewModel(
                 delay(1_000)
                 val t = drone.telemetry.value
                 val sortieId = groups.getOrNull(executor.uiState.value.sortieIndex)?.first
+                if (t.isFlying) logTelemetry("auto", t)
                 if (sortieId != null && t.isFlying) dao.insertTelemetry(
                     TelemetrySampleEntity(
                         sortieId = sortieId, at = System.currentTimeMillis(), lat = t.position?.lat, lon = t.position?.lon,
