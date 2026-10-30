@@ -55,6 +55,22 @@ internal class CameraControl(
         setVideoMode(false)
     }
 
+    /**
+     * 재개 전용: 녹화 정지와 사진 모드 전환을 기체가 받을 때까지 기다린다. 미션 재개와 동시에 보내면 첫 지점 사진을 놓칠 수 있다.
+     * 영상 모드가 아니면 바로 돌아온다.
+     */
+    suspend fun backToPhotoAndWait() {
+        val d = drone()
+        if (get().recordingSinceMs != null) {
+            set { it.copy(recordingSinceMs = null) }
+            d?.setRecording(false)?.onFailure { e -> Log.w("Camera", "녹화 정지 실패: ${e.message}") }
+        }
+        if (get().videoMode) {
+            set { it.copy(videoMode = false) }
+            d?.setVideoMode(false)?.onFailure { e -> Log.w("Camera", "사진 모드 실패: ${e.message}") }
+        }
+    }
+
     private fun call(what: String, block: suspend DroneGateway.() -> Result<Unit>) {
         val d = drone() ?: return
         scope.launch { d.block().onFailure { e -> Log.w("Camera", "$what 실패: ${e.message}") } }

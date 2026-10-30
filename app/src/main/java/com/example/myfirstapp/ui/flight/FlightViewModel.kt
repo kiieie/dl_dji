@@ -281,9 +281,12 @@ class FlightViewModel(
     }
 
     fun endMission() = send(Command.EndMission)
+    /** 재개(화면 ▶·RC C1): 영상 모드였으면 사진 모드로 돌린 뒤 재개한다(지점 사진을 놓치지 않게). */
     fun resume() {
-        camera.backToPhoto()
-        send(Command.Resume)
+        viewModelScope.launch {
+            camera.backToPhotoAndWait()
+            send(Command.Resume)
+        }
     }
 
     /** 화면 [Ⅱ 수동 비행](Pilot 2 55쪽 경로 알약): RC 일시정지 버튼과 같다. 기체가 멈춰 호버링하고 스틱으로 조종한다. */
