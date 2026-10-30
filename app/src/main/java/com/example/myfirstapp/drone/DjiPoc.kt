@@ -205,18 +205,20 @@ object DjiPoc {
      * 가장 최근 미션의 첫 소티를 앱이 직접 KMZ로 만든다(5.6, 6.2). [mode]로 촬영 방식을 바꿔 볼 수 있다.
      * 만든 파일 경로와 요약을 돌려준다.
      */
-    suspend fun planKmz(dao: ProjectDao, dir: File, mode: ShotMode): Pair<File, String> {
+    suspend fun planKmz(dao: ProjectDao, dir: File, mode: ShotMode, terrain: Boolean = true): Pair<File, String> {
         val mission = dao.latestMission() ?: error("저장한 미션이 없습니다")
         val rows = dao.missionVisits(mission.id)
         val seq = rows.minOf { it.seq }
         val poles = rows.filter { it.seq == seq }.map { it.toPole() }
-        val params = flightParamsFromJson(mission.flightParams).copy(shotMode = mode)
+        // PoC: 지형 추적 KMZ를 기체가 받는지 비교하려고 [terrain]으로 정한다(옛 미션은 저장 값이 끔)
+        val params = flightParamsFromJson(mission.flightParams).copy(shotMode = mode, terrainFollow = terrain)
         params.validate().firstOrNull()?.let { error(it) }
         val points = Viewpoints.expand(poles, params, GeoPoint(mission.homeLat, mission.homeLon))
         dir.mkdirs()
         val kmz = File(dir, "plan_${mission.id}_$seq.kmz")
         val home = GeoPoint(mission.homeLat, mission.homeLon)
         kmz.outputStream().use { WpmlWriter.write(points, params, it, start = home) }
-        return kmz to log("KMZ 생성 미션 #${mission.id} 소티 $seq: 전주 ${poles.size}개 → 촬영 지점 ${points.size}개($mode), ${kmz.length() / 1024}KB")
+        val check = checkKmz(kmz.path).ifEmpty { listOf("통과") }.joinToString()
+        return kmz to log("KMZ 생성 미션 #${mission.id} 소티 $seq: 전주 ${poles.size}개 → 촬영 지점 ${points.size}개($mode, ${if (terrain) "지형 추적" else "이륙 지점 기준"}), ${kmz.length() / 1024}KB, 검사 $check")
     }
 }

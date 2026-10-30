@@ -257,8 +257,8 @@ class MainActivity : ComponentActivity() {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ShotMode.entries.forEach { mode ->
                     OutlinedButton(onClick = {
-                        poc("계획 KMZ") { DjiPoc.planKmz(app.database.projectDao(), pocDir, mode).let { (f, text) -> kmz = f; text } }
-                    }) { Text(if (mode == ShotMode.OVERHEAD) "계획 KMZ(전주 위)" else "계획 KMZ(4방향)") }
+                        poc("계획 KMZ") { DjiPoc.planKmz(app.database.projectDao(), pocDir, ShotMode.DIAGONAL4, terrain = mode == ShotMode.DIAGONAL4).let { (f, text) -> kmz = f; text } }
+                    }) { Text(if (mode == ShotMode.OVERHEAD) "계획 KMZ(이륙 기준)" else "계획 KMZ(지형 추적)") }
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))

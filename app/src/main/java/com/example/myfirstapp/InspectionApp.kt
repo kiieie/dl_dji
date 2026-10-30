@@ -18,6 +18,7 @@ import com.example.myfirstapp.drone.djiRcButtonPresses
 import dji.v5.common.error.IDJIError
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.register.DJISDKInitEvent
+import com.example.myfirstapp.drone.initWpmz
 import dji.v5.manager.SDKManager
 import dji.v5.manager.ldm.LDMManager
 import dji.v5.manager.interfaces.SDKManagerCallback
@@ -107,6 +108,7 @@ class InspectionApp : Application() {
 
     private fun initDjiSdk() {
         try {
+            initWpmz(this)
             SDKManager.getInstance().init(this, object : SDKManagerCallback {
                 override fun onRegisterSuccess() {
                     setDjiStatus("✅ DJI SDK 등록 성공")

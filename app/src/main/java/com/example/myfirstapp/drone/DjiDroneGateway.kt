@@ -278,6 +278,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         // 시작 위치: 떠 있으면 지금 자리, 땅이면 이륙 지점. 복귀는 홈 지점(5.6 이동 고도 구간)
         val t = _telemetry.value
         val wps = kmz.outputStream().use { WpmlWriter.write(points, params, it, start = t.position ?: t.home, home = t.home ?: t.position) }
+        // DJI 검사기로 먼저 본다. 고도 모드(지형 추적) 등이 맞지 않으면 올리지 않고 이유를 알린다
+        checkKmz(kmz.path).filterNot { it.startsWith("검사 불가") }.takeIf { it.isNotEmpty() }?.let { error("KMZ 검사 실패: ${it.joinToString()}") }
         suspendCancellableCoroutine { c ->
             missions.pushKMZFileToAircraft(kmz.path, object : CommonCallbacks.CompletionCallbackWithProgress<Double> {
                 override fun onProgressUpdate(progress: Double) {}
