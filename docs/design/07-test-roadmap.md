@@ -55,7 +55,8 @@
 | 비행 화면 DJI 배치(FPV 전체, 위쪽 상태바, 오른쪽 아래 미니맵) | 완료(10-29) | 공식 샘플 UX SDK 기본 화면을 RC Pro에서 캡처해 참고(`docs/evidence/reports/2026-10-29-dji-sample`, git 제외). FPV 자리는 검은 화면, 미니맵은 위성 배경 지도(`ui/flight/FlightMap.kt`), 버튼 반투명(`docs/evidence/2026-10-29-flight-layout`) |
 | RC Pro 버튼 매핑(비행 화면) | 완료(모의 기체) | RC Pro에서 C1 재개·일시정지 버튼 확인(`docs/evidence/2026-10-29-flight-layout/rckey.log`). 일시정지 → 일시정지, C1 → 재개, RTH → RTH(모의만), C2 → 짐벌(기체 뒤). SDK 초기화·등록을 `InspectionApp`으로 옮김. 포트 `core/port/RcButtons.kt`, 구현 `drone/DjiRcButtons.kt` |
 | 1차 판독 5D 버튼, 큰 사진 배치, 판정 배지 | 완료(10-29) | 5D는 SDK 키로 받고 겹침은 `core/input/FiveDGate.kt`로 걸러 냄(단위 테스트 6개). 사진 전체 화면 + 반투명 패널(`docs/evidence/2026-10-29-review-5d`) |
-| DJI UX SDK FPV·계기 위젯(비행 화면) | 기체 확보 뒤 | 위 배치의 FPV 자리에 `android-sdk-v5-uxsdk`(5.18.0) FPV 위젯을 넣는다. PoC와 함께 |
+| FPV 영상(비행 화면) | 완료(10-30) | UX SDK는 Maven에 없어 쓰지 않고 `CameraStreamManager` 스트림을 `SurfaceView`에 그린다(`drone/DjiFpv.kt`) |
+| 실제 기체 연결 `DjiDroneGateway`(방식 A) | 완료(10-30, 시뮬레이터) | 소티 KMZ 업로드·시작·일시정지·재개, 지점·사진 이벤트, 사진마다 원본 다운로드·탐지·저장, RTH·착륙 확인, 비행 궤적 기록. 대평선 미션으로 한 바퀴 확인(`docs/evidence/2026-10-30-dji-gateway`). 다음: Pilot 2식 화면(06 10장 대응표) |
 | RC Pro 실기기 설치·DJI SDK 등록 | 완료 | 2026-10-28. 앱 ID를 DJI 앱 키에 맞춰 `kr.co.dl_dji`로 변경(`namespace`는 그대로), `Helper.install`·`registerApp` 추가 후 등록 성공. 모의 비행 전체 흐름 확인(`docs/evidence/2026-10-28-rcpro`) |
 | PoC ⑦ APK 설치·adb | 완료 | RC Pro(Android 10, Snapdragon 865)에 USB adb로 설치·디버깅 가능. 시스템 파일 선택 창은 adb 탭에 반응하지 않으나 손가락으로는 정상 |
 | PoC ⑤ TFLite 시간(RC Pro) | 완료 | COCO yolo11n fp16, CPU 4스레드, M3E 원본 사진(7MB): 전처리 약 185ms, 추론 약 205ms, 후처리 약 4ms, 합계 약 0.4초(목표 1초). C++ 전환 불필요(9.4). GPU delegate 미적용 |
