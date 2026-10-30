@@ -57,6 +57,7 @@
 | 1차 판독 5D 버튼, 큰 사진 배치, 판정 배지 | 완료(10-29) | 5D는 SDK 키로 받고 겹침은 `core/input/FiveDGate.kt`로 걸러 냄(단위 테스트 6개). 사진 전체 화면 + 반투명 패널(`docs/evidence/2026-10-29-review-5d`) |
 | FPV 영상(비행 화면) | 완료(10-30) | UX SDK는 Maven에 없어 쓰지 않고 `CameraStreamManager` 스트림을 `SurfaceView`에 그린다(`drone/DjiFpv.kt`) |
 | 실제 기체 연결 `DjiDroneGateway`(방식 A) | 완료(10-30, 시뮬레이터) | 소티 KMZ 업로드·시작·일시정지·재개, 지점·사진 이벤트, 사진마다 원본 다운로드·탐지·저장, RTH·착륙 확인, 비행 궤적 기록. 대평선 미션으로 한 바퀴 확인(`docs/evidence/2026-10-30-dji-gateway`). 다음: Pilot 2식 화면(06 10장 대응표) |
+| DJI Pilot 2식 화면·기체 설정 | 완료(10-30) | 홈(타일·기체 상태 카드·카메라 뷰), 카메라 뷰(상단 바·내비 계기·렌즈·셔터·짐벌·지도), 계획 오른쪽 패널(촬영 방식·경로 정보), 비행 전 점검 체크리스트, 설정 탭(비행 제어·감지·조종기·영상 전송·배터리·짐벌·카메라·일반, SDK로 읽고 씀), 앱 아이콘·이름 "전주 점검". 지도 레이어·중앙 복귀 버튼은 남음 |
 | RC Pro 실기기 설치·DJI SDK 등록 | 완료 | 2026-10-28. 앱 ID를 DJI 앱 키에 맞춰 `kr.co.dl_dji`로 변경(`namespace`는 그대로), `Helper.install`·`registerApp` 추가 후 등록 성공. 모의 비행 전체 흐름 확인(`docs/evidence/2026-10-28-rcpro`) |
 | PoC ⑦ APK 설치·adb | 완료 | RC Pro(Android 10, Snapdragon 865)에 USB adb로 설치·디버깅 가능. 시스템 파일 선택 창은 adb 탭에 반응하지 않으나 손가락으로는 정상 |
 | PoC ⑤ TFLite 시간(RC Pro) | 완료 | COCO yolo11n fp16, CPU 4스레드, M3E 원본 사진(7MB): 전처리 약 185ms, 추론 약 205ms, 후처리 약 4ms, 합계 약 0.4초(목표 1초). C++ 전환 불필요(9.4). GPU delegate 미적용 |

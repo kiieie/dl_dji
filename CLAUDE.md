@@ -2,9 +2,10 @@
 
 이 파일은 Claude Code가 이 저장소에서 작업할 때 참고하는 안내서입니다.
 
-## 현재 단계: 구현 — 기체 없이 가능한 기능 완료, RC Pro 실기기 PoC 진행 중
+## 현재 단계: 구현 — 실제 기체 연결(방식 A)과 DJI Pilot 2식 화면 완료, 실비행 시험 전
 
 - 설계서 v1.0이 **승인**되었습니다(2026-09-29, 현재 v1.3). 구현은 `docs/design/07-test-roadmap.md` 13장의 단계 순서를 따릅니다.
+- **2026-10-30**: PoC ①③④⑥ 완료(시뮬레이터), 6.1 방식 A(소티 KMZ 하나로 계속 비행, 사진마다 뒤에서 다운로드·탐지) 확정, `drone/DjiDroneGateway.kt`로 실제 기체 연결, FPV(`drone/DjiFpv.kt`), Room 2(촬영 지점·비행 궤적), 촬영 방식 옵션(전주 위/4방향 사선, 5.6, `core/route/Viewpoints.kt`·`WpmlWriter.kt`), Pilot 2식 홈·카메라 뷰·비행 전 점검·기체 설정(`ui/home`, `ui/flight`, `ui/settings/SettingsHub.kt`). 현장 시험 자료 `docs/drone_dl_test`(.zip)는 실제 전주 좌표라 git 제외.
 - **RC Pro Enterprise 실기기를 쓰고 있고 M3E 기체도 확보할 수 있습니다**(2026-10-28). RC Pro에서 DJI SDK 등록, PoC ⑤(TFLite 약 0.4초/장)·⑦(adb) 완료, ⑥ 하드웨어 버튼은 기체 없이 감지까지 확인했습니다(`docs/evidence/2026-10-28-rcpro`). 다음은 기체를 연결해 PoC ④ LDM, ⑥ 미션 중 일시정지·C1 재개(프로펠러 제거, 시뮬레이터), ①~③입니다. 기체가 필요한 항목(6.1 방식 B 등)은 PoC 전까지 가정으로 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
