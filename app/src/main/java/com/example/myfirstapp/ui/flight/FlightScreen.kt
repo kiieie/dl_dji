@@ -81,7 +81,6 @@ internal val PolePending = Color(0xFFFF9F43)
 internal val Aircraft = Color(0xFFFFC53D)
 
 /** 영상·지도 위 버튼과 글자 바탕(10.1 DJI 톤): 뒤가 비치도록 반투명 검정. */
-internal val OverlayBg = Color.Black.copy(alpha = 0.5f)
 
 /**
  * 비행 화면 ④(10장). 상태와 명령은 [FlightViewModel]이 갖고, 이 화면은 그리기와 입력 전달만 한다.

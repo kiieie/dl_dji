@@ -12,6 +12,7 @@ import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.drone.AircraftStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -53,7 +54,7 @@ suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
 
 data class HomeUiState(val aircraft: AircraftStatus = AircraftStatus(), val latest: LatestMission? = null)
 
-/** 홈 화면(Pilot 2 홈페이지, 10장 ①). 기체 상태는 2초마다 다시 읽는다. */
+/** 홈 화면(Pilot 2 홈페이지, 10장 ①). 기체 상태는 화면이 보이는 동안([active]) 2초마다 다시 읽는다. */
 class HomeViewModel(
     private val dao: ProjectDao,
     private val readAircraft: suspend () -> AircraftStatus,
@@ -61,11 +62,17 @@ class HomeViewModel(
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
+    /** 홈이 보이는 동안만 기체를 읽는다(다른 화면 뒤에서 SDK 키를 계속 읽지 않게). */
+    private val active = MutableStateFlow(true)
+    fun setActive(on: Boolean) { active.value = on }
+
     init {
         viewModelScope.launch {
-            while (true) {
-                _state.update { it.copy(aircraft = readAircraft()) }
-                delay(2_000)
+            active.collectLatest { on ->
+                while (on) {
+                    _state.update { it.copy(aircraft = readAircraft()) }
+                    delay(2_000)
+                }
             }
         }
         refresh()

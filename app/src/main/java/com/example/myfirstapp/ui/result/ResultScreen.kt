@@ -418,6 +418,14 @@ private fun MemoDialog(s: ResultUiState, vm: ResultViewModel, onClose: () -> Uni
     )
 }
 
+/** 판독용으로 읽기: 원본(20MP)을 그대로 올리면 수십 MB라, 긴 변이 3000px 아래가 되게 2의 배수로 줄인다(8배 확대에 충분). */
+private fun decodeForReview(path: String): android.graphics.Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { BitmapFactory.decodeFile(path, it) }
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 3000) sample *= 2
+    return BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+}
+
 /**
  * 사진과 검출 상자(0~1 비율 좌표, 사진은 비율을 지켜 가운데). 두 손가락으로 확대·이동, 두 번 탭하면 2.5배 ↔ 전체.
  * 상자를 누르면 그 객체를 고르고 그 상자로 확대한다. 고른 상자를 다시 누르면 풀고 전체 보기로. 상자 밖을 한 번 누르면 [onTapEmpty](패널 숨기기).
@@ -425,7 +433,7 @@ private fun MemoDialog(s: ResultUiState, vm: ResultViewModel, onClose: () -> Uni
 @Composable
 private fun Photo(p: PhotoUi, selected: Int?, onSelect: (Int?) -> Unit, onTapEmpty: () -> Unit, modifier: Modifier) {
     val bitmap by produceState<ImageBitmap?>(null, p.capture.filePath) {
-        value = withContext(Dispatchers.IO) { p.capture.filePath?.let { BitmapFactory.decodeFile(it) }?.asImageBitmap() }
+        value = withContext(Dispatchers.IO) { p.capture.filePath?.let(::decodeForReview)?.asImageBitmap() }
     }
     val measurer = rememberTextMeasurer()
     val labelStyle = MaterialTheme.typography.labelMedium.copy(color = Color.Black, fontWeight = FontWeight.Bold)

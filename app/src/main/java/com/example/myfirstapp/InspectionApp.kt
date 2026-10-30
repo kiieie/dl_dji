@@ -108,7 +108,8 @@ class InspectionApp : Application() {
 
     private fun initDjiSdk() {
         try {
-            initWpmz(this)
+            // 검사기 준비는 지오이드 파일 복사가 있어 메인 스레드 밖에서(KMZ 검사는 비행 시작 때라 그 전에 끝난다)
+            Thread { initWpmz(this) }.start()
             SDKManager.getInstance().init(this, object : SDKManagerCallback {
                 override fun onRegisterSuccess() {
                     setDjiStatus("✅ DJI SDK 등록 성공")
