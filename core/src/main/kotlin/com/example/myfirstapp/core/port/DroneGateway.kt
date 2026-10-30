@@ -106,6 +106,8 @@ data class CaptureInfo(
     val headingDeg: Double,
     val takenAtMs: Long,
     val viewpoint: Int? = null,
+    /** 설비 조준 사진(5.6): 설치기기 쪽으로 짐벌을 내려 한 번 더 찍은 것. */
+    val equipment: Boolean = false,
 )
 
 sealed interface DroneEvent {

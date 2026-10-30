@@ -310,7 +310,7 @@ private fun PhotoViewer(r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto
             )
             p?.let {
                 Text(
-                    it.capture.lens, Modifier.background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(3.dp)).border(1.dp, Tertiary, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp),
+                    if (it.capture.equipmentShot) "${it.capture.lens} · 설비" else it.capture.lens, Modifier.background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(3.dp)).border(1.dp, Tertiary, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp),
                     style = numberStyle(11.sp), color = Tertiary,
                 )
             }

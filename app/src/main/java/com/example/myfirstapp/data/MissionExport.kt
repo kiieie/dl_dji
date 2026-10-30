@@ -79,7 +79,7 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
                 } ?: JSONObject.NULL)
                 .put("captures", JSONArray(capturesByVisit[r.visitId].orEmpty().map { c ->
                     val file = c.filePath?.let(::File)?.takeIf { it.isFile }
-                    JSONObject().put("mediaId", c.mediaId).put("lens", c.lens).put("source", c.source).put("takenAt", c.takenAt)
+                    JSONObject().put("mediaId", c.mediaId).put("lens", c.lens).put("equipment", c.equipmentShot).put("source", c.source).put("takenAt", c.takenAt)
                         .put("lat", c.lat ?: JSONObject.NULL).put("lon", c.lon ?: JSONObject.NULL).put("altRel", c.altRel)
                         .put("gimbalPitch", c.gimbalPitch).put("heading", c.heading)
                         .put("originalDownloaded", c.originalDownloaded)

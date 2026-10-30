@@ -209,18 +209,35 @@ ${shotActions(i, v, shots, p)}
     }
 
     /**
-     * 도착하면 차례로: (사선) 기수를 이 지점의 전주로 → 짐벌 피치 맞추기 → [lenses] 렌즈로 촬영.
+     * 도착하면 차례로: (사선) 기수를 이 지점의 전주로 → 짐벌 피치 맞추기 → [lenses] 렌즈로 촬영
+     * → (설치기기 전주) 짐벌만 설비 쪽으로 내려 한 번 더 촬영(파일 이름 끝 `_E`, 5.6).
      * 사선은 구간 관심점이 다음 전주라 도착 뒤 기수가 그쪽으로 돌 수 있어, 찍기 전에 이 전주로 되돌린다(가까운 쪽으로).
      */
-    private fun actions(i: Int, v: Viewpoint, poi: Pole?, lenses: String) = """        <wpml:actionGroup><wpml:actionGroupId>$i</wpml:actionGroupId><wpml:actionGroupStartIndex>$i</wpml:actionGroupStartIndex><wpml:actionGroupEndIndex>$i</wpml:actionGroupEndIndex><wpml:actionGroupMode>sequence</wpml:actionGroupMode><wpml:actionTrigger><wpml:actionTriggerType>reachPoint</wpml:actionTriggerType></wpml:actionTrigger>
-${if (poi != null) rotateYaw(v, poi) else ""}          <wpml:action><wpml:actionId>${if (poi != null) 1 else 0}</wpml:actionId><wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:gimbalHeadingYawBase>north</wpml:gimbalHeadingYawBase><wpml:gimbalRotateMode>absoluteAngle</wpml:gimbalRotateMode><wpml:gimbalPitchRotateEnable>1</wpml:gimbalPitchRotateEnable><wpml:gimbalPitchRotateAngle>${n(v.gimbalPitchDeg)}</wpml:gimbalPitchRotateAngle><wpml:gimbalRollRotateEnable>0</wpml:gimbalRollRotateEnable><wpml:gimbalRollRotateAngle>0</wpml:gimbalRollRotateAngle><wpml:gimbalYawRotateEnable>0</wpml:gimbalYawRotateEnable><wpml:gimbalYawRotateAngle>0</wpml:gimbalYawRotateAngle><wpml:gimbalRotateTimeEnable>0</wpml:gimbalRotateTimeEnable><wpml:gimbalRotateTime>0</wpml:gimbalRotateTime><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:actionActuatorFuncParam></wpml:action>
-          <wpml:action><wpml:actionId>${if (poi != null) 2 else 1}</wpml:actionId><wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex><wpml:fileSuffix>${fileSuffix(v)}</wpml:fileSuffix><wpml:payloadLensIndex>$lenses</wpml:payloadLensIndex><wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex></wpml:actionActuatorFuncParam></wpml:action>
-        </wpml:actionGroup>"""
+    private fun actions(i: Int, v: Viewpoint, poi: Pole?, lenses: String): String {
+        var id = 0
+        val body = buildString {
+            if (poi != null) append(rotateYaw(id++, v, poi))
+            append(gimbal(id++, v.gimbalPitchDeg))
+            append(photo(id++, fileSuffix(v), lenses))
+            v.equipmentPitchDeg?.let {
+                append(gimbal(id++, it))
+                append(photo(id++, "${fileSuffix(v)}_E", lenses))
+            }
+        }
+        return """        <wpml:actionGroup><wpml:actionGroupId>$i</wpml:actionGroupId><wpml:actionGroupStartIndex>$i</wpml:actionGroupStartIndex><wpml:actionGroupEndIndex>$i</wpml:actionGroupEndIndex><wpml:actionGroupMode>sequence</wpml:actionGroupMode><wpml:actionTrigger><wpml:actionTriggerType>reachPoint</wpml:actionTriggerType></wpml:actionTrigger>
+$body        </wpml:actionGroup>"""
+    }
 
-    private fun rotateYaw(v: Viewpoint, poi: Pole): String {
+    private fun gimbal(id: Int, pitch: Double) =
+        "          <wpml:action><wpml:actionId>$id</wpml:actionId><wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:gimbalHeadingYawBase>north</wpml:gimbalHeadingYawBase><wpml:gimbalRotateMode>absoluteAngle</wpml:gimbalRotateMode><wpml:gimbalPitchRotateEnable>1</wpml:gimbalPitchRotateEnable><wpml:gimbalPitchRotateAngle>${n(pitch)}</wpml:gimbalPitchRotateAngle><wpml:gimbalRollRotateEnable>0</wpml:gimbalRollRotateEnable><wpml:gimbalRollRotateAngle>0</wpml:gimbalRollRotateAngle><wpml:gimbalYawRotateEnable>0</wpml:gimbalYawRotateEnable><wpml:gimbalYawRotateAngle>0</wpml:gimbalYawRotateAngle><wpml:gimbalRotateTimeEnable>0</wpml:gimbalRotateTimeEnable><wpml:gimbalRotateTime>0</wpml:gimbalRotateTime><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:actionActuatorFuncParam></wpml:action>\n"
+
+    private fun photo(id: Int, suffix: String, lenses: String) =
+        "          <wpml:action><wpml:actionId>$id</wpml:actionId><wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex><wpml:fileSuffix>$suffix</wpml:fileSuffix><wpml:payloadLensIndex>$lenses</wpml:payloadLensIndex><wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex></wpml:actionActuatorFuncParam></wpml:action>\n"
+
+    private fun rotateYaw(id: Int, v: Viewpoint, poi: Pole): String {
         val turn = (v.headingDeg - Viewpoints.bearing(v.position, poi.position)).mod(360.0)
         val path = if (turn <= 180.0) "clockwise" else "counterClockwise"
-        return "          <wpml:action><wpml:actionId>0</wpml:actionId><wpml:actionActuatorFunc>rotateYaw</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam>" +
+        return "          <wpml:action><wpml:actionId>$id</wpml:actionId><wpml:actionActuatorFunc>rotateYaw</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam>" +
             "<wpml:aircraftHeading>${heading(v.headingDeg)}</wpml:aircraftHeading><wpml:aircraftPathMode>$path</wpml:aircraftPathMode></wpml:actionActuatorFuncParam></wpml:action>\n"
     }
 }

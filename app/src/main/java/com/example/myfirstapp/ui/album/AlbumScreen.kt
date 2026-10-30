@@ -179,7 +179,7 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
                 ) {
                     when (group) {
                         is AlbumGroup.Mission -> items(s.shown, key = { it.capture.id }) { p ->
-                            val label = p.capture.viewpoint?.let { "${it + 1}" } ?: "M"
+                            val label = p.capture.viewpoint?.let { "${it + 1}${if (p.capture.equipmentShot) " 설비" else ""}" } ?: "M"
                             Thumb(
                                 p.capture.filePath, "${p.displayName} · $label", poleSymbols(p.voltage, p.equipment),
                                 detected = p.alertCount > 0, manual = p.capture.source == CaptureSource.MANUAL.name,

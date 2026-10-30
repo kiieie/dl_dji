@@ -16,6 +16,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.example.myfirstapp.core.model.Equipment
+import com.example.myfirstapp.core.model.equipmentsOf
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.Warning
@@ -31,10 +33,10 @@ fun poleSymbols(voltage: String?, equipment: String?): List<PoleSymbol> = buildL
         "고" in voltage -> add(PoleSymbol.HIGH)
         "저" in voltage -> add(PoleSymbol.LOW)
     }
-    val e = equipment.orEmpty()
-    if ("뱅크" in e || "변압" in e) add(PoleSymbol.TRANSFORMER)
-    if ("개폐" in e) add(PoleSymbol.SWITCH)
-    if ("피뢰" in e) add(PoleSymbol.ARRESTER)
+    val e = equipmentsOf(equipment)
+    if (Equipment.TRANSFORMER in e) add(PoleSymbol.TRANSFORMER)
+    if (Equipment.SWITCH in e) add(PoleSymbol.SWITCH)
+    if (Equipment.ARRESTER in e) add(PoleSymbol.ARRESTER)
 }
 
 /** 기호 줄. 기호마다 접근성 이름을 단다. */

@@ -31,6 +31,11 @@ data class FlightParams(
     val transitLegThresholdM: Double = 60.0,
     /** 실시간 지형 추적(5.6, 2026-10-30 기본 켬): 켜면 KMZ 고도가 지면 기준(`realTimeFollowSurface`), 끄면 이륙 지점 기준. */
     val terrainFollow: Boolean = true,
+    /**
+     * 설비 조준 사진(5.6, 2026-10-30 사용자 결정): 4방향 사선에서 설치기기가 있는 전주는 지점마다 조준 높이에서 이만큼 아래(m)를 한 장 더 찍는다.
+     * 기기가 여럿이면 가장 많이 내리는 값. 비우면 설비 사진을 찍지 않는다.
+     */
+    val equipmentDropM: Map<Equipment, Double> = Equipment.entries.associateWith { 2.0 },
 ) {
     /** 촬영 고도: 4방향 사선은 사선 고도, 전주 위는 점검 고도(5.6). */
     val shotAltitudeM: Double get() = if (shotMode == ShotMode.DIAGONAL4) diagonalAltitudeM else inspectAltitudeM

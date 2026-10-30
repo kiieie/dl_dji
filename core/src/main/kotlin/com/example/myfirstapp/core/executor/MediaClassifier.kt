@@ -38,7 +38,7 @@ class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private
     private var screenGot = false
     private var screenUntil = Long.MIN_VALUE / 2
     private var lastShot: Int? = null
-    private var filesPerShot = 1
+    private var filesPerShot: (Int) -> Int = { 1 }
     private val files = mutableMapOf<Int, Int>()
     private var reachedShot: Int? = null
     private var reachedAt = Long.MIN_VALUE / 2
@@ -57,10 +57,13 @@ class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private
         screenUntil = now + tailMs
     }
 
-    /** 새 소티 미션: 지점 사진 기록을 비운다. [filesPerShot]은 한 지점에서 오는 파일 수(렌즈 수). */
-    @Synchronized fun sortieStarted(filesPerShot: Int = 1) {
+    /** 새 소티 미션: 지점 사진 기록을 비운다. 모든 지점에서 파일이 [filesPerShot]개(렌즈 수). */
+    fun sortieStarted(filesPerShot: Int = 1) = sortieStarted { filesPerShot }
+
+    /** 새 소티 미션: [filesPerShot]은 지점마다 오는 파일 수(렌즈 수 × 촬영 횟수, 설비 사진이 있으면 2배). */
+    @Synchronized fun sortieStarted(filesPerShot: (Int) -> Int) {
         lastShot = null
-        this.filesPerShot = filesPerShot.coerceAtLeast(1)
+        this.filesPerShot = { filesPerShot(it).coerceAtLeast(1) }
         files.clear()
         reachedShot = null
     }
@@ -94,7 +97,7 @@ class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private
         val last = lastShot
         val owner = when {
             !justArrived -> shot
-            last != null && last < shot && files.getOrDefault(last, 0) < filesPerShot -> last
+            last != null && last < shot && files.getOrDefault(last, 0) < filesPerShot(last) -> last
             last == null && shot > 0 -> shot - 1
             else -> shot
         }

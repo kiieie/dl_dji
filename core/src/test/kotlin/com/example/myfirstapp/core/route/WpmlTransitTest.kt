@@ -98,6 +98,23 @@ class WpmlTransitTest {
     }
 
     @Test
+    fun `설치기기 전주는 사선 지점마다 설비 쪽으로 짐벌을 내려 한 번 더 찍는다`() {
+        val diag = FlightParams(shotMode = ShotMode.DIAGONAL4)
+        val withBank = listOf(poles[0].copy(equipment = "가공뱅크"), poles[1], poles[2])
+        val v = Viewpoints.expand(withBank, diag, home)
+        val bank = v.filter { it.pole.poleId == "P0" }
+        assertEquals(4, bank.size)
+        bank.forEach { assertTrue(it.equipmentPitchDeg!! < it.gimbalPitchDeg) } // 머리보다 2m 아래라 더 숙임
+        assertTrue(v.filter { it.pole.poleId != "P0" }.all { it.equipmentPitchDeg == null })
+        val wpml = files(v, diag, null).getValue("wpmz/waylines.wpml")
+        assertEquals(4, Regex("_E</wpml:fileSuffix>").findAll(wpml).count())
+        assertEquals(12 + 4, Regex("<wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>").findAll(wpml).count())
+        // 전주 위 방식과 설정에서 비운 기기는 설비 사진이 없다
+        assertTrue(Viewpoints.expand(withBank, overhead, home).all { it.equipmentPitchDeg == null })
+        assertTrue(Viewpoints.expand(withBank, diag.copy(equipmentDropM = emptyMap()), home).all { it.equipmentPitchDeg == null })
+    }
+
+    @Test
     fun `에너지 - 긴 구간마다 오르내림을 더한다`() {
         val e = EnergyModel(EnergyParams(), overhead)
         // (50 − 30) × 2 / 3m/s: 첫·복귀 한 번 + 긴 구간 2개

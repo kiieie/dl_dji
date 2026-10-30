@@ -40,6 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.Equipment
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.ui.Stepper
@@ -168,7 +169,9 @@ private fun FlightDefaults(p: FlightParams, onChange: (FlightParams) -> Unit) {
             ),
             listOf(
                 Triple("조준 높이", "${"%.1f".format(p.aimHeightM)}m") { d -> p.copy(aimHeightM = p.aimHeightM + d * 0.5) },
+                equipmentDrop(p, Equipment.TRANSFORMER),
             ),
+            listOf(equipmentDrop(p, Equipment.SWITCH), equipmentDrop(p, Equipment.ARRESTER)),
         )
     } else {
         emptyList()
@@ -211,6 +214,15 @@ private fun FlightDefaults(p: FlightParams, onChange: (FlightParams) -> Unit) {
                 modifier = Modifier.heightIn(min = 48.dp),
             ) { Text(if (mode == DownloadMode.PREVIEW) "미리보기(빠름)" else "원본") }
         }
+    }
+}
+
+/** 설비 조준 사진(5.6): 기기별로 머리에서 얼마나 내려 찍을지(0.5m 단위). 0에서 더 낮추면 끔(그 기기는 설비 사진 없음), 끔에서 높이면 0m. */
+private fun equipmentDrop(p: FlightParams, e: Equipment): Triple<String, String, (Int) -> FlightParams> {
+    val v = p.equipmentDropM[e]
+    return Triple("${e.title} 조준(머리 아래)", v?.let { "${"%.1f".format(it)}m" } ?: "끔") { d ->
+        val next = if (v == null) (if (d > 0) 0.0 else null) else (v + d * 0.5).takeIf { it >= 0.0 }?.coerceAtMost(10.0)
+        p.copy(equipmentDropM = if (next == null) p.equipmentDropM - e else p.equipmentDropM + (e to next))
     }
 }
 

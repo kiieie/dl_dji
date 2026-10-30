@@ -157,8 +157,13 @@ class FakeDroneGateway(
                 } else {
                     // 한 번 찍으면 렌즈마다 파일 하나(광각+망원 동시, 5.6)
                     val t = _telemetry.value
-                    val infos = params.lenses.map { lens ->
-                        CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, p.gimbalPitchDeg, p.headingDeg, System.currentTimeMillis()).also { sdCard += it }
+                    // 설치기기 전주는 설비 쪽으로 한 번 더(5.6)
+                    val aims = listOfNotNull(false to p.gimbalPitchDeg, p.equipmentPitchDeg?.let { true to it })
+                    val infos = aims.flatMap { (equipment, pitch) ->
+                        params.lenses.map { lens ->
+                            CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, pitch, p.headingDeg, System.currentTimeMillis(), equipment = equipment)
+                                .also { sdCard += it }
+                        }
                     }
                     val late = lateNextPhotoMs.also { lateNextPhotoMs = 0 }
                     if (late > 0) scope.launch { delay(late); infos.forEach { _events.emit(DroneEvent.PhotoTaken(i, it)) } }

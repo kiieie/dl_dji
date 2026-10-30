@@ -51,8 +51,10 @@ class InspectionExecutorTest {
         override suspend fun updateVisit(sortieIndex: Int, order: Int, status: VisitStatus, skipReason: String?) {
             visitUpdates += Triple(sortieIndex, order, status)
         }
+        val infos = mutableListOf<CaptureInfo>()
         override suspend fun saveCapture(sortieIndex: Int, order: Int, capture: CaptureInfo, source: CaptureSource): Long {
             captures += order to source
+            infos += capture
             return captures.size.toLong()
         }
         override suspend fun saveImage(captureId: Long, bytes: ByteArray) { images += captureId }
@@ -498,6 +500,18 @@ class InspectionExecutorTest {
         assertTrue("startSortie:12" in h.drone.calls)
         assertEquals(listOf(4, 4, 4), h.recorder.captures.groupBy { it.first }.values.map { it.size })
         h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+    }
+
+    @Test
+    fun `방식 A - 설치기기 전주는 지점마다 설비 조준 사진이 하나 더 붙는다`() = runTest {
+        val poles = listOf(threePoles[0].copy(equipment = "가공뱅크/피뢰기"), threePoles[1], threePoles[2])
+        val h = harness(sorties = listOf(poles), config = sortieMode, params = FlightParams(shotMode = ShotMode.DIAGONAL4, lenses = listOf(Lens.WIDE)))
+        h.send(Command.Start)
+        h.awaitState(ExecState.MissionDone)
+        assertEquals(listOf(8, 4, 4), h.recorder.captures.groupBy { it.first }.values.map { it.size })
+        val a = h.recorder.infos.filterIndexed { i, _ -> h.recorder.captures[i].first == 0 }
+        assertEquals(4, a.count { it.equipment })
+        assertTrue(a.filter { it.equipment }.all { e -> a.any { !it.equipment && it.viewpoint == e.viewpoint && it.gimbalPitchDeg > e.gimbalPitchDeg } })
     }
 
     @Test

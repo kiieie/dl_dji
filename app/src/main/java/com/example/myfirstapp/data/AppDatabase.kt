@@ -21,6 +21,7 @@ import com.example.myfirstapp.core.csv.diffPoleAttributes
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.Equipment
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.model.Pole
@@ -124,6 +125,7 @@ fun FlightParams.toJson(): String = JSONObject()
     .put("batteryReservePct", batteryReservePct).put("vlosRadiusM", vlosRadiusM).put("downloadMode", downloadMode.name)
     .put("shotMode", shotMode.name).put("diagonalAltitudeM", diagonalAltitudeM).put("diagonalDistanceM", diagonalDistanceM).put("aimHeightM", aimHeightM)
     .put("terrainFollow", terrainFollow)
+    .put("equipmentDropM", JSONObject(equipmentDropM.mapKeys { it.key.name }))
     .toString()
 
 @Entity(
@@ -147,6 +149,8 @@ data class CaptureEntity(
     val originalDownloaded: Boolean = false,
     /** 촬영 지점 번호(5.6): 전주 위 0, 4방향 사선 0~3, 수동 촬영은 null. */
     val viewpoint: Int? = null,
+    /** 설비 조준 사진(5.6): 설치기기 쪽으로 짐벌을 내려 찍은 것. */
+    val equipmentShot: Boolean = false,
 )
 
 @Entity(
@@ -263,6 +267,9 @@ fun flightParamsFromJson(json: String, legacyTerrainFollow: Boolean = false): Fl
         diagonalDistanceM = o.optDouble("diagonalDistanceM", d.diagonalDistanceM),
         aimHeightM = o.optDouble("aimHeightM", d.aimHeightM),
         terrainFollow = o.optBoolean("terrainFollow", legacyTerrainFollow),
+        equipmentDropM = o.optJSONObject("equipmentDropM")?.let { m ->
+            Equipment.entries.filter { m.has(it.name) }.associateWith { m.getDouble(it.name) }
+        } ?: d.equipmentDropM,
     )
 }
 
@@ -558,7 +565,7 @@ interface ProjectDao {
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -566,7 +573,12 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build()
+
+        /** 6 → 7(2026-10-31): 설비 조준 사진 표시(5.6). */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) = db.execSQL("ALTER TABLE `capture` ADD COLUMN `equipmentShot` INTEGER NOT NULL DEFAULT 0")
+        }
 
         /**
          * 5 → 6(2026-10-31): 미션 상태. 전에는 PARTIAL이 "새 계획으로 대체"였으므로 REPLACED로 바꾸고,

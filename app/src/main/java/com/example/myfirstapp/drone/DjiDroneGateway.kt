@@ -189,8 +189,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             when (owner) {
                 MediaOwner.SCREEN -> newPhotos.tryEmit(capture)
                 // 같은 지점의 n번째 파일 = KMZ 렌즈 순서의 n번째(광각 → 망원). 실제 렌즈는 받을 때 파일 이름(_W/_Z)으로 다시 본다
+                // 렌즈 수만큼 다음 파일은 설비 조준 사진
                 MediaOwner.WAYPOINT -> file?.let { f ->
-                    _events.tryEmit(DroneEvent.PhotoTaken(f.shot, capture.copy(lens = sortieLenses[f.ordinal % sortieLenses.size])))
+                    val n = sortieLenses.size
+                    _events.tryEmit(DroneEvent.PhotoTaken(f.shot, capture.copy(lens = sortieLenses[f.ordinal % n], equipment = f.ordinal >= n)))
                 }
                 MediaOwner.SHUTTER -> _events.tryEmit(DroneEvent.ShutterPhoto(capture))
                 MediaOwner.NONE -> Unit
@@ -302,7 +304,9 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         sortieLenses = params.lenses.distinct().ifEmpty { listOf(Lens.WIDE) }
         // 망원 사진 배율(기본 7배, 10-30 사용자 결정). 실패해도 미션은 간다(망원은 지금 배율로 찍힘)
         if (Lens.ZOOM in sortieLenses) setZoom(params.zoomRatio).onFailure { OpLog.log("error", "sortieZoom", mapOf("message" to it.message)) }
-        owners.sortieStarted(filesPerShot = sortieLenses.size)
+        // 지점마다 오는 파일 수: 렌즈 수, 설비 조준 사진이 있으면 두 번(5.6)
+        val lensCount = sortieLenses.size
+        owners.sortieStarted { shot -> lensCount * (if (points.getOrNull(shot)?.equipmentPitchDeg != null) 2 else 1) }
         missionName = name
         // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
         runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected("미션 시작 거절: ${it.message}", it) }

@@ -4,6 +4,7 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.ShotMode
+import com.example.myfirstapp.core.model.equipmentsOf
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -11,6 +12,7 @@ import kotlin.math.sin
 /**
  * 촬영 지점 하나(5.6). [index]는 `CAPTURE.viewpoint`: 전주 위는 0, 4방향 사선은 선로 방향 기준 45°부터 시계 방향 0~3.
  * [headingDeg]는 기수(정북 0°, 시계 방향 0~360), [altitudeM]은 이륙 지점 기준이다.
+ * [equipmentPitchDeg]: 설치기기가 있는 전주의 설비 조준 사진 짐벌 피치(4방향 사선만). 없으면 설비 사진을 찍지 않는다.
  */
 data class Viewpoint(
     val pole: Pole,
@@ -19,6 +21,7 @@ data class Viewpoint(
     val altitudeM: Double,
     val headingDeg: Double,
     val gimbalPitchDeg: Double,
+    val equipmentPitchDeg: Double? = null,
 )
 
 /** 방문 순서대로 놓인 전주를 촬영 방식(5.6)에 따라 촬영 지점으로 펼친다. */
@@ -50,7 +53,8 @@ object Viewpoints {
     private fun diagonal(poles: List<Pole>, p: FlightParams, start: GeoPoint): List<Viewpoint> {
         if (poles.isEmpty()) return emptyList()
         // 조준 높이: 설비 엑셀의 전주 길이로 구한 지상 높이(4.5), 없으면 설정값
-        fun pitch(pole: Pole) = -Math.toDegrees(atan2(p.diagonalAltitudeM - aimHeight(pole, p), p.diagonalDistanceM))
+        fun pitch(pole: Pole, aim: Double = aimHeight(pole, p)) = -Math.toDegrees(atan2(p.diagonalAltitudeM - aim, p.diagonalDistanceM))
+        fun equipmentPitch(pole: Pole) = equipmentDropM(pole, p)?.let { pitch(pole, (aimHeight(pole, p) - it).coerceAtLeast(0.0)) }
         // 가까운 끝에서 출발
         val line = if (LocalProjection.distanceM(start, poles.last().position) < LocalProjection.distanceM(start, poles.first().position)) poles.reversed() else poles
         // k는 방문 방향 기준(0 앞-오른쪽, 1 뒤-오른쪽, 2 뒤-왼쪽, 3 앞-왼쪽). 실제 지점·번호는 선로번호 방향(있으면)의 가장 가까운 대각선으로 맞춘다
@@ -59,7 +63,7 @@ object Viewpoints {
             val theta = line[i].lineBearingDeg
             val idx = if (theta == null) k else (0..3).minBy { j -> angleDiff(theta + 45.0 + 90.0 * j, travel) }
             val b = (theta ?: lineBearing(line, i)) + 45.0 + 90.0 * idx
-            return Viewpoint(line[i], idx, offset(line[i].position, b, p.diagonalDistanceM), p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch(line[i]))
+            return Viewpoint(line[i], idx, offset(line[i].position, b, p.diagonalDistanceM), p.diagonalAltitudeM, (b + 180.0).mod(360.0), pitch(line[i]), equipmentPitch(line[i]))
         }
         // 오른쪽(뒤 1, 앞 0)과 왼쪽(뒤 2, 앞 3) 중 첫 지점이 가까운 쪽부터
         val right = 1 to 0
@@ -73,6 +77,9 @@ object Viewpoints {
 
     /** 두 방위 사이 각(0~180°). */
     private fun angleDiff(a: Double, b: Double) = ((a - b).mod(360.0)).let { if (it > 180.0) 360.0 - it else it }
+
+    /** 설비 조준을 머리에서 얼마나 내릴지(m): 전주 기기 중 가장 큰 값. 기기가 없거나 설정에 없으면 null(설비 사진 없음). */
+    fun equipmentDropM(pole: Pole, p: FlightParams): Double? = equipmentsOf(pole.equipment).mapNotNull { p.equipmentDropM[it] }.maxOrNull()
 
     /** 전주 머리 높이(m, 지상): 전주 길이를 알면 지상 높이, 모르면 [FlightParams.aimHeightM]. */
     fun aimHeight(pole: Pole, p: FlightParams) = pole.aboveGroundM ?: p.aimHeightM
