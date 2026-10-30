@@ -72,14 +72,21 @@ class EnergyModel(val params: EnergyParams, val flight: FlightParams) {
     /** 전주 사이 구간 [legsM] 중 이동 고도로 넘는 것의 수(5.6). ponytail: 전주 중심 거리로 센다. 사선 지점 간격(d)만큼 어긋날 수 있다. */
     fun longJumps(legsM: List<Double>): Int = legsM.count { it > flight.transitLegThresholdM }
 
+    /** 복귀의 수직 이동: 촬영 고도에서 RTH 고도로 오르고, 이륙 지점에서 내려앉는다(호버 소모로 셈). */
+    val returnVerticalPct: Double
+        get() = (maxOf(0.0, flight.rthAltitudeM - flight.shotAltitudeM) + flight.rthAltitudeM) / params.verticalSpeedMps * params.hoverPctPerSec
+
+    /** 지금 자리에서 복귀에 필요한 양(수평 [toHomeM] + 수직). 비행 화면 배터리 띠의 H 표시. */
+    fun returnPct(toHomeM: Double): Double = move(toHomeM) + returnVerticalPct
+
     /**
      * 구간 출발 전 검증(5.5 실시간 검증):
-     * 현재 배터리 ≥ E(현재→다음) + E_visit + E(다음→Home) + 예비율.
+     * 현재 배터리 ≥ E(현재→다음) + E(전주 둘레, 사선) + E_visit + E(다음→Home, 수직 포함) + 예비율.
      */
     fun canProceed(currentPct: Double, toNextM: Double, nextToHomeM: Double): Boolean =
-        currentPct >= move(toNextM) + perVisit + move(nextToHomeM) + flight.batteryReservePct
+        currentPct >= move(toNextM + aroundPoleM) + perVisit + returnPct(nextToHomeM) + flight.batteryReservePct
 
-    /** 구간 비행 중 감시: 현재 배터리 < E(현재→Home) + 예비율 하한(20%)이면 RTH를 권고한다. */
+    /** 구간 비행 중 감시: 현재 배터리 < E(현재→Home, 수직 포함) + 예비율 하한(20%)이면 RTH를 권고한다. */
     fun mustReturn(currentPct: Double, toHomeM: Double): Boolean =
-        currentPct < move(toHomeM) + FlightParams.MIN_RESERVE_PCT
+        currentPct < returnPct(toHomeM) + FlightParams.MIN_RESERVE_PCT
 }

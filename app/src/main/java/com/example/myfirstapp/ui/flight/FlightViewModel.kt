@@ -183,9 +183,11 @@ class FlightViewModel(
         val bearings = LineNumbers.bearings(dao.observePoles(projectId).first().map { it.toPole() })
         val sorties = groups.map { (_, g) ->
             val poles = g.map { it.toPole().copy(lineBearingDeg = bearings[it.poleId]) }
-            val route = listOf(home) + poles.map { it.position } + home
-            val dist = route.zipWithNext { a, b -> LocalProjection.distanceM(a, b) }.sum()
-            val jumps = energy.longJumps(poles.zipWithNext { a, b -> LocalProjection.distanceM(a.position, b.position) })
+            // 계획(RoutePlanner)과 같은 셈: 이륙 지점 왕복 + 전주 사이 + 사선 전주 둘레(5.6), 이동 고도 오르내림
+            val legs = poles.zipWithNext { a, b -> LocalProjection.distanceM(a.position, b.position) }
+            val homeLegs = if (poles.isEmpty()) 0.0 else LocalProjection.distanceM(home, poles.first().position) + LocalProjection.distanceM(poles.last().position, home)
+            val dist = energy.pathM(homeLegs, legs.sum(), poles.size)
+            val jumps = energy.longJumps(legs)
             SortiePlan(poles, dist, energy.sortieCost(dist, poles.size, jumps), energy.sortieDurationSec(dist, poles.size, jumps))
         }
         plans = sorties
@@ -230,7 +232,7 @@ class FlightViewModel(
             )
         }
         combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->
-            val need = energy.move(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
+            val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
             val wasPaused = paused
             _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need) }
             // RC 재개 등으로 일시정지를 벗어나면 녹화를 멈추고 사진 모드로(10.4.3)
