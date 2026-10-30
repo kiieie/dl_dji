@@ -51,7 +51,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -59,6 +58,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -74,7 +74,9 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -165,7 +167,7 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
                 Text("왼쪽에서 전주를 고르세요.", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 val saved = s.reviews[row.visitId]?.let { ReviewVerdict.valueOf(it.verdict) }
-                PhotoViewer(row, s.photos, s.draft.verdict, saved, onTap = { panels = !panels }, Modifier.fillMaxSize())
+                PhotoViewer(row, s.photos, s.photoIndex, vm::showPhoto, s.draft.verdict, saved, onTap = { panels = !panels }, Modifier.fillMaxSize())
             }
             if (panels) {
                 PoleList(s, vm, Modifier.align(Alignment.CenterStart).width(220.dp).fillMaxHeight().background(PanelBg).padding(8.dp))
@@ -227,12 +229,11 @@ private fun PoleList(s: ResultUiState, vm: ResultViewModel, modifier: Modifier) 
     }
 }
 
-/** 사진 한 장을 크게 보여 주고, 아래 가운데에 전주 정보·[광각]/[망원]·탐지 목록을 반투명으로 얹는다. */
+/** 사진 한 장을 크게 보여 주고, 아래 가운데에 전주 정보·[광각]/[망원](RC C1로도 전환)·탐지 목록을 반투명으로 얹는다. */
 @Composable
 private fun PhotoViewer(
-    r: ResultRow, photos: List<PhotoUi>, verdict: ReviewVerdict?, saved: ReviewVerdict?, onTap: () -> Unit, modifier: Modifier,
+    r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto: (Int) -> Unit, verdict: ReviewVerdict?, saved: ReviewVerdict?, onTap: () -> Unit, modifier: Modifier,
 ) {
-    var index by rememberSaveable(r.visitId) { mutableIntStateOf(0) }
     val p = photos.getOrNull(index)
     Box(modifier.clickable(interactionSource = null, indication = null, onClick = onTap)) {
         if (p == null) Text("사진이 없습니다.", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -252,7 +253,7 @@ private fun PhotoViewer(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 photos.forEachIndexed { i, ph ->
-                    FilterChip(i == index, { index = i }, label = { Text(when (ph.capture.lens) { "ZOOM" -> "망원"; "WIDE" -> "광각"; else -> ph.capture.lens }) })
+                    FilterChip(i == index, { onPhoto(i) }, label = { Text(when (ph.capture.lens) { "ZOOM" -> "망원"; "WIDE" -> "광각"; else -> ph.capture.lens }) })
                 }
             }
             p?.boxes?.takeIf { it.isNotEmpty() }?.let { boxes ->
@@ -302,21 +303,31 @@ private fun Photo(p: PhotoUi, modifier: Modifier) {
     val bitmap by produceState<ImageBitmap?>(null, p.capture.filePath) {
         value = withContext(Dispatchers.IO) { p.capture.filePath?.let { BitmapFactory.decodeFile(it) }?.asImageBitmap() }
     }
+    val measurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelMedium.copy(color = Color.Black, fontWeight = FontWeight.Bold)
     Box(modifier) {
         val b = bitmap
         if (b != null) Image(b, contentDescription = "${p.capture.lens} 사진", modifier = Modifier.fillMaxSize())
         else Text("사진 파일 없음", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Canvas(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize().clipToBounds()) {
             val scale = b?.let { minOf(size.width / it.width, size.height / it.height) }
             val w = if (b != null) b.width * scale!! else size.width
             val h = if (b != null) b.height * scale!! else size.height
             val left = (size.width - w) / 2
             val top = (size.height - h) / 2
             p.boxes.forEach { d ->
-                drawRect(
-                    if (d.alert) DetectedBox else OtherBox, Offset(left + d.x * w, top + d.y * h), Size(d.w * w, d.h * h),
-                    style = Stroke(3.dp.toPx()),
-                )
+                val color = if (d.alert) DetectedBox else OtherBox
+                val box = Offset(left + d.x * w, top + d.y * h)
+                drawRect(color, box, Size(d.w * w, d.h * h), style = Stroke(3.dp.toPx()))
+                // 라벨은 상자 위 왼쪽에 붙이고, 위가 사진 밖이면 상자 안쪽 위에 둔다
+                val text = measurer.measure("${TargetLabels.title(d.label)} ${(d.score * 100).toInt()}%", labelStyle)
+                val pad = 4.dp.toPx()
+                val lw = text.size.width + pad * 2
+                val lh = text.size.height.toFloat()
+                val lx = box.x.coerceIn(0f, (size.width - lw).coerceAtLeast(0f))
+                val ly = if (box.y - lh >= top) box.y - lh else box.y
+                drawRect(color, Offset(lx, ly), Size(lw, lh))
+                drawText(text, topLeft = Offset(lx + pad, ly))
             }
         }
     }
@@ -347,7 +358,7 @@ private fun ReviewPanel(s: ResultUiState, vm: ResultViewModel, modifier: Modifie
             OutlinedTextField(s.draft.memo, vm::setMemo, placeholder = { Text("메모") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         }
         Text(
-            "5D 버튼: ↑↓ 전주 · ←→ 판정 · 누름 저장",
+            "5D: ↑↓ 전주 · ←→ 판정 · 누름 저장 · C1 광각/망원",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 12.dp),

@@ -50,6 +50,8 @@ data class ResultUiState(
     val filter: ResultFilter = ResultFilter.ALL,
     val selected: ResultRow? = null,
     val photos: List<PhotoUi> = emptyList(),
+    /** 크게 보는 사진(광각·망원). 화면 칩과 RC C1이 바꾼다. */
+    val photoIndex: Int = 0,
     val draft: ReviewDraft = ReviewDraft(),
     val tagOptions: List<String> = TargetLabels.names.keys.toList(),
     val message: String? = null,
@@ -137,14 +139,17 @@ class ResultViewModel(
         val draft = s.reviews[visitId]?.let { r ->
             ReviewDraft(ReviewVerdict.valueOf(r.verdict), r.tags.split(';').filter { it.isNotEmpty() }.toSet(), r.memo.orEmpty())
         } ?: ReviewDraft(tags = photos.flatMap { p -> p.boxes.filter { it.alert }.map { it.label } }.toSet())
-        s.copy(selected = row, photos = photos, draft = draft)
+        s.copy(selected = row, photos = photos, photoIndex = 0, draft = draft)
     }
 
     /** 5D 입력 정리: 가운데와 방향이 겹치면 둘 다 버린다(`FiveDGate`, 실측값은 현장에서 손에 맞게 고친다). */
     private val gate = FiveDGate()
 
+    /** RC 버튼(10장 ⑤): C1은 광각·망원 전환, 5D는 [gate]를 거친다. 그 밖의 버튼(일시정지 등)은 비행 화면 몫이다. */
     private fun on5d(b: RcButton) {
         Log.i("RcKey", "result $b")
+        if (b == RcButton.C1) return nextPhoto()
+        if (!b.name.startsWith("FIVE_D_")) return
         apply5d(gate.press(b, now()))
         viewModelScope.launch {
             delay(gate.settleMs)
@@ -165,6 +170,11 @@ class ResultViewModel(
             }
         }
     }
+
+    fun showPhoto(i: Int) = _state.update { it.copy(photoIndex = i.coerceIn(0, (it.photos.size - 1).coerceAtLeast(0))) }
+
+    /** 다음 사진(광각 → 망원 → 광각). */
+    fun nextPhoto() = _state.update { if (it.photos.isEmpty()) it else it.copy(photoIndex = (it.photoIndex + 1) % it.photos.size) }
 
     fun setVerdict(v: ReviewVerdict) = _state.update { it.copy(draft = it.draft.copy(verdict = v)) }
 

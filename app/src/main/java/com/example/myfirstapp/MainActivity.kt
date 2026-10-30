@@ -16,6 +16,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
@@ -58,6 +59,15 @@ class MainActivity : ComponentActivity() {
             dao.openSortieMission()?.let {
                 nav.navigate("missions/${it.projectId}")
                 nav.navigate("flight/${it.projectId}/${it.missionId}")
+            }
+        }
+        // RC 5D ← = 뒤로(10장). 첫 화면(앱 종료), 비행 화면(안전), 판독 화면(←→ 판정)은 제외한다.
+        LaunchedEffect(Unit) {
+            (application as InspectionApp).rcButtons.collect { b ->
+                val route = nav.currentDestination?.route ?: return@collect
+                if (b == RcButton.FIVE_D_LEFT && route != "projects" && !route.startsWith("flight") && !route.startsWith("result")) {
+                    onBackPressedDispatcher.onBackPressed()
+                }
             }
         }
         NavHost(nav, startDestination = "projects") {
