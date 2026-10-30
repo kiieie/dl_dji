@@ -303,6 +303,10 @@ interface ProjectDao {
     @Query("DELETE FROM project WHERE id = :projectId")
     suspend fun deleteProject(projectId: Long)
 
+    /** 미션(비행경로)과 그 소티·방문·사진 기록·판독을 지운다(외래 키 CASCADE). */
+    @Query("DELETE FROM mission WHERE id = :missionId")
+    suspend fun deleteMission(missionId: Long)
+
     @Insert
     suspend fun insertMission(mission: MissionEntity): Long
 

@@ -124,9 +124,11 @@ class MainActivity : ComponentActivity() {
             composable("projects") {
                 ProjectScreen(
                     dao,
-                    onOpenProject = { nav.navigate("missions/${it.id}") },
-                    onOpenVerification = { nav.navigate("verify") },
-                    onOpenSettings = { nav.navigate("settings") },
+                    onBack = { nav.popBackStack() },
+                    onNewPlan = { pid -> nav.navigate("map/$pid") },
+                    onFlight = { pid, mid -> nav.navigate("flight/$pid/$mid") },
+                    onReplan = { pid, mid -> nav.navigate("map/$pid?replan=$mid") },
+                    onResult = { pid, mid -> nav.navigate("result/$pid/$mid") },
                 )
             }
             composable("missions/{pid}", listOf(navArgument("pid") { type = NavType.LongType })) { e ->

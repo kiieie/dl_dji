@@ -1,5 +1,9 @@
 package com.example.myfirstapp.ui.mission
 
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.text.font.FontWeight
+import java.io.File
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,8 +62,14 @@ fun MissionListScreen(
     onFlight: (missionId: Long) -> Unit,
     onReplan: (missionId: Long) -> Unit,
     onResult: (missionId: Long) -> Unit,
+    /** 비행경로 화면 오른쪽에 넣을 때 true: 뒤로 버튼을 빼고 프로젝트마다 따로 ViewModel을 둔다. */
+    embedded: Boolean = false,
 ) {
-    val vm: MissionListViewModel = viewModel(factory = MissionListViewModel.factory(dao, projectId))
+    val files = LocalContext.current.getExternalFilesDir(null)
+    val vm: MissionListViewModel = viewModel(
+        key = "missions-$projectId",
+        factory = MissionListViewModel.factory(dao, projectId) { mid -> files?.let { File(it, "projects/$projectId/missions/$mid") } },
+    )
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(vm) {
         vm.nav.collect { n ->
@@ -69,7 +79,7 @@ fun MissionListScreen(
             }
         }
     }
-    MissionListContent(s, vm, onBack, onNewPlan, onResult)
+    MissionListContent(s, vm, onBack.takeUnless { embedded }, onNewPlan, onResult)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,7 +87,7 @@ fun MissionListScreen(
 private fun MissionListContent(
     s: MissionListUiState,
     vm: MissionListViewModel,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onNewPlan: () -> Unit,
     onResult: (Long) -> Unit,
 ) {
@@ -86,9 +96,9 @@ private fun MissionListContent(
             TopAppBar(
                 title = { Text(s.projectName) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "나가기") }
+                    onBack?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "나가기") } }
                 },
-                actions = { FilledTonalButton(onClick = onNewPlan, modifier = Modifier.padding(end = 16.dp)) { Text("+ 새 계획") } },
+                actions = { Button(onClick = onNewPlan, modifier = Modifier.padding(end = 16.dp).heightIn(min = 48.dp)) { Text("+ 새 계획") } },
             )
         },
     ) { padding ->
@@ -102,9 +112,20 @@ private fun MissionListContent(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(s.missions, key = { it.id }) { m -> MissionCard(m, onFly = { vm.fly(m) }, onResult = { onResult(m.id) }) }
+                items(s.missions, key = { it.id }) { m -> MissionCard(m, onFly = { vm.fly(m) }, onResult = { onResult(m.id) }, onDelete = { vm.askDelete(m) }) }
             }
         }
+    }
+    s.deleting?.let { m ->
+        AlertDialog(
+            onDismissRequest = vm::dismissDelete,
+            title = { Text("미션 #${m.id} 삭제") },
+            text = { Text("계획(소티 ${m.sortieCount}개, 전주 ${m.poleCount}개)과 사진 ${m.doneCount}개 전주의 기록·판독을 모두 지웁니다. 되돌릴 수 없습니다. 필요하면 먼저 결과를 내보내세요.") },
+            confirmButton = {
+                TextButton(onClick = vm::confirmDelete, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("삭제") }
+            },
+            dismissButton = { TextButton(onClick = vm::dismissDelete) { Text("취소") } },
+        )
     }
     s.confirm?.let { m ->
         AlertDialog(
@@ -127,33 +148,36 @@ private fun MissionListContent(
     }
 }
 
+/** 미션 카드: 위에 상태·진행, 아래에 버튼(자주 쓰는 비행이 가장 크고, 삭제는 작게 오른쪽 끝). */
 @Composable
-private fun MissionCard(m: MissionSummary, onFly: () -> Unit, onResult: () -> Unit) {
+private fun MissionCard(m: MissionSummary, onFly: () -> Unit, onResult: () -> Unit, onDelete: () -> Unit) {
     Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("미션 #${m.id} · ${STATUS_TITLE[m.status] ?: m.status}", style = MaterialTheme.typography.titleMedium)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("미션 #${m.id}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(STATUS_TITLE[m.status] ?: m.status, color = MaterialTheme.colorScheme.primary)
                 Text(
-                    listOfNotNull(
-                        "소티 ${m.sortieCount}", "완료 ${m.doneCount}/${m.poleCount}",
-                        "남은 전주 ${m.remainingCount}".takeIf { m.remainingCount > 0 && m.status != "PARTIAL" },
-                        m.lastFlightAt?.let { "마지막 비행 ${time(it)}" } ?: "계획 ${time(m.createdAt)}",
-                    ).joinToString(" · "),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    m.lastFlightAt?.let { "마지막 비행 ${time(it)}" } ?: "계획 ${time(m.createdAt)}",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                    modifier = Modifier.weight(1f),
                 )
-                LinearProgressIndicator(
-                    progress = { if (m.poleCount == 0) 0f else m.doneCount.toFloat() / m.poleCount },
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                )
+                Text("검출 ${m.detectedCount}", color = if (m.detectedCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text("판독 ${m.reviewedCount}/${m.doneCount}", maxLines = 1)
             }
-            Column(Modifier.width(160.dp)) {
-                Text("검출 ${m.detectedCount}", color = if (m.detectedCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("1차 판독 ${m.reviewedCount}/${m.doneCount}")
-            }
-            if (m.doneCount > 0) OutlinedButton(onClick = onResult, modifier = Modifier.heightIn(min = 48.dp)) { Text("결과·판독") }
-            when {
-                m.status == "PLANNED" -> Button(onClick = onFly, modifier = Modifier.heightIn(min = 48.dp)) { Text("비행 시작") }
-                m.remainingCount > 0 && m.status != "PARTIAL" -> Button(onClick = onFly, modifier = Modifier.heightIn(min = 48.dp)) { Text("이어하기") }
+            Text(
+                listOfNotNull("완료 ${m.doneCount}/${m.poleCount}", "남은 ${m.remainingCount}".takeIf { m.remainingCount > 0 && m.status != "PARTIAL" }, "소티 ${m.sortieCount}")
+                    .joinToString(" · "),
+                maxLines = 1,
+            )
+            LinearProgressIndicator(progress = { if (m.poleCount == 0) 0f else m.doneCount.toFloat() / m.poleCount }, modifier = Modifier.fillMaxWidth())
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                when {
+                    m.status == "PLANNED" -> Button(onClick = onFly, modifier = Modifier.heightIn(min = 52.dp)) { Text("비행 시작") }
+                    m.remainingCount > 0 && m.status != "PARTIAL" -> Button(onClick = onFly, modifier = Modifier.heightIn(min = 52.dp)) { Text("이어하기") }
+                }
+                if (m.doneCount > 0) OutlinedButton(onClick = onResult, modifier = Modifier.heightIn(min = 52.dp)) { Text("결과·판독") }
+                Box(Modifier.weight(1f))
+                TextButton(onClick = onDelete, modifier = Modifier.heightIn(min = 48.dp)) { Text("삭제", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
     }
