@@ -22,7 +22,7 @@ import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.SortieDraft
 import com.example.myfirstapp.data.copyMbtiles
 import com.example.myfirstapp.data.listMbtiles
-import com.example.myfirstapp.data.onlineSatelliteTiles
+import com.example.myfirstapp.data.onlineSatelliteTilesRetrying
 import com.example.myfirstapp.data.toJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -92,7 +92,7 @@ class PlanViewModel(
         }
         replanFrom?.let { viewModelScope.launch { seedReplan(it) } }
         viewModelScope.launch { currentLocation()?.let(::seedHome) }
-        viewModelScope.launch { onlineSatelliteTiles().let { urls -> _state.update { it.copy(onlineTiles = urls) } } }
+        viewModelScope.launch { onlineSatelliteTilesRetrying().let { urls -> _state.update { it.copy(onlineTiles = urls) } } }
     }
 
     /** 이륙 지점이 아직 없으면 지금 위치로 두고, 그 둘레 약 500m로 지도를 옮긴다. */

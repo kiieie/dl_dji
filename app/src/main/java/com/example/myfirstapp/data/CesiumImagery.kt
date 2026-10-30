@@ -1,5 +1,6 @@
 package com.example.myfirstapp.data
 
+import kotlinx.coroutines.delay
 import android.util.Log
 import com.example.myfirstapp.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -31,8 +32,17 @@ suspend fun cesiumBingTileUrls(token: String): List<String> = withContext(Dispat
 suspend fun onlineSatelliteTiles(): List<String> {
     if (BuildConfig.CESIUM_ION_TOKEN.isBlank()) return emptyList()
     return runCatching { cesiumBingTileUrls(BuildConfig.CESIUM_ION_TOKEN) }
-        .onFailure { Log.w("CesiumImagery", "온라인 위성 배경 실패", it) }
+        .onFailure { Log.w("CesiumImagery", "온라인 위성 배경 실패: $it") } // UnknownHostException은 Log가 스택을 지우므로 메시지로 남긴다
         .getOrDefault(emptyList())
+}
+
+/** 받을 때까지 10초마다 다시 시도한다(화면을 연 뒤에 인터넷이 붙는 경우). 토큰이 없으면 바로 빈 목록. 화면을 닫으면 취소된다. */
+suspend fun onlineSatelliteTilesRetrying(): List<String> {
+    if (BuildConfig.CESIUM_ION_TOKEN.isBlank()) return emptyList()
+    while (true) {
+        onlineSatelliteTiles().takeIf { it.isNotEmpty() }?.let { return it }
+        delay(10_000)
+    }
 }
 
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")

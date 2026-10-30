@@ -29,7 +29,7 @@ import com.example.myfirstapp.data.RoomRecorder
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.fakePhotoSource
 import com.example.myfirstapp.data.listMbtiles
-import com.example.myfirstapp.data.onlineSatelliteTiles
+import com.example.myfirstapp.data.onlineSatelliteTilesRetrying
 import com.example.myfirstapp.data.toEntity
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.detect.TfliteYoloDetector
@@ -111,8 +111,9 @@ class FlightViewModel(
         viewModelScope.launch { rcButtons.collect(::onRcButton) }
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
-            val tiles = onlineSatelliteTiles()
-            _state.update { it.copy(mapFiles = files, onlineTiles = tiles) }
+            _state.update { it.copy(mapFiles = files) }
+            val tiles = onlineSatelliteTilesRetrying()
+            _state.update { it.copy(onlineTiles = tiles) }
         }
     }
 
