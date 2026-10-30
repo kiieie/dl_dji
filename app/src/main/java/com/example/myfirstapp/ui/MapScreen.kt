@@ -366,7 +366,7 @@ private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boole
     }
 }
 
-private fun perPole(p: FlightParams) = if (p.shotMode == ShotMode.DIAGONAL4) 4 else 1
+internal fun perPole(p: FlightParams) = if (p.shotMode == ShotMode.DIAGONAL4) 4 else 1
 
 /**
  * 경로 설정(6.3, Pilot 2 비행경로 설정): 촬영 방식(5.6)과 핵심 파라미터. 한 줄에 하나씩 이름·범위와 [−][+].

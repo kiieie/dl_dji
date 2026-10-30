@@ -5,7 +5,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.ShotMode
+import com.example.myfirstapp.data.MissionVisitRow
+import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.drone.AircraftStatus
+import com.example.myfirstapp.ui.perPole
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,8 +18,23 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 홈 [이어서 비행]·[앨범]과 수동 비행 화면의 경로 알약이 여는 가장 최근 미션. */
-data class LatestMission(val projectId: Long, val missionId: Long, val projectName: String, val done: Int, val total: Int) {
+/** 홈 카드 경로 미리보기의 전주 한 점. */
+data class RoutePoint(val lat: Double, val lon: Double, val done: Boolean)
+
+/** 홈 [미션 비행 시작]·[앨범]과 수동 비행 화면의 경로 알약이 여는 가장 최근 미션. [route]는 소티마다 방문 순서. */
+data class LatestMission(
+    val projectId: Long,
+    val missionId: Long,
+    val projectName: String,
+    val done: Int,
+    val total: Int,
+    val status: String = "PLANNED",
+    val sorties: Int = 0,
+    val photos: Int = 0,
+    val shotMode: ShotMode = ShotMode.OVERHEAD,
+    val home: GeoPoint? = null,
+    val route: List<List<RoutePoint>> = emptyList(),
+) {
     val remaining get() = total - done
 }
 
@@ -22,8 +42,14 @@ data class LatestMission(val projectId: Long, val missionId: Long, val projectNa
 suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     val m = dao.latestMission() ?: return null
     val visits = dao.missionVisits(m.id)
-    val done = visits.count { it.status != "PENDING" && it.status != "IN_PROGRESS" }
-    return LatestMission(m.projectId, m.id, dao.projectName(m.projectId).orEmpty(), done, visits.size)
+    val isDone = { v: MissionVisitRow -> v.status != "PENDING" && v.status != "IN_PROGRESS" }
+    val params = flightParamsFromJson(m.flightParams)
+    val route = visits.groupBy { it.sortieId }.values.map { s -> s.map { RoutePoint(it.lat, it.lon, isDone(it)) } }
+    return LatestMission(
+        m.projectId, m.id, dao.projectName(m.projectId).orEmpty(), visits.count(isDone), visits.size,
+        status = m.status, sorties = route.size, photos = visits.size * perPole(params), shotMode = params.shotMode,
+        home = GeoPoint(m.homeLat, m.homeLon), route = route,
+    )
 }
 
 data class HomeUiState(val aircraft: AircraftStatus = AircraftStatus(), val latest: LatestMission? = null)
