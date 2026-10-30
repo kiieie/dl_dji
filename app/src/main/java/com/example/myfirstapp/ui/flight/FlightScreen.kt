@@ -68,6 +68,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.executor.PreflightCheck
+import com.example.myfirstapp.core.executor.PreflightEvaluator
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.data.ProjectDao
@@ -313,20 +314,23 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
                         }
                     }
                 }
-                val connected = items.firstOrNull()?.ok == true
+                val blocked = PreflightEvaluator.blocked(items)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                     if (ok) {
                         Button(onClick = { vm.confirmPreflight() }, modifier = Modifier.height(44.dp), shape = RoundedCornerShape(4.dp)) { Text("업로드 후 시작") }
                     } else {
-                        // Pilot 2처럼 경고가 있어도 조종사가 확인하고 시작할 수 있다. 기체 연결이 없으면 시작할 수 없다
+                        // Pilot 2처럼 경고가 있어도 조종사가 확인하고 시작할 수 있다. 기체 연결이 없거나 LDM이 꺼져 있으면 시작할 수 없다
                         Button(
-                            onClick = { vm.confirmPreflight(ignoreWarnings = true) }, enabled = connected,
+                            onClick = { vm.confirmPreflight(ignoreWarnings = true) }, enabled = !blocked,
                             colors = ButtonDefaults.buttonColors(containerColor = PolePending, contentColor = Color.Black),
                             modifier = Modifier.height(44.dp), shape = RoundedCornerShape(4.dp),
                         ) { Text("경고 확인하고 시작") }
                     }
                     TextButton(onClick = vm::closePreflight, modifier = Modifier.height(36.dp)) { Text("취소") }
-                    if (!ok) Text("▲ ${items.count { !it.ok }}개 항목을 확인하세요", color = PoleFailed, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
+                    if (!ok) Text(
+                        items.firstOrNull { !it.ok && it.blocking }?.problem ?: "▲ ${items.count { !it.ok }}개 항목을 확인하세요",
+                        color = PoleFailed, maxLines = 2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }

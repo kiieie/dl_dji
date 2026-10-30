@@ -42,8 +42,11 @@ private val ERROR = AircraftStatus.Level.ERROR
 /** 나침반 보정 안내(Pilot 2 나침반 보정 순서). 앱은 보정을 시작하지 않는다(조종사가 확인하고 Pilot 2식 절차로). */
 const val COMPASS_GUIDE = "철골·자동차·전선에서 떨어진 곳에서 기체를 수평으로 들고 한 바퀴, 기수를 아래로 세워 한 바퀴 돌립니다. 끝나면 [다시 점검]으로 확인하세요."
 
-/** SDK에서 기체 점검 값을 읽는다(각 2초 안, 못 읽으면 "--"). */
-suspend fun djiAircraftCheck(): AircraftCheck = runCatching {
+/**
+ * SDK에서 기체 점검 값을 읽는다(각 2초 안, 못 읽으면 "--" 주의). [rthNeedM]은 비행 기본값의 RTH 고도(이동 고도 + 10m):
+ * 기체 RTH 고도가 이보다 낮으면 복귀 중 전선·전주 위를 낮게 지날 수 있어 주의로 보인다.
+ */
+suspend fun djiAircraftCheck(rthNeedM: Double? = null): AircraftCheck = runCatching {
     val keys = KeyManager.getInstance()
     suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(2_000) {
         val key = if (index == null) KeyTools.createKey(info) else KeyTools.createKey(info, index)
@@ -78,7 +81,7 @@ suspend fun djiAircraftCheck(): AircraftCheck = runCatching {
     val items = listOf(
         CheckItem(
             "나침반", when (compassError) { true -> "간섭 감지 · 보정 필요"; false -> "정상"; null -> "--" },
-            if (compassError == true) ERROR else OK, COMPASS_GUIDE.takeIf { compassError == true },
+            when (compassError) { true -> ERROR; false -> OK; null -> WARN }, COMPASS_GUIDE.takeIf { compassError == true },
         ),
         CheckItem("비행 모드", mode?.let { "$it · 자동 비행은 N에서만" } ?: "--", if (mode == 'N') OK else WARN),
         CheckItem(
@@ -86,8 +89,12 @@ suspend fun djiAircraftCheck(): AircraftCheck = runCatching {
             if ((pct ?: 100) < 30) WARN else OK,
         ),
         CheckItem("GNSS", "위성 ${sats ?: "--"} · ${if (home == true) "홈 기록됨" else "홈 기록 전"}", if ((sats ?: 0) >= 8 && home == true) OK else WARN),
-        CheckItem("IMU", if (imuWarming == true) "예열 중" else "예열 완료", if (imuWarming == true) WARN else OK),
-        CheckItem("RTH 고도", "${rth ?: "--"} m · 최고 고도 ${limit ?: "--"} m", OK),
+        CheckItem("IMU", when (imuWarming) { true -> "예열 중"; false -> "예열 완료"; null -> "--" }, if (imuWarming == false) OK else WARN),
+        CheckItem(
+            "RTH 고도",
+            "${rth ?: "--"} m · 최고 고도 ${limit ?: "--"} m" + if (rth != null && rthNeedM != null && rth < rthNeedM) " · 미션 복귀 ${rthNeedM.toInt()} m보다 낮음" else "",
+            if (rth == null || (rthNeedM != null && rth < rthNeedM)) WARN else OK,
+        ),
         CheckItem(
             "저장 공간", if (sdState == null || sdState == "NORMAL") sdFree?.let { "%.1f GB 남음".format(it / 1024.0) } ?: "--" else "SD $sdState",
             if (sdState != null && sdState != "NORMAL") ERROR else if ((sdFree ?: Int.MAX_VALUE) < 2048) WARN else OK,

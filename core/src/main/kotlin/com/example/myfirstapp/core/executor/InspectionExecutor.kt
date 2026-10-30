@@ -111,7 +111,7 @@ class InspectionExecutor(
     }
 
     private sealed interface StepResult {
-        data class PreflightDone(val failures: List<String>, val home: GeoPoint?) : StepResult
+        data class PreflightDone(val failures: List<String>, val home: GeoPoint?, val blocked: Boolean) : StepResult
         data class TakeoffDone(val ok: Boolean) : StepResult
         /** [terrainRejected]: 지형 추적 미션을 기체가 시작하지 않음(이륙 기준으로 바꿀지 묻는다). */
         data class LegReady(val ok: Boolean, val reason: String, val terrainRejected: Boolean = false) : StepResult
@@ -290,8 +290,8 @@ class InspectionExecutor(
         when (r) {
             is StepResult.PreflightDone -> {
                 preflightFailures = r.failures
-                // 운용자가 경고를 확인하고 시작했으면 연결 문제만 막는다
-                if (r.failures.isEmpty() || (ignoreWarnings && drone.telemetry.value.connected)) {
+                // 운용자가 경고를 확인하고 시작했으면 막는 항목(연결 없음, LDM 꺼짐)만 막는다
+                if (r.failures.isEmpty() || (ignoreWarnings && !r.blocked)) {
                     if (r.failures.isNotEmpty()) message = "점검 경고 ${r.failures.size}개를 확인하고 시작했습니다."
                     home = r.home
                     enter(Takeoff, "비행 전 점검 통과")
@@ -684,7 +684,8 @@ class InspectionExecutor(
                 val first = nextTarget()?.pole?.position
                 launchStep {
                     val report = drone.preflight()
-                    StepResult.PreflightDone(PreflightEvaluator.evaluate(report, params, plan.estBatteryPct, first), report.home)
+                    val checks = PreflightEvaluator.checklist(report, params, plan.estBatteryPct, first)
+                    StepResult.PreflightDone(checks.filterNot { it.ok }.map { it.problem }, report.home, PreflightEvaluator.blocked(checks))
                 }
             }
             Takeoff -> launchStep {

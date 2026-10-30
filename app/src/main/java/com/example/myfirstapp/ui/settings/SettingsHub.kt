@@ -64,6 +64,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import com.example.myfirstapp.InspectionApp
+import kotlinx.coroutines.flow.first
 import com.example.myfirstapp.core.input.fiveD
 import com.example.myfirstapp.core.input.moveIndex
 import com.example.myfirstapp.core.port.RcButton
@@ -89,7 +90,10 @@ import com.example.myfirstapp.ui.Stepper
  */
 @Composable
 fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false) {
-    val vm: AircraftSettingsViewModel = viewModel(factory = AircraftSettingsViewModel.factory(::djiAircraftSettingTabs, ::djiAircraftCheck))
+    val settings = (LocalContext.current.applicationContext as InspectionApp).settings
+    val vm: AircraftSettingsViewModel = viewModel(
+        factory = AircraftSettingsViewModel.factory(::djiAircraftSettingTabs) { djiAircraftCheck(settings.flightDefaults.first().rthAltitudeM) },
+    )
     val s by vm.state.collectAsStateWithLifecycle()
     // 0 상태 점검, 1..n 기체 탭, n+1 일반
     val general = vm.tabs.size + 1

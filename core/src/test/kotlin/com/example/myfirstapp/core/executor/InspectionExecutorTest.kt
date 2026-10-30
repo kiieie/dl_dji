@@ -311,6 +311,20 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `경고를 확인하고 시작해도 LDM이 꺼져 있으면 막고, 그 밖의 경고는 시작한다`() = runTest {
+        val h = harness()
+        h.drone.preflightReport = h.drone.preflightReport.copy(obstacleAvoidanceOn = false, ldmEnabled = false)
+        h.send(Command.StartIgnoringWarnings)
+        h.awaitUntil { h.recorder.transitions.size >= 2 }
+        assertEquals(ExecState.Idle, h.state)
+        assertTrue("takeoff" !in h.drone.calls)
+
+        h.drone.preflightReport = h.drone.preflightReport.copy(ldmEnabled = true)
+        h.send(Command.StartIgnoringWarnings)
+        h.awaitState(ExecState.FlyingLeg)
+    }
+
+    @Test
     fun `일시정지 중 사진 없는 전주는 완료 처리할 수 없고 건너뛰기는 가능`() = runTest {
         val h = harness()
         h.send(Command.Start)

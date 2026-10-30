@@ -5,8 +5,11 @@ import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.port.PreflightReport
 import com.example.myfirstapp.core.route.LocalProjection
 
-/** 비행 전 점검 항목 하나(Pilot 2 비행 전 체크리스트처럼 값과 통과 여부를 함께 보여 준다). [problem]은 실패 때의 사유다. */
-data class PreflightCheck(val label: String, val value: String, val ok: Boolean, val problem: String)
+/**
+ * 비행 전 점검 항목 하나(Pilot 2 비행 전 체크리스트처럼 값과 통과 여부를 함께 보여 준다). [problem]은 실패 때의 사유다.
+ * [blocking]이면 실패할 때 운용자가 경고를 확인해도 시작할 수 없다(기체 연결, LDM — 데이터 주권 7.2, 2026-10-30 사용자 결정).
+ */
+data class PreflightCheck(val label: String, val value: String, val ok: Boolean, val problem: String, val blocking: Boolean = false)
 
 /** 비행 전 점검 판정(6.7). */
 object PreflightEvaluator {
@@ -23,7 +26,7 @@ object PreflightEvaluator {
         sortieEstBatteryPct: Double,
         firstPole: GeoPoint?,
     ): List<PreflightCheck> {
-        if (!report.connected) return listOf(PreflightCheck("기체 연결", "연결 안 됨", false, "기체가 연결되지 않았습니다."))
+        if (!report.connected) return listOf(PreflightCheck("기체 연결", "연결 안 됨", false, "기체가 연결되지 않았습니다.", blocking = true))
         val need = sortieEstBatteryPct + params.batteryReservePct
         val firstDist = if (report.home != null && firstPole != null) LocalProjection.distanceM(report.home, firstPole) else null
         return listOf(
@@ -40,7 +43,10 @@ object PreflightEvaluator {
             ),
             PreflightCheck("배터리 온도", "${report.batteryTempC}℃", report.batteryTempC in BATTERY_TEMP_RANGE, "배터리 온도가 범위를 벗어났습니다(${report.batteryTempC}℃)."),
             PreflightCheck("SD 카드", "${report.sdFreeMb / 1024}GB 남음", report.sdFreeMb >= MIN_SD_FREE_MB, "SD 카드 여유 공간이 부족합니다(${report.sdFreeMb}MB)."),
-            PreflightCheck("LDM", if (report.ldmEnabled) "켜짐" else "꺼짐", report.ldmEnabled, "LDM(로컬 데이터 모드)이 꺼져 있습니다."),
+            PreflightCheck(
+                "LDM", if (report.ldmEnabled) "켜짐" else "꺼짐 · 시작 불가", report.ldmEnabled,
+                "LDM(로컬 데이터 모드)이 꺼져 있어 비행을 시작할 수 없습니다. 조종기 Wi-Fi·SIM을 끄고 앱을 다시 시작하세요.", blocking = true,
+            ),
             PreflightCheck("장애물 감지", if (report.obstacleAvoidanceOn) "켜짐" else "꺼짐", report.obstacleAvoidanceOn, "장애물 회피가 꺼져 있습니다."),
             PreflightCheck("RTH 고도", "${report.rthAltitudeM.toInt()}m", report.rthAltitudeM <= FlightParams.MAX_ALTITUDE_M, "RTH 고도가 150m를 넘습니다(${report.rthAltitudeM}m)."),
             PreflightCheck("신호 상실 동작", if (report.lostLinkActionIsRth) "RTH" else "RTH 아님", report.lostLinkActionIsRth, "통신 상실 동작이 RTH가 아닙니다."),
@@ -50,6 +56,9 @@ object PreflightEvaluator {
             ),
         )
     }
+
+    /** 경고를 확인해도 시작할 수 없는 실패가 있는지. */
+    fun blocked(checks: List<PreflightCheck>) = checks.any { !it.ok && it.blocking }
 
     /** 실패 사유 목록. 비어 있으면 통과다. */
     fun evaluate(report: PreflightReport, params: FlightParams, sortieEstBatteryPct: Double, firstPole: GeoPoint?): List<String> =
