@@ -2,34 +2,36 @@ package com.example.myfirstapp.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import com.example.myfirstapp.ui.FullscreenAlertDialog
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,23 +40,29 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.myfirstapp.R
 import com.example.myfirstapp.core.csv.CsvImportResult
 import com.example.myfirstapp.core.csv.PoleCsvParser
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.ProjectSummary
 import com.example.myfirstapp.ui.mission.MissionListScreen
-import java.text.DateFormat
-import java.util.Date
+import com.example.myfirstapp.ui.theme.Accent
+import com.example.myfirstapp.ui.theme.TextSoft
+import com.example.myfirstapp.ui.theme.numberStyle
 
 /**
- * 비행경로 라이브러리(Pilot 2 비행경로, 10.0): 한 화면에 왼쪽 프로젝트 목록, 오른쪽 고른 프로젝트의 미션(마스터-디테일).
- * 전주 파일 가져오기는 자주 쓰지 않으므로 [+ 전주 파일] 대화상자로 둔다.
+ * 비행경로(10.4.3 시안): 머리글 아래 왼쪽 프로젝트 목록(216dp, 최신순 한 줄), 오른쪽 고른 프로젝트의 미션 표.
+ * 전주 파일 가져오기는 자주 쓰지 않으므로 [전주 파일] 대화상자로 둔다. 프로젝트 삭제는 줄을 길게 누른다.
  */
 @Composable
 fun ProjectScreen(
@@ -82,33 +90,51 @@ fun ProjectScreen(
     }
     val selected = s.projects.firstOrNull { it.id == selectedId } ?: s.projects.firstOrNull()
 
-    Row(Modifier.fillMaxSize()) {
-        Column(Modifier.width(260.dp).fillMaxHeight().padding(start = 4.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.height(56.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp)) { Text("‹", style = MaterialTheme.typography.headlineSmall) }
-                Text("비행경로", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                OutlinedButton(onClick = { importing = true }, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 12.dp)) { Text("+ 전주 파일") }
+    Column(Modifier.fillMaxSize()) {
+        // 머리글 40dp(10.4.2): 뒤로 · 가운데 제목 · [전주 파일] [새 계획]
+        Box(Modifier.fillMaxWidth().height(40.dp).padding(start = 4.dp, end = 10.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(32.dp).align(Alignment.CenterStart)) {
+                Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
             }
-            if (s.projects.isEmpty()) Text(
-                "프로젝트가 없습니다. [+ 전주 파일]로 전주 엑셀·CSV를 가져오세요.", style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp),
-            )
-            val listState = rememberLazyListState()
-            LaunchedEffect(s.projects.firstOrNull()?.id) { listState.scrollToItem(0) }
-            LazyColumn(state = listState, modifier = Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(s.projects, key = { it.id }) { p -> ProjectRow(p, p.id == selected?.id, onClick = { selectedId = p.id }, onDelete = { vm.askDelete(p) }) }
+            Text("비행경로", Modifier.align(Alignment.Center), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                HeaderButton(R.drawable.ic_import, "전주 파일") { importing = true }
+                HeaderButton(R.drawable.ic_add, "새 계획", enabled = selected != null) { selected?.let { onNewPlan(it.id) } }
             }
         }
-        VerticalDivider()
-        Column(Modifier.weight(1f).fillMaxHeight()) {
-            if (selected != null) {
-                MissionListScreen(
-                    selected.id, dao,
-                    onNewPlan = { onNewPlan(selected.id) },
-                    onFlight = { onFlight(selected.id, it) },
-                    onReplan = { onReplan(selected.id, it) },
-                    onResult = { onResult(selected.id, it) },
-                )
+        Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(Modifier.width(216.dp).fillMaxHeight(), shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Column {
+                    Row(Modifier.fillMaxWidth().height(30.dp).padding(start = 12.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("프로젝트 · 최신순", Modifier.weight(1f), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("전주", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    if (s.projects.isEmpty()) Text(
+                        "프로젝트가 없습니다. [전주 파일]로 배전 설비 엑셀·CSV를 가져오세요.", fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp),
+                    )
+                    val listState = rememberLazyListState()
+                    LaunchedEffect(s.projects.firstOrNull()?.id) { listState.scrollToItem(0) }
+                    LazyColumn(
+                        Modifier.fillMaxSize().scrollbar(listState), state = listState,
+                        contentPadding = PaddingValues(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        items(s.projects, key = { it.id }) { p -> ProjectRow(p, p.id == selected?.id, onClick = { selectedId = p.id }, onDelete = { vm.askDelete(p) }) }
+                    }
+                }
+            }
+            Surface(Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                if (selected != null) {
+                    MissionListScreen(
+                        selected.id, dao,
+                        onFlight = { onFlight(selected.id, it) },
+                        onReplan = { onReplan(selected.id, it) },
+                        onResult = { onResult(selected.id, it) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
@@ -137,26 +163,38 @@ fun ProjectScreen(
     }
 }
 
+/** 머리글 보조 버튼(30dp, #1C1C1C). */
+@Composable
+private fun HeaderButton(icon: Int, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Button(
+        onClick = onClick, enabled = enabled, modifier = Modifier.height(30.dp), shape = RoundedCornerShape(4.dp),
+        contentPadding = PaddingValues(horizontal = 10.dp),
+        colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
+    ) {
+        Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(12.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, fontSize = 11.sp)
+    }
+}
+
+/** 프로젝트 한 줄(36dp): 이름과 전주 수. 고른 줄은 #2A2A2A + 왼쪽 3dp 파랑 막대. 길게 누르면 삭제를 묻는다. */
 @Composable
 private fun ProjectRow(p: ProjectSummary, selected: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
-    // 고른 프로젝트는 왼쪽 강조 막대와 밝은 바탕(Pilot 2 라이브러리의 선택 카드 테두리 자리)
-    Surface(
-        onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = if (selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)) else null,
+    Row(
+        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(4.dp))
+            .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onDelete),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "전주 ${p.poleCount}개 · ${DateFormat.getDateInstance(DateFormat.SHORT).format(Date(p.createdAt))}",
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                )
-            }
-            TextButton(onClick = onDelete, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 10.dp)) {
-                Text("삭제", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
+        Text(
+            p.name, Modifier.weight(1f).padding(start = 8.dp), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Color.White else TextSoft,
+        )
+        Text(
+            "${p.poleCount}", Modifier.padding(start = 8.dp, end = 8.dp), style = numberStyle(13.sp, FontWeight.Medium),
+            color = if (selected) TextSoft else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

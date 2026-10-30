@@ -35,7 +35,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeJoin
@@ -64,6 +67,7 @@ import com.example.myfirstapp.ui.flight.PoleDone
 import com.example.myfirstapp.ui.flight.PoleFailed
 import com.example.myfirstapp.ui.flight.PolePending
 import com.example.myfirstapp.ui.mission.STATUS_TITLE
+import com.example.myfirstapp.ui.mission.statusColor
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.TextSoft
@@ -206,11 +210,7 @@ private fun MainButton(label: String, onClick: () -> Unit, play: Boolean = false
 
 @Composable
 private fun StatusBadge(status: String) {
-    val color = when (status) {
-        "DONE" -> MaterialTheme.colorScheme.tertiary
-        "IN_PROGRESS", "PARTIAL" -> Warning
-        else -> Accent
-    }
+    val color = statusColor(status)
     Text(
         STATUS_TITLE[status] ?: status, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color, lineHeight = 16.sp,
         modifier = Modifier.border(1.dp, color, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
@@ -231,13 +231,14 @@ private fun Figure(label: String, value: String, suffix: String = "") {
 }
 
 /**
- * 경로 미리보기: 소티마다 이륙 지점(H)에서 방문 순서대로 초록 선, 전주 점(끝남 초록, 남음 주황).
+ * 경로 미리보기: 소티마다 이륙 지점(H)에서 방문 순서대로 초록 선, 전주 점(끝남 초록, 남음 주황)과 전주번호.
  * 위경도를 위도 cos로 보정한 평면에 그대로 맞춘다(수 km 안의 미리보기라 충분).
  */
 @Composable
 private fun RoutePreview(m: LatestMission, modifier: Modifier) {
     val measurer = rememberTextMeasurer()
     val routeColor = MaterialTheme.colorScheme.tertiary
+    val labelStyle = numberStyle(11.sp, FontWeight.Medium).copy(color = TextSoft)
     Canvas(modifier) {
         val pts = m.route.flatten()
         if (pts.isEmpty()) return@Canvas
@@ -270,6 +271,20 @@ private fun RoutePreview(m: LatestMission, modifier: Modifier) {
             drawCircle(Color.Black, r + 1.2.dp.toPx(), c)
             drawCircle(if (p.done) routeColor else Warning, r, c)
         }
+        // 전주번호(10.4.3): 점 오른쪽 위, 어두운 바탕. 앞 번호와 겹치면 건너뛴다(방문 순서가 앞인 것이 남음). 많으면 모두 생략
+        if (pts.size <= MAX_LABELS) {
+            val placed = mutableListOf<Rect>()
+            val gap = 2.dp.toPx()
+            pts.forEach { p ->
+                val c = at(p.lat, p.lon)
+                val t = measurer.measure(p.label, labelStyle)
+                val box = Rect(Offset(c.x + r + gap, c.y - r - t.size.height), Size(t.size.width + 2 * gap, t.size.height.toFloat()))
+                if (placed.any { it.overlaps(box) }) return@forEach
+                placed += box
+                drawRoundRect(LabelBg, box.topLeft, box.size, CornerRadius(gap))
+                drawText(t, topLeft = Offset(box.left + gap, box.top))
+            }
+        }
         if (home != null) {
             drawCircle(Caution, 8.dp.toPx(), home)
             val t = measurer.measure("H", TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black))
@@ -277,6 +292,11 @@ private fun RoutePreview(m: LatestMission, modifier: Modifier) {
         }
     }
 }
+
+/** 미리보기에 전주번호를 쓰는 최대 전주 수. */
+private const val MAX_LABELS = 40
+
+private val LabelBg = Color(0xB3000000)
 
 /** 오른쪽 타일(Pilot 2 홈 타일): 위 아이콘, 아래 이름과 한 줄 설명. */
 @Composable

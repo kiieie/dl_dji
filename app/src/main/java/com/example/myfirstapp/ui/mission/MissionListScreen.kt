@@ -1,68 +1,97 @@
 package com.example.myfirstapp.ui.mission
 
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.ui.text.font.FontWeight
-import java.io.File
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import com.example.myfirstapp.ui.FullscreenAlertDialog
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.data.MissionSummary
 import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.data.flightParamsFromJson
+import com.example.myfirstapp.ui.FullscreenAlertDialog
+import com.example.myfirstapp.ui.perPole
+import com.example.myfirstapp.ui.scrollbar
+import com.example.myfirstapp.ui.theme.Accent
+import com.example.myfirstapp.ui.theme.TextSoft
+import com.example.myfirstapp.ui.theme.Warning
+import com.example.myfirstapp.ui.theme.numberStyle
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 internal val STATUS_TITLE = mapOf("PLANNED" to "계획됨", "IN_PROGRESS" to "진행 중", "DONE" to "완료", "PARTIAL" to "부분 완료")
 
-private fun time(ms: Long) = SimpleDateFormat("M/d HH:mm", Locale.KOREA).format(Date(ms))
+/** 상태 색(10.4.1): 계획됨 파랑, 진행 중·부분 완료 주황, 완료 초록. */
+@Composable
+internal fun statusColor(status: String) = when (status) {
+    "DONE" -> MaterialTheme.colorScheme.tertiary
+    "IN_PROGRESS", "PARTIAL" -> Warning
+    else -> Accent
+}
 
-/** 미션 목록 ①-1(10장): 프로젝트 안의 미션 카드와 [새 계획] [비행 시작] [이어하기] [결과·판독]. */
+private fun time(ms: Long) = SimpleDateFormat("MM-dd HH:mm", Locale.KOREA).format(Date(ms))
+
+/**
+ * 미션 표(10.4.3 비행경로 오른쪽): 미션·상태·전주·소티·사진·계획일, 최신이 맨 위.
+ * 고른 줄에만 채운 주 버튼, 나머지 줄은 회색 버튼과 ⋯(결과·삭제). 5D ↕ 고르기, ● 주 동작.
+ */
 @Composable
 fun MissionListScreen(
     projectId: Long,
     dao: ProjectDao,
-    onNewPlan: () -> Unit,
     onFlight: (missionId: Long) -> Unit,
     onReplan: (missionId: Long) -> Unit,
     onResult: (missionId: Long) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val files = LocalContext.current.getExternalFilesDir(null)
+    val context = LocalContext.current
+    val files = context.getExternalFilesDir(null)
     val vm: MissionListViewModel = viewModel(
         key = "missions-$projectId",
         factory = MissionListViewModel.factory(dao, projectId) { mid -> files?.let { File(it, "projects/$projectId/missions/$mid") } },
@@ -73,47 +102,58 @@ fun MissionListScreen(
             when (n) {
                 is MissionNav.Flight -> onFlight(n.missionId)
                 is MissionNav.Replan -> onReplan(n.missionId)
+                is MissionNav.Result -> onResult(n.missionId)
             }
         }
     }
-    MissionListContent(s, vm, onNewPlan, onResult)
+    // 5D는 이 표가 화면에 있을 때만, 고른 프로젝트의 ViewModel 하나에만 넘긴다
+    val rc = (context.applicationContext as InspectionApp).rcButtons
+    LaunchedEffect(vm) { rc.collect(vm::on5d) }
+    MissionListContent(s, vm, onResult, modifier)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** 열 너비: 미션, 상태, 전주, 소티, 사진(계획일은 남는 폭, 버튼 116dp). */
+private val COLS = listOf(48.dp, 76.dp, 64.dp, 44.dp, 44.dp)
+
 @Composable
-private fun MissionListContent(
-    s: MissionListUiState,
-    vm: MissionListViewModel,
-    onNewPlan: () -> Unit,
-    onResult: (Long) -> Unit,
-) {
-    Scaffold(
-        // 얇은 머리글(Pilot 2 비행경로 라이브러리, 매뉴얼 56쪽): 프로젝트 이름 · 미션 수 · [+ 새 계획]
-        topBar = {
-            Row(
-                Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(s.projectName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("미션 ${s.missions.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                Button(onClick = onNewPlan, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("+ 새 계획") }
-            }
-        },
-    ) { padding ->
+private fun MissionListContent(s: MissionListUiState, vm: MissionListViewModel, onResult: (Long) -> Unit, modifier: Modifier) {
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().height(30.dp).padding(start = 15.dp, end = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf("미션", "상태", "전주", "소티", "사진").forEachIndexed { i, t -> HeadText(t, Modifier.width(COLS[i])) }
+            HeadText("계획일", Modifier.weight(1f))
+            Spacer(Modifier.width(116.dp))
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         when {
-            s.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            s.missions.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("미션이 없습니다. [+ 새 계획]으로 점검 영역을 정하세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            s.loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            s.missions.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("미션이 없습니다. [새 계획]으로 점검 영역을 정하세요.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            else -> LazyColumn(
-                Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items(s.missions, key = { it.id }) { m -> MissionCard(m, onFly = { vm.fly(m) }, onResult = { onResult(m.id) }, onDelete = { vm.askDelete(m) }) }
+            else -> {
+                val list = rememberLazyListState()
+                val selected = s.selected
+                // 5D로 고른 줄이 화면 밖이면 따라간다
+                LaunchedEffect(selected?.id) {
+                    val i = s.missions.indexOf(selected)
+                    val visible = list.layoutInfo.visibleItemsInfo
+                    if (i >= 0 && visible.isNotEmpty() && (i <= visible.first().index || i >= visible.last().index)) list.animateScrollToItem(i)
+                }
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth().scrollbar(list),
+                    state = list, contentPadding = PaddingValues(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    items(s.missions, key = { it.id }) { m ->
+                        MissionRow(
+                            m, m.id == selected?.id,
+                            onSelect = { vm.select(m) }, onRun = { vm.run(m) }, onResult = { onResult(m.id) }, onDelete = { vm.askDelete(m) },
+                        )
+                    }
+                }
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        FiveDHints(Modifier.fillMaxWidth().height(26.dp).padding(horizontal = 14.dp))
     }
     s.deleting?.let { m ->
         FullscreenAlertDialog(
@@ -147,56 +187,78 @@ private fun MissionListContent(
     }
 }
 
-/** 버튼은 보이는 높이 36dp로 통일한다(누르는 영역은 Material3가 48dp로 잡아 준다, 10.1 장갑 조작). */
-internal val COMPACT_BUTTON = 36.dp
-internal val COMPACT_PADDING = PaddingValues(horizontal = 14.dp)
-
-/**
- * 미션 카드(Pilot 2 비행경로 라이브러리 카드, 매뉴얼 56쪽): 왼쪽에 이름·상태·시각과 진행 한 줄·얇은 막대,
- * 오른쪽에 작은 버튼(비행이 강조, 결과, 삭제는 흐리게).
- */
 @Composable
-private fun MissionCard(m: MissionSummary, onFly: () -> Unit, onResult: () -> Unit, onDelete: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(10.dp)) {
-        Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("미션 #${m.id}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text(
-                        STATUS_TITLE[m.status] ?: m.status, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
-                    )
-                    Text(
-                        m.lastFlightAt?.let { "비행 ${time(it)}" } ?: "계획 ${time(m.createdAt)}",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                    )
-                }
-                Text(
-                    listOfNotNull(
-                        "전주 ${m.doneCount}/${m.poleCount}",
-                        "남은 ${m.remainingCount}".takeIf { m.remainingCount > 0 && m.status != "PARTIAL" },
-                        "소티 ${m.sortieCount}",
-                        "검출 ${m.detectedCount}",
-                        "판독 ${m.reviewedCount}/${m.doneCount}",
-                    ).joinToString("  ·  "),
-                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                LinearProgressIndicator(
-                    progress = { if (m.poleCount == 0) 0f else m.doneCount.toFloat() / m.poleCount },
-                    modifier = Modifier.fillMaxWidth().height(3.dp),
-                    drawStopIndicator = {},
-                )
+private fun HeadText(text: String, modifier: Modifier) = Text(text, modifier, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+/** 목록 아래 5D 안내(10.4.2). */
+@Composable
+internal fun FiveDHints(modifier: Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)) {
+        listOf("5D ↕" to "고르기", "5D ●" to "실행", "5D ←" to "뒤로").forEach { (k, v) ->
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = TextSoft, fontWeight = FontWeight.SemiBold)) { append(k) }
+                    append(" $v")
+                },
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 미션 한 줄(40dp). 고른 줄은 #2A2A2A 바탕과 왼쪽 3dp 파랑 막대(10.4.1). */
+@Composable
+private fun MissionRow(m: MissionSummary, selected: Boolean, onSelect: () -> Unit, onRun: () -> Unit, onResult: () -> Unit, onDelete: () -> Unit) {
+    val action = m.primaryAction()
+    val photos = remember(m.flightParams, m.poleCount) { m.poleCount * perPole(flightParamsFromJson(m.flightParams)) }
+    val text = if (selected) Color.White else TextSoft
+    Surface(
+        onClick = onSelect, modifier = Modifier.fillMaxWidth().height(40.dp), shape = RoundedCornerShape(4.dp),
+        color = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
+            Text("#${m.id}", Modifier.width(COLS[0]).padding(start = 8.dp), style = numberStyle(15.sp), color = text)
+            Row(Modifier.width(COLS[1]), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                val c = statusColor(m.status)
+                Box(Modifier.size(6.dp).clip(CircleShape).background(c))
+                Text(STATUS_TITLE[m.status] ?: m.status, fontSize = 11.sp, color = c, maxLines = 1)
             }
-            Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                when {
-                    m.status == "PLANNED" -> Button(onClick = onFly, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("▶ 비행") }
-                    m.remainingCount > 0 && m.status != "PARTIAL" -> Button(onClick = onFly, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("▶ 이어하기") }
+            Text(
+                buildAnnotatedString {
+                    append("${m.doneCount}")
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("/${m.poleCount}") }
+                },
+                Modifier.width(COLS[2]), style = numberStyle(14.sp), color = text,
+            )
+            Text("${m.sortieCount}", Modifier.width(COLS[3]), style = numberStyle(14.sp), color = text)
+            Text("$photos", Modifier.width(COLS[4]), style = numberStyle(14.sp), color = text)
+            Text(
+                time(m.createdAt), Modifier.weight(1f), style = numberStyle(13.sp, FontWeight.Medium), maxLines = 1,
+                color = if (selected) TextSoft else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(Modifier.width(116.dp), horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                if (action != null) {
+                    Button(
+                        onClick = onRun, modifier = Modifier.width(84.dp).height(30.dp), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
+                        colors = if (selected) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
+                    ) { Text(action.label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
                 }
-                if (m.doneCount > 0) OutlinedButton(onClick = onResult, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("결과") }
-                TextButton(onClick = onDelete, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) {
-                    Text("삭제", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                MoreMenu(showResult = m.doneCount > 0 && action != MissionAction.RESULT, onResult, onDelete)
             }
+        }
+    }
+}
+
+/** ⋯ 메뉴: 결과(주 버튼이 결과가 아닐 때), 삭제. */
+@Composable
+private fun MoreMenu(showResult: Boolean, onResult: () -> Unit, onDelete: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }, modifier = Modifier.size(28.dp, 30.dp)) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
+        DropdownMenu(open, onDismissRequest = { open = false }) {
+            if (showResult) DropdownMenuItem(text = { Text("결과") }, onClick = { open = false; onResult() })
+            DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { open = false; onDelete() })
         }
     }
 }

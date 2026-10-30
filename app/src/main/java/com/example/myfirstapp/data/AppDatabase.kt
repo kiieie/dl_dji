@@ -283,6 +283,8 @@ data class MissionSummary(
     val id: Long,
     val status: String,
     val createdAt: Long,
+    /** 계획 시점 비행 파라미터(JSON), 사진 수 계산용. */
+    val flightParams: String,
     val sortieCount: Int,
     val poleCount: Int,
     val doneCount: Int,
@@ -431,7 +433,7 @@ interface ProjectDao {
     suspend fun insertReview(review: ReviewEntity): Long
 
     @Query(
-        "SELECT m.id, m.status, m.createdAt, " +
+        "SELECT m.id, m.status, m.createdAt, m.flightParams, " +
             "(SELECT COUNT(*) FROM sortie s WHERE s.missionId = m.id) AS sortieCount, " +
             "(SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS poleCount, " +
             "(SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id AND v.status = 'DONE') AS doneCount, " +
