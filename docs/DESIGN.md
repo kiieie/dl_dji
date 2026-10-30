@@ -26,6 +26,7 @@
 | 7–8 | 데이터 보안(LDM), 오프라인 지도, 안전 설계 | [design/04-security-safety.md](design/04-security-safety.md) |
 | 9 | 탐지(YOLO) 모델 규격과 파이프라인 | [design/05-detection.md](design/05-detection.md) |
 | 10–11 | 화면 설계, 알림음 | [design/06-ui-sound.md](design/06-ui-sound.md) |
+| 10.2–10.3 | 화면 디자인 규칙(수치), UI 상태머신 | [design/08-ui-rules-states.md](design/08-ui-rules-states.md) |
 | 12–13 | 테스트 전략, 개발 로드맵과 진행 순서 | [design/07-test-roadmap.md](design/07-test-roadmap.md) |
 
 ---

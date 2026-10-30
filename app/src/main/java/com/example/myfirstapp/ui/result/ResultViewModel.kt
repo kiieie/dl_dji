@@ -90,7 +90,6 @@ class ResultViewModel(
     private val missionId: Long,
     private val exportDir: File,
     private val openOutput: (Uri) -> OutputStream?,
-    private val initialFilter: ResultFilter? = null,
     private val now: () -> Long = System::currentTimeMillis,
     /** RC Pro 5D 버튼(10장): 위·아래 전주, 왼쪽·오른쪽 판정, 가운데 저장 후 다음. */
     private val rcButtons: Flow<RcButton> = emptyFlow(),
@@ -118,7 +117,6 @@ class ResultViewModel(
                     tagOptions = (TargetLabels.names.keys + found).distinct(),
                 )
             }
-            initialFilter?.let(::setFilter)
         }
     }
 
@@ -246,8 +244,8 @@ class ResultViewModel(
 
     companion object {
         fun factory(
-            dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File, initialFilter: ResultFilter?,
+            dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File,
             rcButtons: Flow<RcButton>, openOutput: (Uri) -> OutputStream?,
-        ) = viewModelFactory { initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput, initialFilter, rcButtons = rcButtons) } }
+        ) = viewModelFactory { initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput, rcButtons = rcButtons) } }
     }
 }

@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,8 +27,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -42,11 +39,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.myfirstapp.R
 import com.example.myfirstapp.data.MissionSummary
 import com.example.myfirstapp.data.ProjectDao
 import java.text.SimpleDateFormat
@@ -62,13 +57,10 @@ private fun time(ms: Long) = SimpleDateFormat("M/d HH:mm", Locale.KOREA).format(
 fun MissionListScreen(
     projectId: Long,
     dao: ProjectDao,
-    onBack: () -> Unit,
     onNewPlan: () -> Unit,
     onFlight: (missionId: Long) -> Unit,
     onReplan: (missionId: Long) -> Unit,
     onResult: (missionId: Long) -> Unit,
-    /** 비행경로 화면 오른쪽에 넣을 때 true: 뒤로 버튼을 빼고 프로젝트마다 따로 ViewModel을 둔다. */
-    embedded: Boolean = false,
 ) {
     val files = LocalContext.current.getExternalFilesDir(null)
     val vm: MissionListViewModel = viewModel(
@@ -84,7 +76,7 @@ fun MissionListScreen(
             }
         }
     }
-    MissionListContent(s, vm, onBack.takeUnless { embedded }, onNewPlan, onResult)
+    MissionListContent(s, vm, onNewPlan, onResult)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,7 +84,6 @@ fun MissionListScreen(
 private fun MissionListContent(
     s: MissionListUiState,
     vm: MissionListViewModel,
-    onBack: (() -> Unit)?,
     onNewPlan: () -> Unit,
     onResult: (Long) -> Unit,
 ) {
@@ -100,11 +91,10 @@ private fun MissionListContent(
         // 얇은 머리글(Pilot 2 비행경로 라이브러리, 매뉴얼 56쪽): 프로젝트 이름 · 미션 수 · [+ 새 계획]
         topBar = {
             Row(
-                Modifier.fillMaxWidth().height(56.dp).padding(start = if (onBack == null) 16.dp else 4.dp, end = 12.dp),
+                Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp, end = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                onBack?.let { IconButton(onClick = it) { Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "나가기") } }
                 Text(s.projectName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("미션 ${s.missions.size}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                 Button(onClick = onNewPlan, modifier = Modifier.height(COMPACT_BUTTON), contentPadding = COMPACT_PADDING) { Text("+ 새 계획") }

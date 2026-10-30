@@ -8,6 +8,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SegmentedButton
 import android.graphics.RectF
 import android.view.Gravity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.VerticalDivider
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
@@ -144,6 +144,8 @@ fun MapScreen(
     LaunchedEffect(s.flyMissionId) {
         s.flyMissionId?.let { vm.onFlightOpened(); onStartFlight(it) }
     }
+    // 영역·이륙 지점을 찍는 중 뒤로 가기(5D ← 포함)는 화면을 떠나지 않고 도구만 취소한다(10.3)
+    BackHandler(enabled = s.tool != Tool.NONE, onBack = vm::cancelTool)
     // 전주를 누르면 오른쪽 패널에 그 전주 설정이 뜬다(Pilot 2 개별 웨이포인트 설정)
     LaunchedEffect(s.selected) { if (s.selected != null) panelOpen = true }
 
@@ -281,7 +283,7 @@ private fun HintChip(s: PlanUiState, inAreaCount: Int, vm: PlanViewModel, modifi
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 action?.let { (label, onClick) ->
-                    Button(onClick = onClick, enabled = label != "완료" || s.vertices.size >= 3, modifier = Modifier.heightIn(min = 48.dp)) { Text(label) }
+                    Button(onClick = onClick, enabled = label != "완료" || s.vertices.size >= 3, modifier = Modifier.height(36.dp)) { Text(label) }
                 }
             }
             s.message?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -351,8 +353,8 @@ private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boole
         Text(String.format(Locale.ROOT, "%.6f, %.6f", pole.lat, pole.lon), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         when {
             !canExclude -> Text("영역 밖 전주", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            isExcluded -> OutlinedButton(onClick = { vm.toggleExcluded(pole.poleId) }, modifier = Modifier.fillMaxWidth()) { Text("경로에 다시 넣기") }
-            else -> OutlinedButton(onClick = { vm.toggleExcluded(pole.poleId) }, modifier = Modifier.fillMaxWidth()) { Text("경로에서 빼기") }
+            isExcluded -> OutlinedButton(onClick = { vm.toggleExcluded(pole.poleId) }, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("경로에 다시 넣기") }
+            else -> OutlinedButton(onClick = { vm.toggleExcluded(pole.poleId) }, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("경로에서 빼기") }
         }
     }
 }

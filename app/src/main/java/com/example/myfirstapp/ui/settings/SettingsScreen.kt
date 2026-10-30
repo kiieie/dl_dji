@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -66,8 +67,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         s.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium) }
         Section("비행 기본값", "새 계획의 초기값입니다. 이미 저장한 미션은 계획할 때의 값을 그대로 씁니다.") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = vm::saveParams, enabled = s.canSave, modifier = Modifier.heightIn(min = 48.dp)) { Text("기본값 저장") }
-                OutlinedButton(onClick = vm::resetParams, modifier = Modifier.heightIn(min = 48.dp)) { Text("기본값으로 되돌리기", maxLines = 1) }
+                Button(onClick = vm::saveParams, enabled = s.canSave, modifier = Modifier.height(36.dp)) { Text("기본값 저장") }
+                TextButton(onClick = vm::resetParams, modifier = Modifier.height(36.dp)) { Text("기본값으로 되돌리기", maxLines = 1) }
             }
             s.paramErrors.forEach { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             FlightDefaults(s.params, vm::updateParams)
@@ -98,7 +99,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     TextButton(onClick = { vm.askDelete(PendingDelete.Model(m.dir)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("삭제") }
                 }
             }
-            OutlinedButton(onClick = { modelPicker.launch(null) }, enabled = !s.busy, modifier = Modifier.heightIn(min = 48.dp)) {
+            OutlinedButton(onClick = { modelPicker.launch(null) }, enabled = !s.busy, modifier = Modifier.height(36.dp)) {
                 Text("모델 폴더 가져오기")
             }
         }
@@ -111,7 +112,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     TextButton(onClick = { vm.askDelete(PendingDelete.Map(f.name)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("삭제") }
                 }
             }
-            OutlinedButton(onClick = { mapPicker.launch(arrayOf("*/*")) }, enabled = !s.busy, modifier = Modifier.heightIn(min = 48.dp)) {
+            OutlinedButton(onClick = { mapPicker.launch(arrayOf("*/*")) }, enabled = !s.busy, modifier = Modifier.height(36.dp)) {
                 Text("지도 파일 추가")
             }
         }

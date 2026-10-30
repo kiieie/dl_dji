@@ -35,7 +35,6 @@ import com.example.myfirstapp.ui.flight.FlightScreen
 import com.example.myfirstapp.ui.flight.ManualFlightScreen
 import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.mission.MissionListScreen
-import com.example.myfirstapp.ui.result.ResultFilter
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.settings.SettingsHub
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
@@ -44,6 +43,9 @@ import kotlinx.coroutines.launch
 import org.tensorflow.lite.Interpreter
 import java.io.File
 import java.nio.ByteBuffer
+
+/** RC 5D ←를 뒤로 가기로 쓰는 화면(10.3 허용 목록). */
+private val FIVE_D_BACK_ROUTES = listOf("projects", "map/", "settings", "verify")
 
 class MainActivity : ComponentActivity() {
 
@@ -102,23 +104,24 @@ class MainActivity : ComponentActivity() {
             onDispose { nav.removeOnDestinationChangedListener(listener) }
         }
         val ids = listOf(navArgument("pid") { type = NavType.LongType }, navArgument("mid") { type = NavType.LongType })
-        // 앱 재시작 복구(6.4): 끝나지 않은 소티가 있으면 그 미션의 비행 화면을 바로 연다(뒤로 가면 미션 목록)
+        /** 미션 비행 화면을 연다(10.3): 홈 위에 그 프로젝트를 고른 비행경로 → 비행. 같은 화면은 한 번만 쌓는다. */
+        fun openFlight(pid: Long, mid: Long) {
+            nav.navigate("projects?pid=$pid") { popUpTo("home"); launchSingleTop = true }
+            nav.navigate("flight/$pid/$mid") { launchSingleTop = true }
+        }
+        // 앱 재시작 복구(6.4): 끝나지 않은 소티가 있으면 그 미션의 비행 화면을 바로 연다(뒤로 가면 비행경로)
         var recoveryChecked by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(Unit) {
             if (recoveryChecked) return@LaunchedEffect
             recoveryChecked = true
-            dao.openSortieMission()?.let {
-                nav.navigate("missions/${it.projectId}")
-                nav.navigate("flight/${it.projectId}/${it.missionId}")
-            }
+            dao.openSortieMission()?.let { openFlight(it.projectId, it.missionId) }
         }
-        // RC 5D ← = 뒤로(10장). 첫 화면(홈, 앱 종료), 비행 화면(안전), 판독 화면(←→ 판정)은 제외한다.
+        // RC 5D ← = 뒤로(10.3). 허용한 화면에서만 동작한다(홈·비행·수동 비행·판독은 제외, 새 화면도 기본은 제외).
+        // 대화상자가 열려 있으면 그 대화상자만 닫히고(FullscreenAlertDialog의 BackHandler), 계획 도구 중이면 도구만 취소된다.
         LaunchedEffect(Unit) {
             (application as InspectionApp).rcButtons.collect { b ->
                 val route = nav.currentDestination?.route ?: return@collect
-                if (b == RcButton.FIVE_D_LEFT && route != "home" && !route.startsWith("flight") && !route.startsWith("result")) {
-                    onBackPressedDispatcher.onBackPressed()
-                }
+                if (b == RcButton.FIVE_D_LEFT && FIVE_D_BACK_ROUTES.any { route.startsWith(it) }) onBackPressedDispatcher.onBackPressed()
             }
         }
         NavHost(nav, startDestination = "home") {
@@ -128,12 +131,9 @@ class MainActivity : ComponentActivity() {
                     dao,
                     onRoutes = { nav.navigate("projects") },
                     onAlbum = { pid, mid -> nav.navigate("result/$pid/$mid") },
-                    onFlight = { pid, mid ->
-                        nav.navigate("missions/$pid")
-                        nav.navigate("flight/$pid/$mid")
-                    },
+                    onFlight = ::openFlight,
                     onCamera = { nav.navigate("camera") },
-                    onSettings = { nav.navigate("settings") },
+                    onSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onVerification = { nav.navigate("verify") },
                 )
             }
@@ -142,32 +142,20 @@ class MainActivity : ComponentActivity() {
                 ManualFlightScreen(
                     dao,
                     onExit = { nav.popBackStack() },
-                    onOpenSettings = { nav.navigate("settings") },
-                    onOpenMission = { m ->
-                        nav.navigate("missions/${m.projectId}") { popUpTo("home") }
-                        nav.navigate("flight/${m.projectId}/${m.missionId}")
-                    },
+                    onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
+                    onOpenMission = { m -> openFlight(m.projectId, m.missionId) },
                 )
             }
-            composable("projects") {
+            // 비행경로(마스터-디테일). pid가 있으면 그 프로젝트를 고른 채 연다
+            composable("projects?pid={pid}", listOf(navArgument("pid") { type = NavType.LongType; defaultValue = -1L })) { e ->
                 ProjectScreen(
                     dao,
+                    initialProjectId = e.arguments!!.getLong("pid").takeIf { it > 0 },
                     onBack = { nav.popBackStack() },
                     onNewPlan = { pid -> nav.navigate("map/$pid") },
-                    onFlight = { pid, mid -> nav.navigate("flight/$pid/$mid") },
+                    onFlight = { pid, mid -> nav.navigate("flight/$pid/$mid") { launchSingleTop = true } },
                     onReplan = { pid, mid -> nav.navigate("map/$pid?replan=$mid") },
                     onResult = { pid, mid -> nav.navigate("result/$pid/$mid") },
-                )
-            }
-            composable("missions/{pid}", listOf(navArgument("pid") { type = NavType.LongType })) { e ->
-                val pid = e.arguments!!.getLong("pid")
-                MissionListScreen(
-                    pid, dao,
-                    onBack = { nav.popBackStack() },
-                    onNewPlan = { nav.navigate("map/$pid") },
-                    onFlight = { nav.navigate("flight/$pid/$it") },
-                    onReplan = { nav.navigate("map/$pid?replan=$it") },
-                    onResult = { nav.navigate("result/$pid/$it") },
                 )
             }
             composable(
@@ -176,7 +164,7 @@ class MainActivity : ComponentActivity() {
             ) { e ->
                 val pid = e.arguments!!.getLong("pid")
                 val replan = e.arguments!!.getLong("replan").takeIf { it > 0 }
-                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") }, replanFrom = replan)
+                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") { launchSingleTop = true } }, replanFrom = replan)
             }
             composable("flight/{pid}/{mid}", ids) { e ->
                 val pid = e.arguments!!.getLong("pid")
@@ -186,18 +174,11 @@ class MainActivity : ComponentActivity() {
                     onExit = { nav.popBackStack() },
                     // 미션이 끝나면 비행 화면을 스택에서 빼고 결과로 간다(뒤로 가면 계획 화면)
                     onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}") { inclusive = true } } },
-                    onOpenSettings = { nav.navigate("settings") },
+                    onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
                 )
             }
-            composable(
-                "result/{pid}/{mid}?filter={filter}",
-                ids + navArgument("filter") { type = NavType.StringType; nullable = true },
-            ) { e ->
-                ResultScreen(
-                    e.arguments!!.getLong("pid"), e.arguments!!.getLong("mid"), dao,
-                    initialFilter = e.arguments!!.getString("filter")?.let(ResultFilter::valueOf),
-                    onBack = { nav.popBackStack() },
-                )
+            composable("result/{pid}/{mid}", ids) { e ->
+                ResultScreen(e.arguments!!.getLong("pid"), e.arguments!!.getLong("mid"), dao, onBack = { nav.popBackStack() })
             }
             composable("settings") { SettingsHub(onBack = { nav.popBackStack() }) }
             composable("verify") { VerificationPanel() }

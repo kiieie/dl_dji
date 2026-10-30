@@ -1,5 +1,7 @@
 package com.example.myfirstapp.ui.home
 
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -68,72 +69,69 @@ fun HomeScreen(
     val latest = s.latest
     var showAircraft by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // 소속 표시: 공식 로고 파일을 받으면 이미지(res/drawable/kepco_logo)로 바꾼다. 로고 모양을 흉내 내 그리지 않는다
             Column {
                 Text("KEPCO", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.ExtraBold, color = KepcoBlue, letterSpacing = 2.sp)
-                Text("전주 점검", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("전주 점검", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             }
             AircraftChip(s.aircraft, Modifier.weight(1f)) { showAircraft = true }
-            TextButton(onClick = onVerification) { Text("연동 검증") }
-            OutlinedButton(onClick = onSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("⚙ 설정") }
+            TextButton(onClick = onVerification, modifier = Modifier.height(36.dp)) { Text("연동 검증", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            OutlinedButton(onClick = onSettings, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = 14.dp)) { Text("⚙ 설정") }
         }
-        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // 최근 미션: 현장에서 가장 많이 누르는 곳
-            Card(Modifier.weight(1.2f).fillMaxHeight(), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                Column(Modifier.padding(20.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("최근 미션", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Surface(Modifier.weight(1.2f).fillMaxHeight(), shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                Column(Modifier.padding(16.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("최근 미션", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (latest == null) {
-                        Text("아직 미션이 없습니다", style = MaterialTheme.typography.titleLarge)
-                        Text("[비행경로]에서 전주 파일을 가져오고 계획을 세우세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("아직 미션이 없습니다", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("[비행경로]에서 전주 파일을 가져오고 계획을 세우세요.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         Text(
                             "${latest.projectName} · #${latest.missionId}", style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
-                        Text("완료 ${latest.done} / ${latest.total} · 남은 전주 ${latest.remaining}", style = MaterialTheme.typography.titleMedium)
+                        Text("완료 ${latest.done} / ${latest.total} · 남은 전주 ${latest.remaining}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         LinearProgressIndicator(
                             progress = { if (latest.total == 0) 0f else latest.done.toFloat() / latest.total },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().height(3.dp),
+                            drawStopIndicator = {},
                         )
                     }
                     Box(Modifier.weight(1f))
                     if (latest != null) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            // 홈에서 가장 자주 누르는 곳: 주 버튼 56dp(10.2)
                             if (latest.remaining > 0) {
                                 Button(
                                     onClick = { onFlight(latest.projectId, latest.missionId) },
-                                    modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(12.dp),
-                                ) { Text(if (latest.done == 0) "비행 시작" else "이어서 비행", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                                    modifier = Modifier.weight(1f).height(56.dp), shape = RoundedCornerShape(10.dp),
+                                ) { Text(if (latest.done == 0) "▶ 비행 시작" else "▶ 이어서 비행", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                             }
-                            FilledTonalButton(
+                            OutlinedButton(
                                 onClick = { onAlbum(latest.projectId, latest.missionId) }, enabled = latest.done > 0,
-                                modifier = Modifier.height(64.dp), shape = RoundedCornerShape(12.dp),
-                            ) { Text("결과·판독", fontSize = 16.sp) }
+                                modifier = Modifier.height(56.dp), shape = RoundedCornerShape(10.dp),
+                            ) { Text("결과·판독") }
                         }
                     }
                 }
             }
-            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // 수동 비행(Pilot 2 카메라 뷰). 미션 비행은 왼쪽 카드의 [비행 시작]/[이어서 비행]
-                Button(
-                    onClick = onCamera,
-                    modifier = Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(12.dp),
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // 수동 비행(Pilot 2 카메라 뷰 타일). 채운 버튼은 왼쪽 [비행 시작] 하나라 이 타일은 강조 바탕 카드로 둔다(10.2)
+                Surface(
+                    onClick = onCamera, modifier = Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("수동 비행", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                        Text("카메라 뷰 · 언제든 촬영 · 이어서 비행", fontSize = 13.sp)
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("수동 비행", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("카메라 뷰 · 언제든 촬영 · 이어서 비행", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    FilledTonalButton(onClick = onRoutes, modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(12.dp)) {
-                        Text("비행경로", fontSize = 16.sp)
-                    }
-                    FilledTonalButton(
-                        onClick = { latest?.let { onAlbum(it.projectId, it.missionId) } }, enabled = latest != null,
-                        modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(12.dp),
-                    ) { Text("앨범", fontSize = 16.sp) }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HomeTile("비행경로", "전주 파일 · 계획 · 미션", Modifier.weight(1f), onClick = onRoutes)
+                    HomeTile("앨범", "결과 · 판독 · 내보내기", Modifier.weight(1f), enabled = latest != null) { latest?.let { onAlbum(it.projectId, it.missionId) } }
                 }
             }
         }
@@ -142,17 +140,31 @@ fun HomeScreen(
     if (showAircraft) AircraftDialog(s.aircraft) { showAircraft = false }
 }
 
+/** 홈 아래 타일(Pilot 2 홈 비행경로·앨범 타일): 이름과 한 줄 설명. */
+@Composable
+private fun HomeTile(title: String, subtitle: String, modifier: Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick, enabled = enabled, modifier = modifier.height(72.dp), shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.Center) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline)
+            Text(subtitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 /** 기체 상태 칩(Pilot 2 상태 관리 요약): 상태색 점, 기종, 주의 이유. 누르면 세부. */
 @Composable
 private fun AircraftChip(a: AircraftStatus, modifier: Modifier, onClick: () -> Unit) {
     val (color, label) = statusOf(a)
-    Card(onClick = onClick, modifier = modifier.heightIn(min = 48.dp), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerHigh)) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(12.dp).clip(CircleShape).background(color))
-            Text(a.model ?: "기체 연결 안 됨", fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(label, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            a.batteryPct?.let { Text("배터리 $it%", maxLines = 1) }
-            Text("›", fontSize = 20.sp)
+    Surface(onClick = onClick, modifier = modifier.height(44.dp), shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.size(10.dp).clip(CircleShape).background(color))
+            Text(a.model ?: "기체 연결 안 됨", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            a.batteryPct?.let { Text("배터리 $it%", style = MaterialTheme.typography.bodyMedium, maxLines = 1) }
+            Text("›", style = MaterialTheme.typography.titleMedium)
         }
     }
 }

@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -60,6 +59,8 @@ import java.util.Date
 @Composable
 fun ProjectScreen(
     dao: ProjectDao,
+    /** 처음 고를 프로젝트(홈·복구에서 미션 비행으로 갈 때). null이면 맨 위. */
+    initialProjectId: Long? = null,
     onBack: () -> Unit,
     onNewPlan: (projectId: Long) -> Unit,
     onFlight: (projectId: Long, missionId: Long) -> Unit,
@@ -71,9 +72,14 @@ fun ProjectScreen(
     val s by vm.state.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::onCsvPicked) }
     var importing by rememberSaveable { mutableStateOf(false) }
-    var selectedId by rememberSaveable { mutableStateOf<Long?>(null) }
-    // 새 프로젝트를 가져오면 그것을 고른다. 고른 것이 없거나 지워졌으면 맨 위
-    LaunchedEffect(s.projects.firstOrNull()?.id) { s.projects.firstOrNull()?.let { selectedId = it.id } }
+    var selectedId by rememberSaveable { mutableStateOf(initialProjectId) }
+    // 새로 가져온 프로젝트(전에 없던 id가 맨 위)면 그것을 고른다. 처음 읽을 때, 다른 화면에서 돌아올 때, 맨 위를 지울 때는 고른 것을 둔다
+    var knownIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
+    LaunchedEffect(s.projects) {
+        val ids = s.projects.map { it.id }.ifEmpty { return@LaunchedEffect }.toLongArray()
+        if (knownIds?.contains(ids[0]) == false) selectedId = ids[0]
+        knownIds = ids
+    }
     val selected = s.projects.firstOrNull { it.id == selectedId } ?: s.projects.firstOrNull()
 
     Row(Modifier.fillMaxSize()) {
@@ -97,7 +103,7 @@ fun ProjectScreen(
         Column(Modifier.weight(1f).fillMaxHeight()) {
             if (selected != null) {
                 MissionListScreen(
-                    selected.id, dao, onBack = onBack, embedded = true,
+                    selected.id, dao,
                     onNewPlan = { onNewPlan(selected.id) },
                     onFlight = { onFlight(selected.id, it) },
                     onReplan = { onReplan(selected.id, it) },
@@ -162,7 +168,7 @@ private fun ImportDialog(s: ProjectUiState, vm: ProjectViewModel, onPick: () -> 
         title = { Text("전주 파일 가져오기") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onPick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("CSV 파일 선택") }
+                OutlinedButton(onClick = onPick, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("CSV 파일 선택") }
                 s.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                 when (val r = s.result) {
                     null -> Text("열 이름 예: 전주번호, 위도, 경도, 선로명, 비고 (WGS84)", color = MaterialTheme.colorScheme.onSurfaceVariant)

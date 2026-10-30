@@ -100,11 +100,11 @@ private val PanelBg = Color.Black.copy(alpha = 0.55f)
 
 /** 결과 화면 ⑤와 1차 판독(F-19). 상태는 [ResultViewModel]이 갖고, 이 화면은 그리기와 입력 전달만 한다. */
 @Composable
-fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, initialFilter: ResultFilter? = null, onBack: () -> Unit) {
+fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, onBack: () -> Unit) {
     val context = LocalContext.current
     val vm: ResultViewModel = viewModel(
         factory = ResultViewModel.factory(
-            dao, projectId, missionId, context.getExternalFilesDir(null)!!, initialFilter, (context.applicationContext as InspectionApp).rcButtons,
+            dao, projectId, missionId, context.getExternalFilesDir(null)!!, (context.applicationContext as InspectionApp).rcButtons,
         ) {
             context.contentResolver.openOutputStream(it)
         },

@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -20,16 +21,20 @@ fun FullscreenAlertDialog(
     dismissButton: (@Composable () -> Unit)? = null,
     title: (@Composable () -> Unit)? = null,
     text: (@Composable () -> Unit)? = null,
-) = AlertDialog(
-    onDismissRequest = onDismissRequest,
-    confirmButton = {
-        HideSystemBarsInDialog()
-        confirmButton()
-    },
-    dismissButton = dismissButton,
-    title = title,
-    text = text,
-)
+) {
+    // RC 5D ←는 SDK로 와서 대화상자 창이 아니라 액티비티 뒤로 가기로 들어온다. 뒤 화면 대신 대화상자를 닫게 한다
+    BackHandler(onBack = onDismissRequest)
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        confirmButton = {
+            HideSystemBarsInDialog()
+            confirmButton()
+        },
+        dismissButton = dismissButton,
+        title = title,
+        text = text,
+    )
+}
 
 @Composable
 private fun HideSystemBarsInDialog() {

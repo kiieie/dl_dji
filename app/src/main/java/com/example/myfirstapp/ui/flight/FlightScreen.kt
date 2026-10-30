@@ -215,7 +215,7 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
                             modifier = Modifier.heightIn(min = 56.dp),
                         ) { Text("경고 확인하고 시작") }
                     }
-                    OutlinedButton(onClick = vm::closePreflight, modifier = Modifier.heightIn(min = 56.dp)) { Text("취소") }
+                    TextButton(onClick = vm::closePreflight, modifier = Modifier.height(36.dp)) { Text("취소") }
                     if (!ok) Text("▲ ${items.count { !it.ok }}개 항목을 확인하세요", color = PoleFailed, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
                 }
             }
