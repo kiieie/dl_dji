@@ -134,7 +134,7 @@ internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> 
                 }
             }
             Text(
-                listOfNotNull(label ?: stateLabel(state), if (s.simulated) "모의 ×${FAKE_TIME_SCALE.toInt()}" else null).joinToString(" · "),
+                listOfNotNull(label ?: stateLabel(state, s.exec.remaining), if (s.simulated) "모의 ×${FAKE_TIME_SCALE.toInt()}" else null).joinToString(" · "),
                 Modifier.align(Alignment.Center), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1,
             )
         }

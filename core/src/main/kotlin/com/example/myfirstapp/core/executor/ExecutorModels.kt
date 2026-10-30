@@ -72,7 +72,10 @@ data class ExecutorUiState(
     val photosInProgress: Int = 0,
     /** 지형 추적 미션 시작이 거절되어 이륙 기준으로 바꿀지 묻는 중(5.6, 2026-10-30 사용자 결정). */
     val terrainFallbackAsk: Boolean = false,
-)
+) {
+    /** 남은 전주(미점검·진행 중) 수. 남긴 채 미션을 끝내면 부분 완료다. */
+    val remaining: Int get() = visits.count { it.status == VisitStatus.PENDING || it.status == VisitStatus.IN_PROGRESS }
+}
 
 /**
  * 앱 재시작 복구의 SD 대조(6.4): 목표 전주에 도착한 뒤 SD에 저장되었지만 DB에 없는 사진.

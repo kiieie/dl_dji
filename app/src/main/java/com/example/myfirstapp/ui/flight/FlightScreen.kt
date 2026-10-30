@@ -223,7 +223,7 @@ private fun MissionCard(s: FlightUiState, missionId: Long, vm: FlightViewModel, 
             CardFigure("전주", "$done", "/${all.size}")
             CardFigure("사진", "$photos", "/$planned")
             Text(
-                ui.target?.pole?.displayName ?: stateLabel(ui.state), Modifier.weight(1f), fontSize = 11.sp, color = TextSoft,
+                ui.target?.pole?.displayName ?: stateLabel(ui.state, ui.remaining), Modifier.weight(1f), fontSize = 11.sp, color = TextSoft,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End,
             )
         }
@@ -404,7 +404,8 @@ private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Uni
     }
 }
 
-internal fun stateLabel(s: ExecState) = when (s) {
+/** 상태 이름. 미션을 끝냈는데 남은 전주가 있으면([remaining]) 부분 완료. */
+internal fun stateLabel(s: ExecState, remaining: Int = 0) = when (s) {
     ExecState.Idle -> "비행 대기"
     ExecState.PreflightCheck -> "비행 전 점검"
     ExecState.Takeoff -> "이륙 중"
@@ -419,5 +420,5 @@ internal fun stateLabel(s: ExecState) = when (s) {
     ExecState.LinkLost -> "연결 끊김"
     ExecState.ReturningHome -> "복귀 중"
     ExecState.SortieDone -> "소티 완료"
-    ExecState.MissionDone -> "미션 완료"
+    ExecState.MissionDone -> if (remaining > 0) "부분 완료 · 남은 전주 $remaining" else "미션 완료"
 }
