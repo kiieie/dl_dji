@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.model.GeoPoint
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
@@ -17,7 +18,7 @@ import kotlin.coroutines.resume
  */
 suspend fun djiCurrentLocation(): GeoPoint? = runCatching {
     val keys = KeyManager.getInstance()
-    suspend fun <T> read(key: dji.sdk.keyvalue.key.DJIKey<T>): T? = withTimeoutOrNull(2000) {
+    suspend fun <T> read(key: dji.sdk.keyvalue.key.DJIKey<T>): T? = withTimeoutOrNull(AppConfig.Timeouts.KEY_READ_MS) {
         suspendCancellableCoroutine { c ->
             keys.getValue(key, object : CommonCallbacks.CompletionCallbackWithParam<T> {
                 override fun onSuccess(t: T) = c.resume(t)
@@ -26,7 +27,7 @@ suspend fun djiCurrentLocation(): GeoPoint? = runCatching {
         }
     }
     val aircraft = if (keys.getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false) &&
-        (read(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount)) ?: 0) >= 6
+        (read(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount)) ?: 0) >= AppConfig.Checks.LOCATION_MIN_SATELLITES
     ) {
         read(KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D))?.takeIf { validGeo(it.latitude, it.longitude) }?.let { GeoPoint(it.latitude, it.longitude) }
     } else {

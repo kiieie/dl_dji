@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.logTelemetry
 import com.example.myfirstapp.core.model.VisitStatus
@@ -68,12 +69,6 @@ import java.io.File
 
 /** 모의 기체의 시간 배속. 시연과 스모크 시험이 몇 분 안에 끝나게 한다. 실제 기체에는 해당 없음. */
 const val FAKE_TIME_SCALE = 5.0
-
-/** 조종기 쪽 저장 공간 기준(6.5). SD 여유 기준(6.7)과 같게 1GB로 둔다. */
-private const val MIN_FREE_BYTES = 1L shl 30
-
-/** 앱 재시작 복구 때 SDK 등록·기체 연결을 기다리는 시간(6.4). */
-private const val RECOVER_CONNECT_MS = 20_000L
 
 data class FlightUiState(
     val loading: Boolean = true,
@@ -206,7 +201,7 @@ class FlightViewModel(
             File(appFilesDir, "projects/$projectId/missions/$missionId/images"),
             params.downloadMode,
         )
-        val storage = StorageMonitor { (appFilesDir?.usableSpace ?: 0L) >= MIN_FREE_BYTES }
+        val storage = StorageMonitor { (appFilesDir?.usableSpace ?: 0L) >= AppConfig.Storage.MIN_FREE_BYTES }
         // 앱 폴더 models/에 규격에 맞는 모델이 있으면 TFLite 탐지기(⑥ 설정에서 고른 모델 우선), 없으면 모의 탐지기(9.1)
         val preferred = settings.modelDir.first()
         model = withContext(Dispatchers.IO) { TfliteYoloDetector.loadPreferred(File(appFilesDir, "models"), preferred) }
@@ -221,7 +216,7 @@ class FlightViewModel(
         // 비행 궤적(TELEMETRY_SAMPLE, 4.2): 떠 있는 동안 1초마다 그 소티에 남긴다
         viewModelScope.launch {
             while (true) {
-                delay(1_000)
+                delay(AppConfig.Polling.TRACK_MS)
                 val t = drone.telemetry.value
                 val sortieId = groups.getOrNull(executor.uiState.value.sortieIndex)?.first
                 if (t.isFlying) logTelemetry("auto", t)
@@ -387,7 +382,7 @@ class FlightViewModel(
                         droneFactory = { scope, home, dir, airborneAt ->
                             // 앱 재시작 복구(열린 소티, [airborneAt] 있음): 앱이 막 켜져 SDK 등록·기체 연결 전일 수 있으니 기다린다(6.4).
                             // 실제 RC(SDK 초기화됨, 등록 실패여도)에서는 연결이 안 돼도 모의 기체로 가지 않는다 — 실행기가 연결 끊김으로 두고 붙으면 맞춘다
-                            if (airborneAt != null) withTimeoutOrNull(RECOVER_CONNECT_MS) { while (!(sdkReady.value && djiAircraftConnected())) delay(500) }
+                            if (airborneAt != null) withTimeoutOrNull(AppConfig.Timeouts.RECOVER_CONNECT_MS) { while (!(sdkReady.value && djiAircraftConnected())) delay(500) }
                             if (djiAircraftConnected() || (airborneAt != null && sdkInitialized.value)) DjiDroneGateway(scope, File(dir, "projects/$projectId/missions/$missionId/kmz"))
                             else fakeDrone(scope, home, dir, airborneAt)
                         },

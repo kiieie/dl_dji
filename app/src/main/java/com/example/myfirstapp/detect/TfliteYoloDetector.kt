@@ -1,5 +1,6 @@
 package com.example.myfirstapp.detect
 
+import com.example.myfirstapp.AppConfig
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -96,7 +97,7 @@ class TfliteYoloDetector private constructor(
             val alert = json.optJSONArray("alertLabels")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }.orEmpty()
             val pixelBoxes = json.optJSONObject("output")?.optString("boxes") == "pixel"
 
-            val interpreter = Interpreter(File(dir, "model.tflite"), Interpreter.Options().setNumThreads(4))
+            val interpreter = Interpreter(File(dir, "model.tflite"), Interpreter.Options().setNumThreads(AppConfig.Detector.THREADS))
             try {
                 val it = interpreter.getInputTensor(0)
                 require(it.dataType() == DataType.FLOAT32 && it.shape().contentEquals(intArrayOf(1, size, size, 3))) {
@@ -108,7 +109,7 @@ class TfliteYoloDetector private constructor(
                     "출력 텐서 ${shape.contentToString()} ${ot.dataType()} ≠ [1, ${4 + labels.size}, N] FLOAT32 (라벨 ${labels.size}개)"
                 }
                 val decoder = YoloDecoder(
-                    labels, alert, th.optDouble("score", 0.35).toFloat(), th.optDouble("iou", 0.5).toFloat(), pixelBoxes,
+                    labels, alert, th.optDouble("score", AppConfig.Detector.SCORE).toFloat(), th.optDouble("iou", AppConfig.Detector.IOU).toFloat(), pixelBoxes,
                 )
                 return TfliteYoloDetector(json.getString("version"), interpreter, decoder, size, shape[1] * shape[2], shape[2])
             } catch (e: Throwable) {

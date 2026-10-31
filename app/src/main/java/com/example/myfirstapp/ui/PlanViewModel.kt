@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.data.OpLog
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -130,7 +131,7 @@ class PlanViewModel(
                 .collectLatest {
                     // 기다리는 동안 안내가 "전주가 없습니다"로 깜박이지 않게 먼저 "계산 중"으로 둔다
                     _state.update { s -> s.copy(planning = s.canPlan) }
-                    delay(300)
+                    delay(AppConfig.Polling.REPLAN_DEBOUNCE_MS)
                     computePlan()
                 }
         }

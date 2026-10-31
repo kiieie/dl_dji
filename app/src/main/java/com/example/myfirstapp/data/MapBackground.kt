@@ -1,5 +1,6 @@
 package com.example.myfirstapp.data
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.BuildConfig
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -59,7 +60,7 @@ suspend fun mapBackgroundRetrying(settings: SettingsStore): MapBackground {
         val bg = mapBackground(source, labels)
         // 토큰이 없으면 다시 해도 같다
         if (bg.tiles.isNotEmpty() || (bg.source == MapSource.BING && BuildConfig.CESIUM_ION_TOKEN.isBlank())) return bg
-        delay(10_000)
+        delay(AppConfig.Timeouts.BACKGROUND_RETRY_MS)
     }
 }
 

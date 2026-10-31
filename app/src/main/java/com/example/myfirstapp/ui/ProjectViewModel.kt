@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.data.OpLog
 import android.content.ContentResolver
 import android.net.Uri
@@ -133,14 +134,12 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
                 if (!it.isNull(1)) size = it.getLong(1)
             }
         }
-        require((size ?: 0) <= MAX_BYTES) { "10MB를 넘는 파일입니다" }
+        require((size ?: 0) <= AppConfig.Storage.IMPORT_MAX_BYTES) { "10MB를 넘는 파일입니다" }
         val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("파일을 열 수 없습니다")
         return name to PoleCsvParser.parse(bytes)
     }
 
     companion object {
-        private const val MAX_BYTES = 10L * 1024 * 1024
-
         fun factory(dao: ProjectDao, resolver: ContentResolver) = viewModelFactory { initializer { ProjectViewModel(dao, resolver) } }
     }
 }

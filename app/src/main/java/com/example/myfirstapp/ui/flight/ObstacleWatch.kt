@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.model.ObstacleLevel
 import com.example.myfirstapp.core.model.ObstacleWarning
 import com.example.myfirstapp.core.port.DroneGateway
@@ -27,7 +28,7 @@ internal fun CoroutineScope.watchObstacles(drone: DroneGateway, tone: ToneNotifi
             beep = when (next.level) {
                 ObstacleLevel.NONE -> null
                 else -> launch {
-                    val gap = if (next.level == ObstacleLevel.DANGER) 250L else 800L
+                    val gap = if (next.level == ObstacleLevel.DANGER) AppConfig.Sound.OBSTACLE_DANGER_GAP_MS else AppConfig.Sound.OBSTACLE_CAUTION_GAP_MS
                     while (true) { tone.obstacleBeep(); delay(gap) }
                 }
             }

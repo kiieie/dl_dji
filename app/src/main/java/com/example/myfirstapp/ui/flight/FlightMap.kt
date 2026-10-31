@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.route.Viewpoints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -77,7 +78,7 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
         val st = latest
         val zoom = map.cameraPosition.zoom
         val targets = when {
-            interactive && zoom >= 15 -> st.poles
+            interactive && zoom >= AppConfig.Map.LABEL_MIN_ZOOM -> st.poles
             !interactive -> listOfNotNull(st.exec.target?.pole)
             else -> emptyList()
         }
@@ -129,7 +130,7 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
                     val points = (s.poles.map { it.position } + listOfNotNull(s.home)).map { LatLng(it.lat, it.lon) }
                     val px = pad.map { with(density) { it.roundToPx() } }
                     map.moveCamera(
-                        if (points.distinct().size < 2) CameraUpdateFactory.newLatLngZoom(points.first(), 17.0)
+                        if (points.distinct().size < 2) CameraUpdateFactory.newLatLngZoom(points.first(), AppConfig.Map.SINGLE_POINT_ZOOM)
                         else CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(points).build(), px[0], px[1], px[2], px[3]),
                     )
                 }

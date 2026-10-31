@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.AppConfig
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,7 +70,7 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = Obsta
             }
             homeBearing?.let { b ->
                 val a = Math.toRadians(b)
-                val d = (r * 0.7f * ((homeDist!! / 200.0).coerceIn(0.3, 1.0))).toFloat()
+                val d = (r * 0.7f * ((homeDist!! / AppConfig.Map.NAV_RANGE_M).coerceIn(0.3, 1.0))).toFloat()
                 val p = Offset(c.x + d * sin(a).toFloat(), c.y - d * cos(a).toFloat())
                 drawCircle(Caution, 5.dp.toPx(), p)
                 val h = measurer.measure("H", TextStyle(fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color.Black))

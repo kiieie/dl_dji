@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.data.OpLog
 import android.util.Log
 import com.example.myfirstapp.core.executor.MediaClassifier
@@ -124,7 +125,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             WaypointMissionExecuteState.INTERRUPTED -> _events.tryEmit(DroneEvent.PausedByRc)
             WaypointMissionExecuteState.FINISHED -> if (missionName != null) {
                 missionName = null
-                photoGraceUntil = System.currentTimeMillis() + 5_000
+                photoGraceUntil = System.currentTimeMillis() + AppConfig.Timeouts.PHOTO_GRACE_MS
                 _events.tryEmit(DroneEvent.MissionFinished)
             }
             else -> Unit
@@ -236,7 +237,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         } else if (lostJob?.isActive != true) {
             // 3초 넘게 끊겨야 연결 끊김으로 본다(6.4)
             lostJob = scope.launch {
-                delay(3_000)
+                delay(AppConfig.Timeouts.LINK_LOST_MS)
                 lost = true
                 _events.tryEmit(DroneEvent.ConnectionLost)
             }
@@ -279,7 +280,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         else -> 0
     }
 
-    private suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(3_000) {
+    private suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(AppConfig.Timeouts.GATEWAY_KEY_READ_MS) {
         val key = if (index == null) KeyTools.createKey(info) else KeyTools.createKey(info, index)
         runCatching { djiValue<T> { keys.getValue(key, it) } }.getOrNull()
     }
@@ -367,7 +368,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         missionName = null
         recoveredMission = null
         // 멈추기 직전 지점에서 찍힌 사진이 늦게 와도 지점 사진으로 받는다(RTH·재업로드 때, 미션 완료와 같은 5초)
-        photoGraceUntil = System.currentTimeMillis() + 5_000
+        photoGraceUntil = System.currentTimeMillis() + AppConfig.Timeouts.PHOTO_GRACE_MS
         return runCatching { djiDone { missions.stopMission(name, it) } }
     }
 
@@ -376,7 +377,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         owners.screenStarted()
         try {
             djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(CameraKey.KeyStartShootPhoto, camera), it) }
-            withTimeoutOrNull(5_000) { newPhotos.first() } ?: error("사진 알림 없음")
+            withTimeoutOrNull(AppConfig.Timeouts.NEW_PHOTO_MS) { newPhotos.first() } ?: error("사진 알림 없음")
         } finally {
             owners.screenEnded(System.currentTimeMillis())
         }
@@ -387,11 +388,11 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         mediaLock.withLock {
             val index = capture.mediaId.toInt()
             var file: MediaFile? = null
-            repeat(5) {
+            repeat(AppConfig.Polling.DOWNLOAD_TRIES) {
                 if (file == null) {
-                    pullRecent(10)
+                    pullRecent(AppConfig.Polling.DOWNLOAD_RECENT_COUNT)
                     file = media.mediaFileListData.data.firstOrNull { it.fileIndex == index }
-                    if (file == null) delay(1_000)
+                    if (file == null) delay(AppConfig.Polling.DOWNLOAD_RETRY_MS)
                 }
             }
             // 같은 번호에 렌즈별 파일이 여럿이면 파일 이름 끝(_W/_Z/_T)으로 고른다
@@ -402,7 +403,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             if (named != null && named != capture.lens) Log.w(TAG, "렌즈 불일치 #$index ${f.fileName}: 기록 ${capture.lens}")
             if (mode == DownloadMode.PREVIEW) {
                 val bmp = djiValue<android.graphics.Bitmap> { f.pullPreviewFromCamera(it) }
-                ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }.toByteArray()
+                ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, AppConfig.Polling.PREVIEW_JPEG_QUALITY, it) }.toByteArray()
             } else {
                 val out = ByteArrayOutputStream()
                 suspendCancellableCoroutine { c ->
@@ -421,7 +422,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     override suspend fun listMedia(sinceMs: Long): Result<List<CaptureInfo>> = runCatching {
         mediaLock.withLock {
-            pullRecent(100)
+            pullRecent(AppConfig.Polling.LIST_MEDIA_COUNT)
             media.mediaFileListData.data.map { f ->
                 CaptureInfo(f.fileIndex.toString(), Lens.WIDE, null, 0.0, 0.0, 0.0, millis(f.date))
             }.filter { it.takenAtMs >= sinceMs }
@@ -440,13 +441,13 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     private suspend fun pullRecent(count: Int) {
         val param = PullMediaFileListParam.Builder().mediaFileIndex(-1).count(count).build()
         if (!mediaEnabled) {
-            val ok = withTimeoutOrNull(10_000) { djiDone { media.pullMediaFileListFromCamera(param, it) } } != null
+            val ok = withTimeoutOrNull(AppConfig.Timeouts.SD_LIST_MS) { djiDone { media.pullMediaFileListFromCamera(param, it) } } != null
             if (ok) return Log.i(TAG, "SD 목록(미디어 모드 없이) ${media.mediaFileListData.data.size}개").let {}
             Log.w(TAG, "SD 목록 응답 없음 → 미디어 모드 켬")
             runCatching { djiDone { media.enable(it) } }.onFailure { Log.w(TAG, "미디어 모드 실패: ${it.message}") }
             mediaEnabled = true
         }
-        withTimeoutOrNull(15_000) { djiDone { media.pullMediaFileListFromCamera(param, it) } } ?: error("SD 목록 응답 없음")
+        withTimeoutOrNull(AppConfig.Timeouts.SD_LIST_MEDIA_MODE_MS) { djiDone { media.pullMediaFileListFromCamera(param, it) } } ?: error("SD 목록 응답 없음")
         Log.i(TAG, "SD 목록(미디어 모드) ${media.mediaFileListData.data.size}개")
     }
 

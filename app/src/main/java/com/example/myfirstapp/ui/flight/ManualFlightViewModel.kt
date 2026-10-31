@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.AppConfig
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -78,7 +79,7 @@ class ManualFlightViewModel(
         _state.update { it.copy(connected = drone != null, message = if (drone == null) "기체가 연결되지 않았습니다" else null) }
         drone?.let { d -> viewModelScope.launch { d.telemetry.collect { t -> _state.update { it.copy(flight = it.flight.copy(telemetry = t, home = t.home)) } } } }
         // 수동 비행 궤적은 운용 로그에(떠 있는 동안 1초마다, 4.4)
-        drone?.let { d -> viewModelScope.launch { while (true) { delay(1_000); d.telemetry.value.takeIf { it.isFlying }?.let { logTelemetry("manual", it) } } } }
+        drone?.let { d -> viewModelScope.launch { while (true) { delay(AppConfig.Polling.TRACK_MS); d.telemetry.value.takeIf { it.isFlying }?.let { logTelemetry("manual", it) } } } }
         drone?.let { d -> viewModelScope.watchObstacles(d, tone) { w -> _state.update { it.copy(flight = it.flight.copy(obstacles = w)) } } }
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()

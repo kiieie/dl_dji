@@ -1,5 +1,6 @@
 package com.example.myfirstapp.data
 
+import com.example.myfirstapp.AppConfig
 import kotlinx.coroutines.delay
 import android.util.Log
 import com.example.myfirstapp.BuildConfig
@@ -52,8 +53,8 @@ private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
 private fun getJson(url: String): JSONObject {
     val c = URL(url).openConnection() as HttpURLConnection
-    c.connectTimeout = 10_000
-    c.readTimeout = 10_000
+    c.connectTimeout = AppConfig.Timeouts.HTTP_MS
+    c.readTimeout = AppConfig.Timeouts.HTTP_MS
     try {
         check(c.responseCode == 200) { "HTTP ${c.responseCode}" }
         return JSONObject(c.inputStream.bufferedReader().use { it.readText() })

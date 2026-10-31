@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import com.example.myfirstapp.AppConfig
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -699,7 +700,6 @@ private fun fitCamera(points: List<GeoPoint>, density: Float) =
         (80 * density).toInt(), (140 * density).toInt(), (64 * density).toInt(), (88 * density).toInt(),
     )
 
-private const val MAP_CACHE_BYTES = 1_000_000_000L
 private var ambientCacheSized = false
 
 /** 화면 수명에 맞춰 돌리는 MapLibre 지도 뷰(계획·비행 화면 공용). */
@@ -711,7 +711,7 @@ internal fun rememberMapView(): MapView {
         // 본 위성 타일을 넉넉히 남겨 현장(인터넷 없음)에서도 보이게 한다(기본 50MB)
         if (!ambientCacheSized) {
             ambientCacheSized = true
-            OfflineManager.getInstance(context).setMaximumAmbientCacheSize(MAP_CACHE_BYTES, null)
+            OfflineManager.getInstance(context).setMaximumAmbientCacheSize(AppConfig.Map.CACHE_BYTES, null)
             // 계획 저장 때 시작했다가 멈춘 위성 미리 받기를 이어 받는다(7.4)
             context.getExternalFilesDir(null)?.let(::resumeSatellitePrefetch)
         }

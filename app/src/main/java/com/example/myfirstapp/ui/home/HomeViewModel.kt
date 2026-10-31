@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.home
 
+import com.example.myfirstapp.AppConfig
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -71,7 +72,7 @@ class HomeViewModel(
             active.collectLatest { on ->
                 while (on) {
                     _state.update { it.copy(aircraft = readAircraft()) }
-                    delay(2_000)
+                    delay(AppConfig.Polling.HOME_AIRCRAFT_MS)
                 }
             }
         }

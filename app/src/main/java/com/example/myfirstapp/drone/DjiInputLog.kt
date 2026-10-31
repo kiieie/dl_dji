@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.data.OpLog
 import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.KeyTools
@@ -51,9 +52,9 @@ fun startDjiInputLog() {
         on(name, info) { old, now ->
             val v = now ?: return@on
             val t = System.currentTimeMillis()
-            val leftCenter = abs(v) > 30
-            val backToCenter = !leftCenter && abs(old ?: 0) > 30
-            if ((leftCenter && t - last[i] >= 500) || backToCenter) {
+            val leftCenter = abs(v) > AppConfig.Polling.STICK_DEADBAND
+            val backToCenter = !leftCenter && abs(old ?: 0) > AppConfig.Polling.STICK_DEADBAND
+            if ((leftCenter && t - last[i] >= AppConfig.Polling.STICK_LOG_MS) || backToCenter) {
                 last[i] = t
                 OpLog.log("rcStick", name, mapOf("value" to v))
             }

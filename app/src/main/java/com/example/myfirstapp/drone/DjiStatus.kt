@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.AppConfig
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.DJIKeyInfo
@@ -37,8 +38,8 @@ data class AircraftStatus(
     val issues: List<String>
         get() = buildList {
             if (sdState != null && sdState != CameraSDCardState.NORMAL.name) add("SD 카드 $sdState")
-            if ((batteryPct ?: 100) < 30) add("배터리 낮음")
-            if ((satellites ?: 0) < 8) add("GNSS 위성 부족")
+            if ((batteryPct ?: 100) < AppConfig.Checks.BATTERY_MIN_PCT) add("배터리 낮음")
+            if ((satellites ?: 0) < AppConfig.Checks.MIN_SATELLITES) add("GNSS 위성 부족")
             if (!ldm) add("LDM 꺼짐")
         }
 
@@ -48,7 +49,7 @@ data class AircraftStatus(
 /** SDK에서 기체 상태를 읽는다. SDK가 없거나 등록 전이면 연결 안 됨으로 본다. */
 suspend fun djiAircraftStatus(): AircraftStatus = runCatching {
     val keys = KeyManager.getInstance()
-    suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(2_000) {
+    suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(AppConfig.Timeouts.KEY_READ_MS) {
         val key = if (index == null) KeyTools.createKey(info) else KeyTools.createKey(info, index)
         runCatching { djiValue<T> { keys.getValue(key, it) } }.getOrNull()
     }

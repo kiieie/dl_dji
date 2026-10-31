@@ -1,5 +1,6 @@
 package com.example.myfirstapp.data
 
+import com.example.myfirstapp.AppConfig
 import android.content.Context
 import android.util.Log
 import org.json.JSONObject
@@ -14,7 +15,6 @@ import java.util.concurrent.Executors
  * 한 스레드에서 차례로 쓰므로 어디서 불러도 된다. [init] 전에는 Logcat에만 남긴다.
  */
 object OpLog {
-    private const val KEEP_DAYS = 30
     private val writer = Executors.newSingleThreadExecutor()
     private var dir: File? = null
     private val day get() = SimpleDateFormat("yyyyMMdd", Locale.ROOT)
@@ -25,7 +25,7 @@ object OpLog {
         watchCrashes(d)
         checkLastSession(d)
         writer.execute {
-            val cutoff = System.currentTimeMillis() - KEEP_DAYS * 24L * 3600 * 1000
+            val cutoff = System.currentTimeMillis() - AppConfig.Storage.LOG_KEEP_DAYS * 24L * 3600 * 1000
             d.listFiles { f -> f.name != "running" && f.lastModified() < cutoff }?.forEach { it.delete() }
         }
     }

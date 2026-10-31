@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.AppConfig
 import dji.sdk.keyvalue.key.AirLinkKey
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.CameraKey
@@ -42,7 +43,7 @@ class AircraftSetting(
         data class Action(val confirm: String?) : Kind
     }
 
-    suspend fun load(): Any? = runCatching { withTimeoutOrNull(3_000) { read() } }.getOrNull()
+    suspend fun load(): Any? = runCatching { withTimeoutOrNull(AppConfig.Timeouts.SETTINGS_READ_MS) { read() } }.getOrNull()
     suspend fun save(value: Any) = write?.invoke(value) ?: Unit
 }
 

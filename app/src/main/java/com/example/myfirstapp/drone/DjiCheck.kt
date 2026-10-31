@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.AppConfig
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.DJIKeyInfo
@@ -48,7 +49,7 @@ const val COMPASS_GUIDE = "철골·자동차·전선에서 떨어진 곳에서 �
  */
 suspend fun djiAircraftCheck(rthNeedM: Double? = null): AircraftCheck = runCatching {
     val keys = KeyManager.getInstance()
-    suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(2_000) {
+    suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(AppConfig.Timeouts.KEY_READ_MS) {
         val key = if (index == null) KeyTools.createKey(info) else KeyTools.createKey(info, index)
         runCatching { djiValue<T> { keys.getValue(key, it) } }.getOrNull()
     }
@@ -86,9 +87,9 @@ suspend fun djiAircraftCheck(rthNeedM: Double? = null): AircraftCheck = runCatch
         CheckItem("비행 모드", mode?.let { "$it · 자동 비행은 N에서만" } ?: "--", if (mode == 'N') OK else WARN),
         CheckItem(
             "기체 배터리", listOfNotNull(pct?.let { "$it%" }, mv?.let { "%.1fV".format(it / 1000.0) }, temp?.let { "%.0f°C".format(it) }).joinToString(" · ").ifEmpty { "--" },
-            if ((pct ?: 100) < 30) WARN else OK,
+            if ((pct ?: 100) < AppConfig.Checks.BATTERY_MIN_PCT) WARN else OK,
         ),
-        CheckItem("GNSS", "위성 ${sats ?: "--"} · ${if (home == true) "홈 기록됨" else "홈 기록 전"}", if ((sats ?: 0) >= 8 && home == true) OK else WARN),
+        CheckItem("GNSS", "위성 ${sats ?: "--"} · ${if (home == true) "홈 기록됨" else "홈 기록 전"}", if ((sats ?: 0) >= AppConfig.Checks.MIN_SATELLITES && home == true) OK else WARN),
         CheckItem("IMU", when (imuWarming) { true -> "예열 중"; false -> "예열 완료"; null -> "--" }, if (imuWarming == false) OK else WARN),
         CheckItem(
             "RTH 고도",
@@ -97,7 +98,7 @@ suspend fun djiAircraftCheck(rthNeedM: Double? = null): AircraftCheck = runCatch
         ),
         CheckItem(
             "저장 공간", if (sdState == null || sdState == "NORMAL") sdFree?.let { "%.1f GB 남음".format(it / 1024.0) } ?: "--" else "SD $sdState",
-            if (sdState != null && sdState != "NORMAL") ERROR else if ((sdFree ?: Int.MAX_VALUE) < 2048) WARN else OK,
+            if (sdState != null && sdState != "NORMAL") ERROR else if ((sdFree ?: Int.MAX_VALUE) < AppConfig.Checks.SD_MIN_FREE_MB) WARN else OK,
         ),
         ldmItem,
     )
