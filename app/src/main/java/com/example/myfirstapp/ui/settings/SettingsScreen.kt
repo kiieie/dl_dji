@@ -124,8 +124,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
         Section("상태", null) {
-            StatusRow("LDM(로컬 데이터 모드)", "기체 연결 뒤 확인(PoC ④)")
-            StatusRow("외부 데이터 전송", "없음 · 앱은 오프라인으로만 동작합니다")
+            val ldm by (LocalContext.current.applicationContext as InspectionApp).ldmStatus.collectAsStateWithLifecycle()
+            StatusRow("LDM(로컬 데이터 모드)", ldm.removePrefix("LDM: "))
+            // 7.4: 인터넷이 되면 배경 지도 타일만 받는다(키·토큰, IP, 타일 좌표). 비행·사진·전주 데이터는 보내지 않는다
+            StatusRow("외부 데이터 전송", "배경 지도 타일 받기만(${s.mapSource.title}) · 비행·사진·전주 데이터는 보내지 않음")
         }
     }
 
