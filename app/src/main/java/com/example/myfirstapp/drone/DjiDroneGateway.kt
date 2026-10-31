@@ -194,10 +194,9 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             when (owner) {
                 MediaOwner.SCREEN -> newPhotos.tryEmit(capture)
                 // 같은 지점의 n번째 파일 = KMZ 렌즈 순서의 n번째(광각 → 망원). 실제 렌즈는 받을 때 파일 이름(_W/_Z)으로 다시 본다
-                // 렌즈 수만큼 다음 파일은 설비 조준 사진
+                // 같은 동작 안 n번째 파일 = n번째 렌즈, 둘째 동작부터는 설비 조준 사진(시간 간격으로 가름, 2026-10-31 시뮬레이터는 동작마다 파일 1개)
                 MediaOwner.WAYPOINT -> file?.let { f ->
-                    val n = sortieLenses.size
-                    _events.tryEmit(DroneEvent.PhotoTaken(f.shot, capture.copy(lens = sortieLenses[f.ordinal % n], equipment = f.ordinal >= n)))
+                    _events.tryEmit(DroneEvent.PhotoTaken(f.shot, capture.copy(lens = sortieLenses[f.lensSlot % sortieLenses.size], equipment = f.action >= 1)))
                 }
                 MediaOwner.SHUTTER -> _events.tryEmit(DroneEvent.ShutterPhoto(capture))
                 MediaOwner.NONE -> Unit

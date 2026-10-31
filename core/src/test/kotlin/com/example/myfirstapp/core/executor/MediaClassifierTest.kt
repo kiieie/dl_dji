@@ -109,4 +109,19 @@ class MediaClassifierTest {
         c.shotReached(3, 30_000)
         assertEquals(WaypointFile(3, 0), c.classifyFile(33_000, shot = 3).second)
     }
+
+    @Test
+    fun `떨어져 온 파일은 다음 촬영 동작(설비 조준), 붙어 온 파일은 같은 동작의 다음 렌즈`() {
+        val c = MediaClassifier().apply { sortieStarted(filesPerShot = 4) }
+        c.shotReached(0, 0)
+        assertEquals(WaypointFile(0, 0, 0, 0), c.classifyFile(3_000, shot = 0).second)
+        assertEquals(WaypointFile(0, 1, 0, 1), c.classifyFile(3_100, shot = 0).second) // 망원
+        assertEquals(WaypointFile(0, 2, 1, 0), c.classifyFile(4_000, shot = 0).second) // 설비 광각
+        assertEquals(WaypointFile(0, 3, 1, 1), c.classifyFile(4_100, shot = 0).second)
+        // 동작마다 파일 1개인 기체(시뮬레이터 _V): 둘째 파일은 설비 사진
+        val one = MediaClassifier().apply { sortieStarted(filesPerShot = 4) }
+        one.shotReached(0, 0)
+        one.classifyFile(3_000, shot = 0)
+        assertEquals(WaypointFile(0, 1, 1, 0), one.classifyFile(3_910, shot = 0).second)
+    }
 }

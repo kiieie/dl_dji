@@ -426,7 +426,8 @@ interface ProjectDao {
     @Query("UPDATE mission SET modelVersion = :version WHERE id = :missionId")
     suspend fun setModelVersion(missionId: Long, version: String)
 
-    @Query("UPDATE sortie SET status = 'IN_PROGRESS', startedAt = :at WHERE id = :sortieId AND startedAt IS NULL")
+    /** 소티 이륙. 끝난 소티를 이어 날면(남은 전주) 다시 열린 소티가 된다(앱 재시작 복구 대상, 6.4). 처음 시각은 둔다. */
+    @Query("UPDATE sortie SET status = 'IN_PROGRESS', startedAt = COALESCE(startedAt, :at), endedAt = NULL WHERE id = :sortieId")
     suspend fun startSortie(sortieId: Long, at: Long)
 
     @Query("UPDATE sortie SET status = 'DONE', endedAt = :at WHERE id = :sortieId")

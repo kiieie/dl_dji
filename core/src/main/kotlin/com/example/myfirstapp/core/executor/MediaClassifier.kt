@@ -24,8 +24,17 @@ const val MULTI_FILE_MS = 1_500L
  */
 const val LATE_FILE_MS = 1_000L
 
-/** 지점 사진 파일: [shot] 촬영 지점, [ordinal] 그 지점에서 몇 번째 파일(0부터, KMZ 렌즈 순서). */
-data class WaypointFile(val shot: Int, val ordinal: Int)
+/**
+ * 한 번 찍을 때 렌즈별 파일은 거의 동시에 온다. 앞 파일보다 이만큼 늦으면 다음 촬영 동작(설비 조준: 짐벌을 돌린 뒤)으로 본다.
+ * 2026-10-31 시뮬레이터: 지점 사진 뒤 설비 사진이 0.9초 뒤. ponytail: 현장 실측으로 맞춘다.
+ */
+const val BURST_MS = 450L
+
+/**
+ * 지점 사진 파일: [shot] 촬영 지점, [ordinal] 그 지점에서 몇 번째 파일(0부터),
+ * [action] 그 지점의 몇 번째 촬영 동작(0 지점 사진, 1 설비 조준 사진), [lensSlot] 그 동작 안에서 몇 번째 파일(KMZ 렌즈 순서).
+ */
+data class WaypointFile(val shot: Int, val ordinal: Int, val action: Int = 0, val lensSlot: Int = ordinal)
 
 /**
  * 어댑터가 새 사진 알림마다 주인을 가른다(6.4 RC 셔터 규칙, 위에서부터). 시각은 조종기 시계 ms.
@@ -40,6 +49,9 @@ class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private
     private var lastShot: Int? = null
     private var filesPerShot: (Int) -> Int = { 1 }
     private val files = mutableMapOf<Int, Int>()
+    private val lastFileAt = mutableMapOf<Int, Long>()
+    private val actions = mutableMapOf<Int, Int>()
+    private val slots = mutableMapOf<Int, Int>()
     private var reachedShot: Int? = null
     private var reachedAt = Long.MIN_VALUE / 2
 
@@ -65,6 +77,9 @@ class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private
         lastShot = null
         this.filesPerShot = { filesPerShot(it).coerceAtLeast(1) }
         files.clear()
+        lastFileAt.clear()
+        actions.clear()
+        slots.clear()
         reachedShot = null
     }
 
@@ -104,6 +119,13 @@ class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private
         lastShot = maxOf(owner, last ?: owner)
         val n = files.getOrDefault(owner, 0)
         files[owner] = n + 1
-        return WaypointFile(owner, n)
+        // 앞 파일과 떨어져 왔으면 다음 촬영 동작(설비 조준), 붙어 왔으면 같은 동작의 다음 렌즈
+        val prev = lastFileAt[owner]
+        val action = actions.getOrDefault(owner, 0) + if (prev != null && now - prev > BURST_MS) 1 else 0
+        val slot = if (prev == null || now - prev > BURST_MS) 0 else slots.getOrDefault(owner, 0) + 1
+        lastFileAt[owner] = now
+        actions[owner] = action
+        slots[owner] = slot
+        return WaypointFile(owner, n, action, slot)
     }
 }

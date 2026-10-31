@@ -767,7 +767,8 @@ class InspectionExecutor(
                 missionPoints = Viewpoints.expand(remaining.map { it.pole }, params, start)
                 missionVisits = missionPoints.map { byPole.getValue(it.pole) }
                 target = remaining.first()
-                val stopFirst = stopMissionBeforeLeg
+                // 기체가 아직 다른(옛) 미션을 날고 있으면 끝내고 올린다(앱을 껐다 켜고 비행 화면을 새로 연 경우 등)
+                val stopFirst = stopMissionBeforeLeg || drone.telemetry.value.flightMode == FlightMode.MISSION
                 stopMissionBeforeLeg = false
                 val points = missionPoints
                 launchStep { prepareSortie(points, stopFirst) }
