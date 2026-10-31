@@ -171,14 +171,14 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
 
     Box(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
-        // 점 오른쪽 위에 검은 바탕 흰 글자와 설비 기호(고/저압·변압기·개폐기·피뢰기, 판독·앨범 범례와 같음)
+        // 점 오른쪽 위에 검은 바탕 흰 글자와 설비 기호(글자 16.5sp, 2026-10-31 사용자 요청 1.5배)(고/저압·변압기·개폐기·피뢰기, 판독·앨범 범례와 같음)
         labels.forEach { (p, at) ->
             Row(
-                Modifier.offset { IntOffset(at.x.toInt() + 12, at.y.toInt() - 28) }.background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),
+                Modifier.offset { IntOffset(at.x.toInt() + 18, at.y.toInt() - 42) }.background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Text(poleLabel(p), style = numberStyle(if (interactive) 11.sp else 9.sp), color = Color.White, maxLines = 1)
-                PoleSymbolRow(poleSymbols(p.voltage, p.equipment), size = if (interactive) 10.dp else 8.dp)
+                Text(poleLabel(p), style = numberStyle(if (interactive) 16.5.sp else 13.5.sp), color = Color.White, maxLines = 1)
+                PoleSymbolRow(poleSymbols(p.voltage, p.equipment), size = if (interactive) 15.dp else 12.dp)
             }
         }
     }
