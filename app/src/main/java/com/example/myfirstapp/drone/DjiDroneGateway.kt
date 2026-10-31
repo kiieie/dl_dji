@@ -310,6 +310,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     override suspend fun startSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> = runCatching {
         kmzDir.mkdirs()
+        val previousKmz = lastKmzName() // 새 KMZ를 쓰기 전에(옛 미션을 끝낼 때 쓸 이름)
         val name = "sortie_${System.currentTimeMillis()}"
         val kmz = File(kmzDir, "$name.kmz")
         // 시작 위치: 떠 있으면 지금 자리, 땅이면 이륙 지점. 복귀는 홈 지점(5.6 이동 고도 구간)
@@ -319,7 +320,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         checkKmz(kmz.path).filterNot { it.startsWith("검사 불가") }.takeIf { it.isNotEmpty() }?.let { error("KMZ 검사 실패: ${it.joinToString()}") }
         // 기체에 앱이 모르는 옛 미션이 중단·실행 상태로 남아 있으면(앱 재시작, GPS 약함으로 중단 등) 새로 올리기가 "기기 상태 오류"로 거절된다(2026-10-31 시뮬레이터)
         val stale = executeState
-        if (missionName == null && stale in STALE_STATES) lastKmzName()?.let { old ->
+        if (missionName == null && stale in STALE_STATES) previousKmz?.let { old ->
             val r = runCatching { djiDone { missions.stopMission(old, it) } }
             OpLog.log("mission", "stopStale", mapOf("name" to old, "state" to stale?.name, "ok" to r.isSuccess, "error" to r.exceptionOrNull()?.message))
         }
@@ -523,6 +524,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     override val obstacles: Flow<com.example.myfirstapp.core.model.Obstacles?> = kotlinx.coroutines.flow.callbackFlow {
         val pm = PerceptionManager.getInstance()
         val l = dji.v5.manager.aircraft.perception.listener.ObstacleDataListener { d ->
+            // 시뮬레이터에서는 실제 기체가 책상 위라 센서가 주변 물건을 0.5m로 계속 본다(2026-10-31): 경고하지 않는다
+            if (djiSimulatorOn()) return@ObstacleDataListener run { trySend(null) }
             fun m(mm: Int?) = mm?.takeIf { it > 0 }?.div(1000.0)
             trySend(com.example.myfirstapp.core.model.Obstacles.fromHorizontal(
                 d.horizontalObstacleDistance.orEmpty().map { m(it) ?: 0.0 }, d.horizontalAngleInterval,

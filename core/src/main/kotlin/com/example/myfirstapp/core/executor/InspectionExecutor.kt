@@ -232,6 +232,7 @@ class InspectionExecutor(
                 // 땅에서 거절: 이륙 기준으로 소티를 처음부터(비행 전 점검 포함)
                 state == Idle -> {
                     terrainFallbackAsk = false
+                    message = "이륙 지점 기준으로 올립니다."
                     params = params.copy(terrainFollow = false)
                     stopMissionBeforeLeg = true
                     startSortie()
