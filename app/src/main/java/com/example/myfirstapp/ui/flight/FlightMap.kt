@@ -2,7 +2,12 @@ package com.example.myfirstapp.ui.flight
 
 import com.example.myfirstapp.core.route.Viewpoints
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
+import com.example.myfirstapp.ui.PoleSymbolRow
+import com.example.myfirstapp.ui.poleSymbols
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -66,7 +71,7 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
     val density = LocalDensity.current
     var styleGen by remember { mutableIntStateOf(0) }
     var fitted by remember { mutableStateOf(false) }
-    var labels by remember { mutableStateOf<List<Pair<String, Offset>>>(emptyList()) }
+    var labels by remember { mutableStateOf<List<Pair<Pole, Offset>>>(emptyList()) }
     val latest by rememberUpdatedState(s)
     fun relabel(map: MapLibreMap) {
         val st = latest
@@ -80,7 +85,7 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
         val h = mapView.height.toFloat()
         labels = targets.mapNotNull { p ->
             val pt = map.projection.toScreenLocation(LatLng(p.position.lat, p.position.lon))
-            if (pt.x !in 0f..w || pt.y !in 0f..h) null else poleLabel(p) to Offset(pt.x, pt.y)
+            if (pt.x !in 0f..w || pt.y !in 0f..h) null else p to Offset(pt.x, pt.y)
         }
     }
 
@@ -166,13 +171,15 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
 
     Box(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
-        // 점 오른쪽 위에 검은 바탕 흰 글자(위성 사진 위에서 읽히게)
-        labels.forEach { (text, at) ->
-            Text(
-                text,
+        // 점 오른쪽 위에 검은 바탕 흰 글자와 설비 기호(고/저압·변압기·개폐기·피뢰기, 판독·앨범 범례와 같음)
+        labels.forEach { (p, at) ->
+            Row(
                 Modifier.offset { IntOffset(at.x.toInt() + 12, at.y.toInt() - 28) }.background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),
-                style = numberStyle(if (interactive) 11.sp else 9.sp), color = Color.White, maxLines = 1,
-            )
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(poleLabel(p), style = numberStyle(if (interactive) 11.sp else 9.sp), color = Color.White, maxLines = 1)
+                PoleSymbolRow(poleSymbols(p.voltage, p.equipment), size = if (interactive) 10.dp else 8.dp)
+            }
         }
     }
 }
