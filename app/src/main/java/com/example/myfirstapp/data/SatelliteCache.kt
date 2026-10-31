@@ -49,21 +49,39 @@ fun prefetchSatellite(context: Context, points: List<GeoPoint>, name: String) {
     manager.createOfflineRegion(definition, name.toByteArray(), object : OfflineManager.CreateOfflineRegionCallback {
         override fun onCreate(offlineRegion: OfflineRegion) {
             OpLog.log("map", "prefetch", mapOf("name" to name, "maxZoom" to maxZoom, "tiles" to tileCount(south, north, west, east, MIN_ZOOM, maxZoom)))
-            offlineRegion.setObserver(object : OfflineRegion.OfflineRegionObserver {
-                override fun onStatusChanged(status: OfflineRegionStatus) {
-                    if (!status.isComplete) return
-                    offlineRegion.setDownloadState(OfflineRegion.STATE_INACTIVE)
-                    OpLog.log("map", "prefetchDone", mapOf("name" to name, "tiles" to status.completedTileCount, "bytes" to status.completedTileSize))
-                }
-
-                override fun onError(error: OfflineRegionError) { Log.w("SatelliteCache", "미리 받기 오류: ${error.reason} ${error.message}") }
-                override fun mapboxTileCountLimitExceeded(limit: Long) = Unit
-            })
-            offlineRegion.setDownloadState(OfflineRegion.STATE_ACTIVE)
+            download(offlineRegion)
         }
 
         override fun onError(error: String) { Log.w("SatelliteCache", "미리 받기 영역 생성 실패: $error") }
     })
+}
+
+/**
+ * 끝나지 않은 미리 받기를 이어 받는다(앱을 끄거나 인터넷이 끊겨 멈춘 것). 지도를 처음 열 때 한 번 부른다(메인 스레드).
+ * 다 받은 영역은 바로 끝으로 알려 와 멈춘다.
+ */
+fun resumeSatellitePrefetch(context: Context) {
+    if (savedSatelliteTiles().isEmpty()) return
+    OfflineManager.getInstance(context).listOfflineRegions(object : OfflineManager.ListOfflineRegionsCallback {
+        override fun onList(offlineRegions: Array<OfflineRegion>?) { offlineRegions?.forEach(::download) }
+        override fun onError(error: String) { Log.w("SatelliteCache", "미리 받기 목록 실패: $error") }
+    })
+}
+
+/** 받기 시작·완료 기록. 완료되면 멈춘다. */
+private fun download(region: OfflineRegion) {
+    val name = String(region.metadata)
+    region.setObserver(object : OfflineRegion.OfflineRegionObserver {
+        override fun onStatusChanged(status: OfflineRegionStatus) {
+            if (!status.isComplete) return
+            region.setDownloadState(OfflineRegion.STATE_INACTIVE)
+            OpLog.log("map", "prefetchDone", mapOf("name" to name, "tiles" to status.completedTileCount, "bytes" to status.completedTileSize))
+        }
+
+        override fun onError(error: OfflineRegionError) { Log.w("SatelliteCache", "미리 받기 오류: ${error.reason} ${error.message}") }
+        override fun mapboxTileCountLimitExceeded(limit: Long) = Unit
+    })
+    region.setDownloadState(OfflineRegion.STATE_ACTIVE)
 }
 
 /** 위성 원본 하나만 있는 스타일(오프라인 영역 정의용). 화면 스타일([com.example.myfirstapp.ui.styleJson])과 같은 타일 주소를 써야 같은 캐시를 쓴다. */

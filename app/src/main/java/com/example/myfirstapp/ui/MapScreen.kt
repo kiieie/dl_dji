@@ -91,6 +91,7 @@ import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.drone.djiCurrentLocation
 import com.example.myfirstapp.drone.djiSimulatorOn
 import com.example.myfirstapp.data.prefetchSatellite
+import com.example.myfirstapp.data.resumeSatellitePrefetch
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.poleDisplayName
@@ -708,6 +709,8 @@ internal fun rememberMapView(): MapView {
         if (!ambientCacheSized) {
             ambientCacheSized = true
             OfflineManager.getInstance(context).setMaximumAmbientCacheSize(MAP_CACHE_BYTES, null)
+            // 계획 저장 때 시작했다가 멈춘 위성 미리 받기를 이어 받는다(7.4)
+            resumeSatellitePrefetch(context.applicationContext)
         }
         // Compose 안에서는 SurfaceView보다 TextureView가 겹침·캡처 문제가 적다.
         MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true)
