@@ -3,8 +3,8 @@ package com.example.myfirstapp.core.route
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.PoleCodes
 import com.example.myfirstapp.core.model.ShotMode
-import com.example.myfirstapp.core.model.equipmentsOf
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -79,7 +79,7 @@ object Viewpoints {
     private fun angleDiff(a: Double, b: Double) = ((a - b).mod(360.0)).let { if (it > 180.0) 360.0 - it else it }
 
     /** 설비 조준을 머리에서 얼마나 내릴지(m): 전주 기기 중 가장 큰 값. 기기가 없거나 설정에 없으면 null(설비 사진 없음). */
-    fun equipmentDropM(pole: Pole, p: FlightParams): Double? = equipmentsOf(pole.equipment).mapNotNull { p.equipmentDropM[it] }.maxOrNull()
+    fun equipmentDropM(pole: Pole, p: FlightParams): Double? = PoleCodes.equipmentsOf(pole.equipment).mapNotNull { p.equipmentDropM[it] }.maxOrNull()
 
     /** 전주 머리 높이(m, 지상): 전주 길이를 알면 지상 높이, 모르면 [FlightParams.aimHeightM]. */
     fun aimHeight(pole: Pole, p: FlightParams) = pole.aboveGroundM ?: p.aimHeightM

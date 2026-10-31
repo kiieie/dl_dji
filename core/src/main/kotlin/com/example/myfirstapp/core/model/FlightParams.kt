@@ -48,7 +48,7 @@ data class FlightParams(
      */
     fun photosPerPole(pole: Pole? = null): Int {
         val points = if (shotMode == ShotMode.DIAGONAL4) 4 else 1
-        val aims = if (shotMode == ShotMode.DIAGONAL4 && equipmentsOf(pole?.equipment).any { it in equipmentDropM }) 2 else 1
+        val aims = if (shotMode == ShotMode.DIAGONAL4 && PoleCodes.equipmentsOf(pole?.equipment).any { it in equipmentDropM }) 2 else 1
         return points * lenses.distinct().size.coerceAtLeast(1) * aims
     }
 

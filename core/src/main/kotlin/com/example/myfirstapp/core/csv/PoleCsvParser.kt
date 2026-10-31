@@ -3,6 +3,7 @@ package com.example.myfirstapp.core.csv
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.PoleCodes
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
@@ -91,15 +92,13 @@ object PoleCsvParser {
                 lineNo = field(Column.LINE_NO).ifEmpty { null },
                 lengthM = Regex("""\d+(\.\d+)?""").find(field(Column.LENGTH))?.value?.toDouble(),
                 equipment = field(Column.EQUIPMENT).ifEmpty { null },
-                guy = field(Column.VOLTAGE) == GUY || field(Column.FORM) == GUY,
-                voltage = field(Column.VOLTAGE).takeIf { it.isNotEmpty() && it != GUY },
+                guy = field(Column.VOLTAGE) == PoleCodes.GUY || field(Column.FORM) == PoleCodes.GUY,
+                voltage = field(Column.VOLTAGE).takeIf { it.isNotEmpty() && it != PoleCodes.GUY },
                 installedYm = field(Column.INSTALLED).ifEmpty { null },
             )
         }
         return CsvImportResult.Success(encoding, poles, issues)
     }
-
-    private const val GUY = "지선주"
 
     /** 십진수(`36.4755`) 또는 설비 엑셀의 도.분.초(`127.21.50.09` = 127°21'50.09"). */
     fun coordinate(text: String): Double? {
