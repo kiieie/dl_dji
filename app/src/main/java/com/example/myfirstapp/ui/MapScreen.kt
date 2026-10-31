@@ -164,7 +164,7 @@ fun MapScreen(
         factory = PlanViewModel.factory(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() },
             (context.applicationContext as InspectionApp).settings, ::djiCurrentLocation, ::djiSimulatorOn,
-            { points, name -> prefetchSatellite(context.applicationContext, points, name) },
+            { points, name -> context.getExternalFilesDir(null)?.let { prefetchSatellite(it, points, name) } },
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
@@ -710,7 +710,7 @@ internal fun rememberMapView(): MapView {
             ambientCacheSized = true
             OfflineManager.getInstance(context).setMaximumAmbientCacheSize(MAP_CACHE_BYTES, null)
             // 계획 저장 때 시작했다가 멈춘 위성 미리 받기를 이어 받는다(7.4)
-            resumeSatellitePrefetch(context.applicationContext)
+            context.getExternalFilesDir(null)?.let(::resumeSatellitePrefetch)
         }
         // Compose 안에서는 SurfaceView보다 TextureView가 겹침·캡처 문제가 적다.
         MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true)
