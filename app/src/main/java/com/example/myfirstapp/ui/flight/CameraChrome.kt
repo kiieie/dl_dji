@@ -48,6 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.R
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.model.Lens
@@ -75,7 +78,7 @@ import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 // 크기는 [Dimens](상단 바 높이 [Dimens.TopBar], 카드 폭 [Dimens.CardWidth]), 카드 바탕은 [CardBg](ui/theme).
 
 /**
- * 상단 바(Pilot 2 56쪽 순서): 뒤로 · 시스템 상태 칸(196dp, 경고는 빨강) · 가운데 제목 · 현재 시각 · GNSS · RC · 배터리 · 설정.
+ * 상단 바(Pilot 2 56쪽 순서): 뒤로 · 시스템 상태 칸(196dp, 경고는 빨강) · 가운데 제목 · 현재 시각 · GNSS · RC 신호 · 기체 배터리 · RC 배터리 · 설정.
  * 아래에 배터리 띠(빨강 0~10%, 노랑 10~20%, 초록 그 위, H는 복귀에 필요한 양).
  */
 @Composable
@@ -132,6 +135,12 @@ internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> 
                     SignalBars(t?.signalPct, t?.connected == true)
                 }
                 BatteryIcon(t?.batteryPct)
+                // 조종기 자체 배터리(안드로이드 시스템 값). 기체 배터리와 같은 그림, 충전 중이면 ⚡
+                val rc by (LocalContext.current.applicationContext as InspectionApp).rcBattery.collectAsStateWithLifecycle()
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("RC", fontSize = FontSize.Caption, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    BatteryIcon(rc?.pct?.toDouble(), charging = rc?.charging == true)
+                }
                 IconButton(onClick = onOpenSettings, modifier = Modifier.size(Dimens.TouchSmall)) {
                     Icon(painterResource(R.drawable.ic_settings), contentDescription = "설정", modifier = Modifier.size(15.dp), tint = Color.White)
                 }
@@ -165,9 +174,9 @@ private fun SignalBars(q: Int?, connected: Boolean) {
     }
 }
 
-/** 배터리 그림과 %. 30% 아래는 빨강. */
+/** 배터리 그림과 %. 30% 아래는 빨강. [charging]이면 % 앞에 ⚡(RC 배터리). */
 @Composable
-private fun BatteryIcon(pct: Double?) {
+private fun BatteryIcon(pct: Double?, charging: Boolean = false) {
     val c = when {
         pct == null -> Inactive
         pct < 30 -> Error
@@ -182,7 +191,7 @@ private fun BatteryIcon(pct: Double?) {
             val h = full * ((pct ?: 0.0) / 100).toFloat().coerceIn(0f, 1f)
             drawRect(c, Offset(2 * u, 4 * u + full - h), androidx.compose.ui.geometry.Size(5 * u, h))
         }
-        Text(pct?.let { "${it.toInt()}%" } ?: "--%", style = numberStyle(FontSize.Body), color = if (pct != null && pct < 30) Error else Color.White)
+        Text((if (charging) "⚡" else "") + (pct?.let { "${it.toInt()}%" } ?: "--%"), style = numberStyle(FontSize.Body), color = if (pct != null && pct < 30) Error else Color.White)
     }
 }
 

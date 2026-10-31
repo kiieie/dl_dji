@@ -11,6 +11,7 @@ import android.content.Context
 import android.util.Log
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.AppDatabase
+import com.example.myfirstapp.data.RcBattery
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.savedSatelliteTilesFile
 import java.io.File
@@ -62,6 +63,10 @@ class InspectionApp : Application() {
         _djiStatus.value = text
     }
 
+    /** 조종기 자체 배터리(10.4.3 상단 바). onCreate에서 한 번 등록한다. */
+    lateinit var rcBattery: StateFlow<RcBattery?>
+        private set
+
     /** 앱 전체 수명의 작업(운용 로그용 RC 버튼 감시). */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -70,6 +75,7 @@ class InspectionApp : Application() {
         OpLog.init(this)
         savedSatelliteTilesFile = File(filesDir, "satellite-tiles.txt")
         OpLog.log("app", "start")
+        rcBattery = RcBattery.watch(this)
         initDjiSdk()
         appScope.launch { rcButtons.collect { OpLog.log("rc", it.name) } }
     }
