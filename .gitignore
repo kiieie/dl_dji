@@ -47,3 +47,8 @@ ds-bundle/
 # 현장 시험 자료(실제 전주 좌표, 공개 저장소에 올리지 않음)
 docs/drone_dl_test/
 docs/drone_dl_test.zip
+
+# 증빙 캡처(실제 전주 지도 포함, 2026-10-31 결정). 이미 공개된 것은 추적 유지
+docs/evidence/**/*.png
+docs/evidence/**/*.jpg
+docs/evidence/**/*.jpeg
