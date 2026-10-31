@@ -17,7 +17,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.myfirstapp.core.model.Equipment
-import com.example.myfirstapp.core.model.equipmentsOf
+import com.example.myfirstapp.core.model.PoleCodes
+import com.example.myfirstapp.core.model.Voltage
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.Warning
@@ -25,15 +26,15 @@ import com.example.myfirstapp.ui.theme.Warning
 /** 설비 기호(10.4.3 판독·앨범 범례): 고/저압과 설치기기. 엑셀 값(4.5)에서 고른다. */
 enum class PoleSymbol(val title: String) { HIGH("고압"), LOW("저압"), BOTH("고저압"), TRANSFORMER("변압기"), SWITCH("개폐기"), ARRESTER("피뢰기") }
 
-/** 엑셀 `고/저압`·`설치기기` 값 → 기호. 설치기기는 "가공뱅크/피뢰기"처럼 여러 개일 수 있다. */
+/** 엑셀 `고/저압`·`설치기기` 값 → 기호. 판정 규칙은 [PoleCodes]에 있다. */
 fun poleSymbols(voltage: String?, equipment: String?): List<PoleSymbol> = buildList {
-    when {
-        voltage == null -> Unit
-        "고저" in voltage -> add(PoleSymbol.BOTH)
-        "고" in voltage -> add(PoleSymbol.HIGH)
-        "저" in voltage -> add(PoleSymbol.LOW)
+    when (PoleCodes.voltageOf(voltage)) {
+        Voltage.BOTH -> add(PoleSymbol.BOTH)
+        Voltage.HIGH -> add(PoleSymbol.HIGH)
+        Voltage.LOW -> add(PoleSymbol.LOW)
+        null -> Unit
     }
-    val e = equipmentsOf(equipment)
+    val e = PoleCodes.equipmentsOf(equipment)
     if (Equipment.TRANSFORMER in e) add(PoleSymbol.TRANSFORMER)
     if (Equipment.SWITCH in e) add(PoleSymbol.SWITCH)
     if (Equipment.ARRESTER in e) add(PoleSymbol.ARRESTER)

@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.route
 
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.ShotMode
@@ -7,22 +8,22 @@ import com.example.myfirstapp.core.model.ShotMode
 /** 에너지 모델 파라미터(5.5). 초기값은 보수적으로 잡았고 필드 테스트로 보정한다. */
 data class EnergyParams(
     /** 순항 소모율(%/s). M3E 공칭 45분 대신 25분 기준. */
-    val cruisePctPerSec: Double = 100.0 / (25 * 60),
+    val cruisePctPerSec: Double = Tuning.Energy.CRUISE_PCT_PER_SEC,
     /** 호버 소모율(%/s). 28분 기준. */
-    val hoverPctPerSec: Double = 100.0 / (28 * 60),
+    val hoverPctPerSec: Double = Tuning.Energy.HOVER_PCT_PER_SEC,
     /** 전주 1개 처리 시간(촬영 + 다운로드 + 분석 + 대기). */
-    val visitSec: Double = 20.0,
+    val visitSec: Double = Tuning.Energy.VISIT_SEC,
     /** 구간 KMZ 생성·업로드·시작 지연(PoC ①에서 실측해 교체). */
-    val legOverheadSec: Double = 10.0,
+    val legOverheadSec: Double = Tuning.Energy.LEG_OVERHEAD_SEC,
     /** 상승·하강 속도. 이착륙과 점검 고도 하강·재상승 비용 계산에 쓴다. */
-    val verticalSpeedMps: Double = 3.0,
+    val verticalSpeedMps: Double = Tuning.Energy.VERTICAL_SPEED_MPS,
     /** 계획 예산에서 빼는 RTH 여유(%). */
-    val rthMarginPct: Double = 5.0,
+    val rthMarginPct: Double = Tuning.Energy.RTH_MARGIN_PCT,
     /**
      * 6.1 방식 A(소티 미션 하나로 계속 비행)의 촬영 지점 하나 처리 시간: 멈춤·짐벌·촬영 후 출발.
      * 2026-10-30 시뮬레이터 실측 지점 간격 약 6.5초(이동 포함). 다운로드·분석은 비행과 병렬이라 넣지 않는다.
      */
-    val shotSec: Double = 6.0,
+    val shotSec: Double = Tuning.Energy.SHOT_SEC,
 )
 
 /** 배터리 소모 추정(5.5). 모든 값은 배터리 %이다. */
@@ -97,5 +98,5 @@ class EnergyModel(val params: EnergyParams, val flight: FlightParams) {
 
     /** 구간 비행 중 감시: 현재 배터리 < E(현재→Home, 수직 포함) + 예비율 하한(20%)이면 RTH를 권고한다. */
     fun mustReturn(currentPct: Double, toHomeM: Double): Boolean =
-        currentPct < returnPct(toHomeM) + FlightParams.MIN_RESERVE_PCT
+        currentPct < returnPct(toHomeM) + Tuning.Safety.MIN_RESERVE_PCT
 }

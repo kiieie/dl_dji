@@ -23,8 +23,8 @@ data class Pole(
 ) {
     val displayName: String get() = poleDisplayName(poleId, lineName, lineNo)
 
-    /** 지상 높이(m): 길이 − 근입(15m 이하 길이/6, 넘으면 2.5m). 길이를 모르면 null. */
-    val aboveGroundM: Double? get() = lengthM?.let { it - if (it <= 15.0) it / 6.0 else 2.5 }
+    /** 지상 높이(m): 길이 − 근입([PoleCodes.embedmentM]). 길이를 모르면 null. */
+    val aboveGroundM: Double? get() = lengthM?.let { it - PoleCodes.embedmentM(it) }
 }
 
 /** 전주 화면 이름(4.5): 선로번호가 있으면 "대평선 13", 없으면 전주번호. */

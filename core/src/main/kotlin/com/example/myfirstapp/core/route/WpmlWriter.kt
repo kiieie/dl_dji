@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.route
 
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
@@ -72,8 +73,8 @@ object WpmlWriter {
         val diagonal = params.shotMode == ShotMode.DIAGONAL4
         fun far(a: GeoPoint, b: GeoPoint) = LocalProjection.distanceM(a, b) > params.transitLegThresholdM
         fun high(v: Viewpoint) = maxOf(params.transitAltitudeM, v.altitudeM)
-        // 이동 고도가 촬영 고도보다 [MIN_CLIMB_M] 이상 높을 때만 오르내린다(같은 자리·같은 높이 지점이 겹치면 기체가 거절할 수 있음)
-        fun climbs(v: Viewpoint) = params.transitAltitudeM - v.altitudeM >= MIN_CLIMB_M
+        // 이동 고도가 촬영 고도보다 [Tuning.Safety.MIN_CLIMB_M] 이상 높을 때만 오르내린다(같은 자리·같은 높이 지점이 겹치면 기체가 거절할 수 있음)
+        fun climbs(v: Viewpoint) = params.transitAltitudeM - v.altitudeM >= Tuning.Safety.MIN_CLIMB_M
         val out = mutableListOf<Waypoint>()
         // 기수·짐벌은 도착할 촬영 지점 값을 미리 쓴다(사선은 도착할 전주를 보며 오르내림)
         fun climbTo(from: GeoPoint, to: Viewpoint) {
@@ -101,9 +102,6 @@ object WpmlWriter {
     /** KMZ 웨이포인트 번호 → 촬영 지점 번호: 그 웨이포인트까지 지나온 마지막 촬영 지점(사진 알림이 다음 번호로 바뀐 뒤 와도 같은 지점). 아직 없으면 null. */
     fun shotIndex(wps: List<Waypoint>, kmzIndex: Int): Int? = wps.take(kmzIndex + 1).lastOrNull { it.shot != null }?.shot
 
-    /** 이동 고도 지점을 끼우는 최소 높이 차(m). */
-    const val MIN_CLIMB_M = 2.0
-
     /** SD 파일 이름에 붙일 수 있게 영문·숫자·`-`만 남긴다. */
     fun fileSuffix(p: Viewpoint) = "${p.pole.poleId.filter { it.isLetterOrDigit() && it.code < 128 || it == '-' }}_${p.index}"
 
@@ -125,7 +123,7 @@ object WpmlWriter {
     <wpml:finishAction>goHome</wpml:finishAction>
     <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
     <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-    <wpml:takeOffSecurityHeight>${n(maxOf(20.0, points.first().altitudeM))}</wpml:takeOffSecurityHeight>
+    <wpml:takeOffSecurityHeight>${n(maxOf(Tuning.Safety.TAKEOFF_SECURITY_M, points.first().altitudeM))}</wpml:takeOffSecurityHeight>
     <wpml:globalTransitionalSpeed>${n(p.speedMps)}</wpml:globalTransitionalSpeed>
     <wpml:droneInfo><wpml:droneEnumValue>$DRONE_ENUM</wpml:droneEnumValue><wpml:droneSubEnumValue>$DRONE_SUB_ENUM</wpml:droneSubEnumValue></wpml:droneInfo>
     <wpml:payloadInfo><wpml:payloadEnumValue>$PAYLOAD_ENUM</wpml:payloadEnumValue><wpml:payloadSubEnumValue>0</wpml:payloadSubEnumValue><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:payloadInfo>

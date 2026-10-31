@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.input
 
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.port.RcButton
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -14,7 +15,7 @@ import kotlinx.coroutines.launch
  * - 가운데를 내보낸 뒤 [afterCenterMs] 안의 방향은 버린다(뗄 때 기울어짐).
  * 시간은 밀리초로 받는다. 부르는 쪽이 누를 때 [press], [settleMs]가 지난 뒤 [tick]을 부른다.
  */
-class FiveDGate(val settleMs: Long = 150, private val afterCenterMs: Long = 300) {
+class FiveDGate(val settleMs: Long = Tuning.FiveD.SETTLE_MS, private val afterCenterMs: Long = Tuning.FiveD.AFTER_CENTER_MS) {
     data class Result(val actions: List<RcButton> = emptyList(), val conflict: Boolean = false)
 
     private var pending: RcButton? = null
