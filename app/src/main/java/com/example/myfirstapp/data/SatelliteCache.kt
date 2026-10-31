@@ -33,6 +33,9 @@ const val SATELLITE_CACHE_NAME = "satellite-cache.mbtiles"
 /** 받기가 끝나지 않은 영역(한 줄에 "이름 남 북 서 동 최대확대"). 앱을 다시 켜면 이어 받는다. */
 private const val PENDING_NAME = "satellite-pending.txt"
 
+/** 연속으로 이만큼 못 받으면 인터넷이 끊긴 것으로 보고 멈춘다. */
+private const val MAX_FAILS = 5
+
 private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 private val lock = Mutex()
 
@@ -76,7 +79,10 @@ private suspend fun resume(appFilesDir: File) = lock.withLock {
     if (left.isEmpty()) pending.delete() else pending.writeText(left.joinToString("\n", postfix = "\n"))
 }
 
-/** 영역 타일을 받아 MBTiles에 넣는다. 이미 있는 타일은 건너뛴다. 다 받았으면 true. 인터넷이 끊기면 예외. */
+/**
+ * 영역 타일을 받아 MBTiles에 넣는다. 이미 있는 타일은 건너뛴다. 다 받았으면 true(하나라도 못 받았으면 false, 다음에 이어 받음).
+ * 타일 하나 실패는 넘어가고, 연속 [MAX_FAILS]번 실패하면(인터넷 끊김) 예외로 멈춘다.
+ */
 private fun download(appFilesDir: File, urls: List<String>, name: String, s: Double, n: Double, w: Double, e: Double, maxZoom: Int): Boolean {
     val file = File(appFilesDir, "maps/$SATELLITE_CACHE_NAME").apply { parentFile?.mkdirs() }
     val db = SQLiteDatabase.openOrCreateDatabase(file, null)
@@ -88,6 +94,8 @@ private fun download(appFilesDir: File, urls: List<String>, name: String, s: Dou
             .forEach { (k, v) -> db.execSQL("INSERT OR REPLACE INTO metadata VALUES (?, ?)", arrayOf(k, v)) }
         var fetched = 0
         var bytes = 0L
+        var failed = 0
+        var inARow = 0
         for (z in MIN_ZOOM..maxZoom) {
             val nz = 1 shl z
             for (x in tileX(w, nz)..tileX(e, nz)) for (y in tileY(n, nz)..tileY(s, nz)) {
@@ -95,14 +103,19 @@ private fun download(appFilesDir: File, urls: List<String>, name: String, s: Dou
                 val have = db.rawQuery("SELECT 1 FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", arrayOf("$z", "$x", "$row")).use { it.moveToFirst() }
                 if (have) continue
                 val url = urls[(x + y) % urls.size].replace("{quadkey}", quadkey(x, y, z))
-                val data = get(url)
+                val data = runCatching { get(url) }.getOrElse {
+                    failed++
+                    if (++inARow >= MAX_FAILS) throw it
+                    continue
+                }
+                inARow = 0
                 db.execSQL("INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)", arrayOf(z, x, row, data))
                 fetched++
                 bytes += data.size
             }
         }
-        OpLog.log("map", "prefetchDone", mapOf("name" to name, "fetched" to fetched, "bytes" to bytes))
-        return true
+        OpLog.log("map", "prefetchDone", mapOf("name" to name, "fetched" to fetched, "bytes" to bytes, "failed" to failed))
+        return failed == 0
     } finally {
         db.close()
     }
