@@ -568,6 +568,20 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `방식 A - 땅에서 미션 시작이 실패하면(GPS 약함 등) 일시정지가 아니라 대기, RTH는 보내지 않는다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly) {
+            it.kmzTakesOff = true
+            it.failNextLegStarts = 4 // 처음 + 재시도 3회
+        }
+        h.send(Command.Start)
+        h.awaitUntil { h.state == ExecState.Idle && h.drone.calls.count { it.startsWith("startSortie") } == 4 }
+        assertTrue(h.executor.uiState.value.message!!.contains("업로드 실패"))
+        h.send(Command.ReturnHome)
+        assertEquals(ExecState.Idle, h.state)
+        assertTrue("returnHome" !in h.drone.calls)
+    }
+
+    @Test
     fun `방식 A - 땅에서 지형 추적이 거절되면 대기로 돌아가 묻고, 이륙 기준을 고르면 처음부터 시작한다`() = runTest {
         val h = harness(config = sortieMode, params = FlightParams(shotMode = ShotMode.OVERHEAD, terrainFollow = true)) {
             it.rejectTerrainStarts = true

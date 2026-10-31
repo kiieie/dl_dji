@@ -124,7 +124,7 @@ class InspectionExecutor(
         data class Analyzed(val detections: Map<Long, List<Detection>>, val error: String?) : StepResult
         data object WaitDone : StepResult
         data class Resumed(val ok: Boolean) : StepResult
-        data class RthCommanded(val ok: Boolean) : StepResult
+        data class RthCommanded(val ok: Boolean, val error: String? = null) : StepResult
         data class ManualCaptured(val capture: CaptureInfo?, val image: ByteArray?) : StepResult
         data class Crashed(val message: String) : StepResult
     }
@@ -207,7 +207,15 @@ class InspectionExecutor(
             }
             Command.Pause -> requestPause("화면 일시정지 버튼", byRc = false)
             Command.Resume -> resume()
-            Command.ReturnHome -> if (state.airborne) startRth("운용자 RTH")
+            Command.ReturnHome -> when {
+                !state.airborne -> Unit
+                // 땅에 있으면 RTH를 보내지 않는다(기체가 거절함). 실행기만 공중 상태로 남아 있던 경우 대기로 정리한다
+                !drone.telemetry.value.isFlying && drone.telemetry.value.connected -> {
+                    message = "기체가 떠 있지 않아 RTH하지 않습니다."
+                    enter(Idle, "운용자 RTH: 땅에 있음")
+                }
+                else -> startRth("운용자 RTH")
+            }
             // 건너뛰기·완료 처리는 재개하면 갈 전주가 대상이다(이미 완료된 전주를 덮어쓰지 않는다)
             is Command.Skip -> if (state == Paused) nextTarget()?.let {
                 setStatus(it, VisitStatus.SKIPPED, c.reason)
@@ -326,9 +334,10 @@ class InspectionExecutor(
                     recorder.recordHeightMode(params.terrainFollow)
                 }
                 enter(FlyingLeg, if (config.sortieMission) "소티 미션 시작" else "구간 시작")
-            } else if (r.terrainRejected && !drone.telemetry.value.isFlying) {
-                // 이륙은 KMZ가 하므로(방식 A) 땅에서 거절되면 아직 안 떴다: 대기로 돌아가 묻는다(화면을 나갈 수도 있음)
-                terrainFallbackAsk = true
+            } else if (!drone.telemetry.value.isFlying) {
+                // 이륙은 KMZ가 하므로(방식 A) 땅에서 실패하면 아직 안 떴다: 일시정지(공중)가 아니라 대기로(RTH 버튼 없음, 다시 시작·나가기 가능).
+                // 지형 추적 거절이면 이륙 기준으로 할지 묻는다(2026-10-31 RC: GPS 약함으로 시작 거절 → 일시정지·RTH 실패로 보이던 것)
+                terrainFallbackAsk = r.terrainRejected
                 message = r.reason
                 notifier.play(Sound.ERROR)
                 enter(Idle, r.reason)
@@ -371,7 +380,7 @@ class InspectionExecutor(
                 afterArrivalStep(Waiting, "분석 완료")
             }
             StepResult.WaitDone -> onWaitDone()
-            is StepResult.RthCommanded -> if (!r.ok) pauseWithWarning("RTH 명령 실패 — 수동으로 조종하세요")
+            is StepResult.RthCommanded -> if (!r.ok) pauseWithWarning("RTH 명령 실패${r.error?.let { "($it)" }.orEmpty()} — 수동으로 조종하세요")
             is StepResult.ManualCaptured -> onManualCaptured(r)
             is StepResult.Crashed -> pauseWithWarning("오류: ${r.message}")
         }
@@ -823,7 +832,7 @@ class InspectionExecutor(
                 target?.let { if (it.status == VisitStatus.IN_PROGRESS) setStatus(it, VisitStatus.PENDING) }
                 if (appInitiatedRth) launchStep {
                     drone.stopMission()
-                    StepResult.RthCommanded(drone.returnHome().isSuccess)
+                    drone.returnHome().let { StepResult.RthCommanded(it.isSuccess, it.exceptionOrNull()?.message) }
                 }
             }
             SortieDone -> {
