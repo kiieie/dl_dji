@@ -46,7 +46,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
@@ -64,6 +63,8 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.example.myfirstapp.ui.theme.Dimens
+import com.example.myfirstapp.ui.theme.FontSize
 
 internal val STATUS_TITLE = mapOf("PLANNED" to "계획됨", "IN_PROGRESS" to "진행 중", "DONE" to "완료", "PARTIAL" to "부분 완료", "REPLACED" to "대체됨")
 
@@ -121,7 +122,7 @@ private val COLS = listOf(48.dp, 76.dp, 64.dp, 44.dp, 44.dp)
 @Composable
 private fun MissionListContent(s: MissionListUiState, vm: MissionListViewModel, onResult: (Long) -> Unit, modifier: Modifier) {
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().height(30.dp).padding(start = 15.dp, end = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(start = 15.dp, end = 18.dp), verticalAlignment = Alignment.CenterVertically) {
             listOf("미션", "상태", "전주", "소티", "사진").forEachIndexed { i, t -> HeadText(t, Modifier.width(COLS[i])) }
             HeadText("계획일", Modifier.weight(1f))
             Spacer(Modifier.width(116.dp))
@@ -130,7 +131,7 @@ private fun MissionListContent(s: MissionListUiState, vm: MissionListViewModel, 
         when {
             s.loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             s.missions.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("미션이 없습니다. [새 계획]으로 점검 영역을 정하세요.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("미션이 없습니다. [새 계획]으로 점검 영역을 정하세요.", fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             else -> {
                 val list = rememberLazyListState()
@@ -192,7 +193,7 @@ private fun MissionListContent(s: MissionListUiState, vm: MissionListViewModel, 
 }
 
 @Composable
-private fun HeadText(text: String, modifier: Modifier) = Text(text, modifier, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun HeadText(text: String, modifier: Modifier) = Text(text, modifier, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
 /** 목록 아래 5D 안내(10.4.2). */
 @Composable
@@ -204,7 +205,7 @@ internal fun FiveDHints(modifier: Modifier, hints: List<Pair<String, String>> = 
                     withStyle(SpanStyle(color = TextSoft, fontWeight = FontWeight.SemiBold)) { append(k) }
                     append(" $v")
                 },
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -220,36 +221,36 @@ private fun MissionRow(
     val photos = remember(m.flightParams, m.poleCount) { m.poleCount * flightParamsFromJson(m.flightParams).photosPerPole() }
     val text = if (selected) Color.White else TextSoft
     Surface(
-        onClick = onSelect, modifier = Modifier.fillMaxWidth().height(40.dp), shape = RoundedCornerShape(4.dp),
+        onClick = onSelect, modifier = Modifier.fillMaxWidth().height(Dimens.RowTable), shape = RoundedCornerShape(4.dp),
         color = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
-            Text("#${m.id}", Modifier.width(COLS[0]).padding(start = 8.dp), style = numberStyle(15.sp), color = text)
+            Text("#${m.id}", Modifier.width(COLS[0]).padding(start = 8.dp), style = numberStyle(FontSize.Number), color = text)
             Row(Modifier.width(COLS[1]), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 val c = statusColor(m.status)
                 Box(Modifier.size(6.dp).clip(CircleShape).background(c))
-                Text(STATUS_TITLE[m.status] ?: m.status, fontSize = 11.sp, color = c, maxLines = 1)
+                Text(STATUS_TITLE[m.status] ?: m.status, fontSize = FontSize.Caption, color = c, maxLines = 1)
             }
             Text(
                 buildAnnotatedString {
                     append("${m.doneCount}")
                     withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("/${m.poleCount}") }
                 },
-                Modifier.width(COLS[2]), style = numberStyle(14.sp), color = text,
+                Modifier.width(COLS[2]), style = numberStyle(FontSize.Title), color = text,
             )
-            Text("${m.sortieCount}", Modifier.width(COLS[3]), style = numberStyle(14.sp), color = text)
-            Text("$photos", Modifier.width(COLS[4]), style = numberStyle(14.sp), color = text)
+            Text("${m.sortieCount}", Modifier.width(COLS[3]), style = numberStyle(FontSize.Title), color = text)
+            Text("$photos", Modifier.width(COLS[4]), style = numberStyle(FontSize.Title), color = text)
             Text(
-                time(m.createdAt), Modifier.weight(1f), style = numberStyle(13.sp, FontWeight.Medium), maxLines = 1,
+                time(m.createdAt), Modifier.weight(1f), style = numberStyle(FontSize.Label, FontWeight.Medium), maxLines = 1,
                 color = if (selected) TextSoft else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(Modifier.width(116.dp), horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                 if (action != null) {
                     Button(
-                        onClick = onRun, modifier = Modifier.width(84.dp).height(30.dp), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
+                        onClick = onRun, modifier = Modifier.width(84.dp).height(Dimens.ButtonChip), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
                         colors = if (selected) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
-                    ) { Text(action.label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
+                    ) { Text(action.label, fontSize = FontSize.Body, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
                 }
                 MoreMenu(showResult = m.doneCount > 0 && action != MissionAction.RESULT, menuOpen, onMenu, onResult, onDelete)
             }
@@ -261,7 +262,7 @@ private fun MissionRow(
 @Composable
 private fun MoreMenu(showResult: Boolean, open: Boolean, onOpen: (Boolean) -> Unit, onResult: () -> Unit, onDelete: () -> Unit) {
     Box {
-        IconButton(onClick = { onOpen(true) }, modifier = Modifier.size(36.dp).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
+        IconButton(onClick = { onOpen(true) }, modifier = Modifier.size(Dimens.TouchMedium).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = FontSize.Number, color = TextSoft) }
         DropdownMenu(open, onDismissRequest = { onOpen(false) }, properties = MENU_PROPERTIES) {
             if (showResult) DropdownMenuItem(text = { Text("결과") }, onClick = { onOpen(false); onResult() })
             DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { onOpen(false); onDelete() })

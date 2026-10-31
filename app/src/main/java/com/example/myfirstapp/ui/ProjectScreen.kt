@@ -51,7 +51,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.R
@@ -63,6 +62,8 @@ import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.TextSoft
 import com.example.myfirstapp.ui.theme.numberStyle
+import com.example.myfirstapp.ui.theme.Dimens
+import com.example.myfirstapp.ui.theme.FontSize
 
 /**
  * 비행경로(10.4.3 시안): 머리글 아래 왼쪽 프로젝트 목록(216dp, 최신순 한 줄), 오른쪽 고른 프로젝트의 미션 표.
@@ -96,11 +97,11 @@ fun ProjectScreen(
 
     Column(Modifier.fillMaxSize()) {
         // 머리글 40dp(10.4.2): 뒤로 · 가운데 제목 · [전주 파일] [새 계획]
-        Box(Modifier.fillMaxWidth().height(40.dp).padding(start = 4.dp, end = 10.dp)) {
-            IconButton(onClick = onBack, modifier = Modifier.size(32.dp).align(Alignment.CenterStart)) {
+        Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp, end = 10.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall).align(Alignment.CenterStart)) {
                 Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
             }
-            Text("비행경로", Modifier.align(Alignment.Center), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("비행경로", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
             Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 HeaderButton(R.drawable.ic_import, "전주 파일", onClick = vm::openImport)
                 HeaderButton(R.drawable.ic_add, "새 계획", enabled = selected != null) { selected?.let { onNewPlan(it.id) } }
@@ -109,13 +110,13 @@ fun ProjectScreen(
         Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(Modifier.width(216.dp).fillMaxHeight(), shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 Column {
-                    Row(Modifier.fillMaxWidth().height(30.dp).padding(start = 12.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("프로젝트 · 최신순", Modifier.weight(1f), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("전주", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(start = 12.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("프로젝트 · 최신순", Modifier.weight(1f), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("전주", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     if (s.projects.isEmpty()) Text(
-                        "프로젝트가 없습니다. [전주 파일]로 배전 설비 엑셀·CSV를 가져오세요.", fontSize = 12.sp,
+                        "프로젝트가 없습니다. [전주 파일]로 배전 설비 엑셀·CSV를 가져오세요.", fontSize = FontSize.Body,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp),
                     )
                     val listState = rememberLazyListState()
@@ -169,13 +170,13 @@ fun ProjectScreen(
 @Composable
 private fun HeaderButton(icon: Int, label: String, enabled: Boolean = true, onClick: () -> Unit) {
     Button(
-        onClick = onClick, enabled = enabled, modifier = Modifier.height(30.dp), shape = RoundedCornerShape(4.dp),
+        onClick = onClick, enabled = enabled, modifier = Modifier.height(Dimens.ButtonChip), shape = RoundedCornerShape(4.dp),
         contentPadding = PaddingValues(horizontal = 10.dp),
         colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
     ) {
         Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(12.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 11.sp)
+        Text(label, fontSize = FontSize.Caption)
     }
 }
 
@@ -189,22 +190,22 @@ private fun ProjectRow(
     onMenu: (Boolean) -> Unit, onAttrUpdate: () -> Unit, onDelete: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(4.dp))
+        Modifier.fillMaxWidth().height(Dimens.RowList).clip(RoundedCornerShape(4.dp))
             .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onDelete),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
         Text(
-            p.name, Modifier.weight(1f).padding(start = 8.dp), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            p.name, Modifier.weight(1f).padding(start = 8.dp), fontSize = FontSize.Body, maxLines = 1, overflow = TextOverflow.Ellipsis,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Color.White else TextSoft,
         )
         Text(
-            "${p.poleCount}", Modifier.padding(start = 8.dp), style = numberStyle(13.sp, FontWeight.Medium),
+            "${p.poleCount}", Modifier.padding(start = 8.dp), style = numberStyle(FontSize.Label, FontWeight.Medium),
             color = if (selected) TextSoft else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Box {
-            IconButton(onClick = { onMenu(true) }, modifier = Modifier.size(36.dp).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
+            IconButton(onClick = { onMenu(true) }, modifier = Modifier.size(Dimens.TouchMedium).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = FontSize.Number, color = TextSoft) }
             DropdownMenu(menuOpen, onDismissRequest = { onMenu(false) }, properties = MENU_PROPERTIES) {
                 DropdownMenuItem(text = { Text("전주 파일로 속성 갱신") }, onClick = onAttrUpdate)
                 DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { onMenu(false); onDelete() })
@@ -221,7 +222,7 @@ private fun AttrUpdateDialog(p: ProjectSummary, s: ProjectUiState, vm: ProjectVi
         title = { Text("${p.name} 속성 갱신") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onPick, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("엑셀·CSV 파일 선택") }
+                OutlinedButton(onClick = onPick, modifier = Modifier.fillMaxWidth().height(Dimens.ButtonStd)) { Text("엑셀·CSV 파일 선택") }
                 s.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 when (val d = s.attrDiff) {
                     null -> Text("전산화번호로 전주를 맞춰 고/저압·설치기기·규격 등 속성만 바꿉니다. 좌표·미션·사진·판독은 그대로입니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -246,7 +247,7 @@ private fun ImportDialog(s: ProjectUiState, vm: ProjectViewModel, onPick: () -> 
         title = { Text("전주 파일 가져오기") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onPick, modifier = Modifier.fillMaxWidth().height(36.dp)) { Text("엑셀·CSV 파일 선택") }
+                OutlinedButton(onClick = onPick, modifier = Modifier.fillMaxWidth().height(Dimens.ButtonStd)) { Text("엑셀·CSV 파일 선택") }
                 s.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                 when (val r = s.result) {
                     null -> Text("배전 설비 엑셀(전산화번호, 선로번호, 전주규격, 설치기기, 경도·위도) 또는 CSV(전주번호, 위도, 경도)", color = MaterialTheme.colorScheme.onSurfaceVariant)

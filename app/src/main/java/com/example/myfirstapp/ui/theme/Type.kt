@@ -24,8 +24,22 @@ val BarlowCondensed = FontFamily(
     Font(R.font.barlow_condensed_semibold, FontWeight.SemiBold),
 )
 
+/** 화면에서 반복해 쓰는 글자 크기(10.2). 한 곳에서만 쓰는 크기(H 표지 6sp, 큰 수치 20·24sp 등)는 화면 코드에 둔다. */
+object FontSize {
+    val Micro = 10.sp
+    val Caption = 11.sp
+    val Body = 12.sp
+    val Label = 13.sp
+    val Title = 14.sp
+    val Number = 15.sp
+    /** 지도 전주 번호(큰 지도). */
+    val MapLabel = 16.5.sp
+    /** 지도 전주 번호(미니맵). */
+    val MapLabelMini = 13.5.sp
+}
+
 /** 수치 글자 스타일(10.2). */
-fun numberStyle(size: TextUnit = 14.sp, weight: FontWeight = FontWeight.SemiBold) =
+fun numberStyle(size: TextUnit = FontSize.Title,weight: FontWeight = FontWeight.SemiBold) =
     TextStyle(fontFamily = BarlowCondensed, fontWeight = weight, fontSize = size)
 
 /**

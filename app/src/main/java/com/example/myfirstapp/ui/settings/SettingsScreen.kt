@@ -47,6 +47,7 @@ import com.example.myfirstapp.data.vworldAvailable
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.ui.Stepper
+import com.example.myfirstapp.ui.theme.Dimens
 
 /**
  * ⑥ 설정의 [일반] 탭(10장, Pilot 2 일반 설정 자리): 비행 기본값, 탐지 모델, 오프라인 지도, 상태를 한 열 목록으로.
@@ -71,8 +72,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         s.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium) }
         Section("비행 기본값", "새 계획의 초기값입니다. 이미 저장한 미션은 계획할 때의 값을 그대로 씁니다.") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = vm::saveParams, enabled = s.canSave, modifier = Modifier.height(36.dp)) { Text("기본값 저장") }
-                TextButton(onClick = vm::resetParams, modifier = Modifier.height(36.dp)) { Text("기본값으로 되돌리기", maxLines = 1) }
+                Button(onClick = vm::saveParams, enabled = s.canSave, modifier = Modifier.height(Dimens.ButtonStd)) { Text("기본값 저장") }
+                TextButton(onClick = vm::resetParams, modifier = Modifier.height(Dimens.ButtonStd)) { Text("기본값으로 되돌리기", maxLines = 1) }
             }
             s.paramErrors.forEach { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             FlightDefaults(s.params, vm::updateParams)
@@ -100,10 +101,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             color = if (m.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(onClick = { vm.askDelete(PendingDelete.Model(m.dir)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("삭제") }
+                    TextButton(onClick = { vm.askDelete(PendingDelete.Model(m.dir)) }, modifier = Modifier.heightIn(min = Dimens.TouchLarge)) { Text("삭제") }
                 }
             }
-            OutlinedButton(onClick = { modelPicker.launch(null) }, enabled = !s.busy, modifier = Modifier.height(36.dp)) {
+            OutlinedButton(onClick = { modelPicker.launch(null) }, enabled = !s.busy, modifier = Modifier.height(Dimens.ButtonStd)) {
                 Text("모델 폴더 가져오기")
             }
         }
@@ -113,13 +114,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         Section("오프라인 지도", "앱 폴더 maps/ · 계획·비행 지도에서 위성 배경 위에 겹쳐 그립니다.") {
             if (s.maps.isEmpty()) Text("지도 파일이 없습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             s.maps.forEach { f ->
-                Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.heightIn(min = Dimens.TouchLarge), verticalAlignment = Alignment.CenterVertically) {
                     Text(f.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(formatSize(f.sizeBytes), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = { vm.askDelete(PendingDelete.Map(f.name)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("삭제") }
+                    TextButton(onClick = { vm.askDelete(PendingDelete.Map(f.name)) }, modifier = Modifier.heightIn(min = Dimens.TouchLarge)) { Text("삭제") }
                 }
             }
-            OutlinedButton(onClick = { mapPicker.launch(arrayOf("*/*")) }, enabled = !s.busy, modifier = Modifier.height(36.dp)) {
+            OutlinedButton(onClick = { mapPicker.launch(arrayOf("*/*")) }, enabled = !s.busy, modifier = Modifier.height(Dimens.ButtonStd)) {
                 Text("지도 파일 추가")
             }
         }
@@ -191,7 +192,7 @@ private fun FlightDefaults(p: FlightParams, onChange: (FlightParams) -> Unit) {
                 selected = p.shotMode == mode,
                 onClick = { onChange(p.copy(shotMode = mode)) },
                 shape = SegmentedButtonDefaults.itemShape(i, ShotMode.entries.size),
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = Dimens.TouchLarge),
             ) { Text(if (mode == ShotMode.OVERHEAD) "전주 위" else "4방향 사선") }
         }
     }
@@ -208,7 +209,7 @@ private fun FlightDefaults(p: FlightParams, onChange: (FlightParams) -> Unit) {
                 selected = on,
                 onClick = { onChange(p.copy(lenses = if (on) p.lenses - lens else Lens.entries.filter { it in p.lenses || it == lens })) },
                 label = { Text(LENS_NAMES.getValue(lens)) },
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = Dimens.TouchLarge),
             )
         }
     }
@@ -219,7 +220,7 @@ private fun FlightDefaults(p: FlightParams, onChange: (FlightParams) -> Unit) {
                 selected = p.downloadMode == mode,
                 onClick = { onChange(p.copy(downloadMode = mode)) },
                 shape = SegmentedButtonDefaults.itemShape(i, DownloadMode.entries.size),
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = Dimens.TouchLarge),
             ) { Text(if (mode == DownloadMode.PREVIEW) "미리보기(빠름)" else "원본") }
         }
     }
@@ -244,12 +245,12 @@ private fun MapSourcePicker(source: MapSource, labels: Boolean, onSource: (MapSo
                 onClick = { onSource(src) },
                 enabled = src == MapSource.BING || vworldAvailable,
                 shape = SegmentedButtonDefaults.itemShape(i, MapSource.entries.size),
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = Dimens.TouchLarge),
             ) { Text(src.title) }
         }
     }
     if (!vworldAvailable) Text("VWorld 키 없음(secrets/vworld.properties)", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = Dimens.TouchLarge), verticalAlignment = Alignment.CenterVertically) {
         Text("도로·지명 라벨(VWorld 위성)", Modifier.weight(1f))
         Switch(checked = labels, onCheckedChange = onLabels, enabled = source == MapSource.VWORLD_SATELLITE)
     }
@@ -270,7 +271,7 @@ private fun Section(title: String, subtitle: String?, content: @Composable Colum
 
 @Composable
 private fun StatusRow(label: String, value: String) {
-    Row(Modifier.heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.heightIn(min = Dimens.RowTable), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
     }
