@@ -2,6 +2,7 @@ package com.example.myfirstapp.data
 
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import com.example.myfirstapp.BuildConfig
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.route.TileMath
 import kotlinx.coroutines.CoroutineScope
@@ -53,11 +54,15 @@ fun prefetchSatellite(appFilesDir: File, points: List<GeoPoint>, name: String, b
     val e = points.maxOf { it.lon } + PAD_DEG
     var maxZoom = MAX_ZOOM
     while (maxZoom > MIN_ZOOM && TileMath.count(s, n, w, e, MIN_ZOOM, maxZoom) > MAX_TILES) maxZoom--
+    // Bing은 주소를 적지 않는다: 받을 때 저장한 주소를 쓰므로 아직 주소가 없어도(인터넷 없이 첫 실행) 줄이 남아 나중에 이어 받는다.
+    // VWorld 주소의 키는 `{KEY}`로 적어 파일에 평문으로 남기지 않는다
+    val key = BuildConfig.VWORLD_API_KEY
+    fun hide(urls: List<String>) = urls.joinToString(",") { if (key.isBlank()) it else it.replace(key, "{KEY}") }
     val lines = listOfNotNull(
-        bg.tiles.takeIf { it.isNotEmpty() }?.let { "$name $s $n $w $e $maxZoom ${bg.cacheName} ${bg.format} ${it.joinToString(",")}" },
-        bg.labelCacheName?.takeIf { bg.labelTiles.isNotEmpty() }?.let { "$name-label $s $n $w $e $maxZoom $it png ${bg.labelTiles.joinToString(",")}" },
+        if (bg.source == MapSource.BING) "$name $s $n $w $e $maxZoom ${bg.cacheName} ${bg.format}"
+        else bg.tiles.takeIf { it.isNotEmpty() }?.let { "$name $s $n $w $e $maxZoom ${bg.cacheName} ${bg.format} ${hide(it)}" },
+        bg.labelCacheName?.takeIf { bg.labelTiles.isNotEmpty() }?.let { "$name-label $s $n $w $e $maxZoom $it png ${hide(bg.labelTiles)}" },
     )
-    if (lines.isEmpty()) return
     scope.launch {
         lock.withLock { File(appFilesDir, PENDING_NAME).appendText(lines.joinToString("\n", postfix = "\n")) }
         OpLog.log("map", "prefetch", mapOf("name" to name, "source" to bg.source.name, "maxZoom" to maxZoom, "tiles" to TileMath.count(s, n, w, e, MIN_ZOOM, maxZoom)))
@@ -78,7 +83,7 @@ private suspend fun resume(appFilesDir: File) = lock.withLock {
         // 옛 6칸 줄은 Bing 위성
         val cache = p.getOrNull(6) ?: SATELLITE_CACHE_NAME
         val format = p.getOrNull(7) ?: "jpg"
-        val urls = p.getOrNull(8)?.split(",")?.filter { it.isNotBlank() } ?: savedSatelliteTiles()
+        val urls = p.getOrNull(8)?.split(",")?.filter { it.isNotBlank() }?.map { it.replace("{KEY}", BuildConfig.VWORLD_API_KEY) } ?: savedSatelliteTiles()
         if (urls.isEmpty()) return@filterNot false
         runCatching { download(appFilesDir, urls, p[0], p[1].toDouble(), p[2].toDouble(), p[3].toDouble(), p[4].toDouble(), p[5].toInt(), cache, format) }
             .onFailure { Log.w("SatelliteCache", "미리 받기 멈춤(${p[0]}): ${it.message}") }
