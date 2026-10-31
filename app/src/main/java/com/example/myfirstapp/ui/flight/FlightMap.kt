@@ -1,7 +1,23 @@
 package com.example.myfirstapp.ui.flight
 
 import com.example.myfirstapp.core.route.Viewpoints
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.ui.theme.numberStyle
+import org.maplibre.android.maps.MapLibreMap
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -41,6 +57,8 @@ import org.maplibre.geojson.LineString
 /**
  * 비행 화면 지도(10장): 계획 화면과 같은 배경(위성·MBTiles) 위에 소티 경로, 전주 상태, 이륙 지점, 기체를 그린다.
  * [interactive]가 false면 미니맵이라 손으로 움직이지 않는다. [pad]는 처음 맞출 때 가장자리 여백(왼쪽, 위, 오른쪽, 아래).
+ * 전주번호(선로번호, 없으면 전산화번호 끝 4자리, 홈 카드와 같음)는 지도 위에 Compose 글자로 덧그린다:
+ * MapLibre 글자 레이어는 글꼴을 인터넷으로 받아야 해서 쓰지 않는다(7.4 오프라인). 큰 지도는 확대 15 이상에서 보이는 전주 전부, 미니맵은 지금 전주만.
  */
 @Composable
 internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, modifier: Modifier) {
@@ -48,6 +66,23 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
     val density = LocalDensity.current
     var styleGen by remember { mutableIntStateOf(0) }
     var fitted by remember { mutableStateOf(false) }
+    var labels by remember { mutableStateOf<List<Pair<String, Offset>>>(emptyList()) }
+    val latest by rememberUpdatedState(s)
+    fun relabel(map: MapLibreMap) {
+        val st = latest
+        val zoom = map.cameraPosition.zoom
+        val targets = when {
+            interactive && zoom >= 15 -> st.poles
+            !interactive -> listOfNotNull(st.exec.target?.pole)
+            else -> emptyList()
+        }
+        val w = mapView.width.toFloat()
+        val h = mapView.height.toFloat()
+        labels = targets.mapNotNull { p ->
+            val pt = map.projection.toScreenLocation(LatLng(p.position.lat, p.position.lon))
+            if (pt.x !in 0f..w || pt.y !in 0f..h) null else poleLabel(p) to Offset(pt.x, pt.y)
+        }
+    }
 
     LaunchedEffect(s.mapFiles, s.onlineTiles) {
         mapView.getMapAsync { map ->
@@ -81,6 +116,8 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
                         circleColor(color(Aircraft.toArgb())), circleRadius(7f), circleStrokeColor("#000000"), circleStrokeWidth(2f),
                     ),
                 )
+                map.addOnCameraMoveListener { relabel(map) }
+                map.addOnCameraIdleListener { relabel(map) }
                 styleGen++
                 if (!fitted && s.poles.isNotEmpty()) {
                     fitted = true
@@ -123,8 +160,22 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
             style.getSourceAs<GeoJsonSource>("aircraft")?.setGeoJson(
                 FeatureCollection.fromFeatures(listOfNotNull(s.telemetry?.position?.let { Feature.fromGeometry(it.toPoint()) })),
             )
+            relabel(map)
         }
     }
 
-    AndroidView(factory = { mapView }, modifier = modifier)
+    Box(modifier) {
+        AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+        // 점 오른쪽 위에 검은 바탕 흰 글자(위성 사진 위에서 읽히게)
+        labels.forEach { (text, at) ->
+            Text(
+                text,
+                Modifier.offset { IntOffset(at.x.toInt() + 12, at.y.toInt() - 28) }.background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),
+                style = numberStyle(if (interactive) 11.sp else 9.sp), color = Color.White, maxLines = 1,
+            )
+        }
+    }
 }
+
+/** 지도에 쓸 짧은 전주 이름: 선로번호, 없으면 전산화번호 끝 4자리(홈 카드와 같음). */
+internal fun poleLabel(p: Pole) = p.lineNo?.takeIf { it.isNotBlank() } ?: p.poleId.takeLast(4)

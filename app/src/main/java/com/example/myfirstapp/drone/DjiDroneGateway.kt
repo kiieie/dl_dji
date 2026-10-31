@@ -114,7 +114,11 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     @Volatile private var sortieLenses: List<Lens> = listOf(Lens.WIDE)
     private var mediaEnabled = false
 
+    /** 기체의 웨이라인 실행 상태(마지막 알림). 앱이 모르는 옛 미션이 남아 있는지 본다. */
+    @Volatile private var executeState: WaypointMissionExecuteState? = null
+
     private val stateListener = WaypointMissionExecuteStateListener { s ->
+        executeState = s
         Log.i(TAG, "미션 상태 $s"); OpLog.log("mission", s.name)
         when (s) {
             WaypointMissionExecuteState.INTERRUPTED -> _events.tryEmit(DroneEvent.PausedByRc)
@@ -313,6 +317,12 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         val wps = kmz.outputStream().use { WpmlWriter.write(points, params, it, start = t.position ?: t.home, home = t.home ?: t.position) }
         // DJI 검사기로 먼저 본다. 고도 모드(지형 추적) 등이 맞지 않으면 올리지 않고 이유를 알린다
         checkKmz(kmz.path).filterNot { it.startsWith("검사 불가") }.takeIf { it.isNotEmpty() }?.let { error("KMZ 검사 실패: ${it.joinToString()}") }
+        // 기체에 앱이 모르는 옛 미션이 중단·실행 상태로 남아 있으면(앱 재시작, GPS 약함으로 중단 등) 새로 올리기가 "기기 상태 오류"로 거절된다(2026-10-31 시뮬레이터)
+        val stale = executeState
+        if (missionName == null && stale in STALE_STATES) lastKmzName()?.let { old ->
+            val r = runCatching { djiDone { missions.stopMission(old, it) } }
+            OpLog.log("mission", "stopStale", mapOf("name" to old, "state" to stale?.name, "ok" to r.isSuccess, "error" to r.exceptionOrNull()?.message))
+        }
         suspendCancellableCoroutine { c ->
             missions.pushKMZFileToAircraft(kmz.path, object : CommonCallbacks.CompletionCallbackWithProgress<Double> {
                 override fun onProgressUpdate(progress: Double) {}
@@ -525,5 +535,11 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     companion object {
         const val TAG = "DjiDrone"
+
+        /** 새 미션을 올리기 전에 끝내야 하는 웨이라인 상태. */
+        private val STALE_STATES = setOf(
+            WaypointMissionExecuteState.INTERRUPTED, WaypointMissionExecuteState.EXECUTING, WaypointMissionExecuteState.RECOVERING,
+            WaypointMissionExecuteState.ENTER_WAYLINE, WaypointMissionExecuteState.PREPARING,
+        )
     }
 }
