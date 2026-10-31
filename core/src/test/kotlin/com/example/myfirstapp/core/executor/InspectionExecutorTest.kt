@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.executor
 
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.fake.FakeDroneGateway
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.Detection
@@ -711,7 +712,7 @@ class InspectionExecutorTest {
         h.send(Command.Start)
         h.awaitUntil { h.visit("A").captureCount == 1 }
         // A(100,0)와 B(100,100) 사이, 어느 전주에서도 20m 넘게 떨어진 곳
-        h.awaitUntil { h.drone.telemetry.value.position?.let { p -> threePoles.all { LocalProjection.distanceM(p, it.position) > SHUTTER_POLE_LINK_M + 5 } } == true }
+        h.awaitUntil { h.drone.telemetry.value.position?.let { p -> threePoles.all { LocalProjection.distanceM(p, it.position) > Tuning.Photo.SHUTTER_POLE_LINK_M + 5 } } == true }
         h.drone.pressRcShutter()
         h.awaitUntil { h.executor.uiState.value.message?.contains("연결할 전주가 없습니다") == true }
         assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })

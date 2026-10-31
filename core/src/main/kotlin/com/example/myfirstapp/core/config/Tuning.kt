@@ -1,0 +1,152 @@
+package com.example.myfirstapp.core.config
+
+/**
+ * 현장 조정값 한곳 정리(2026-10-31). 코드에 숫자를 박지 않고 여기서 고친다.
+ * 각 값의 주석에 근거와 현장 실측이 필요한지를 적는다. 설정 화면에서 바꾸는 비행 기본값은 [com.example.myfirstapp.core.model.FlightParams] 필드에 있다.
+ */
+object Tuning {
+
+    /** 사진 파일 주인 가르기(6.4 RC 셔터, `MediaClassifier`). */
+    object Photo {
+        /** 화면 수동 촬영 뒤 이 시간 안에 온 둘째 파일(광각·망원 동시 저장)은 그 촬영 것으로 본다. 현장 실측 필요. */
+        const val MULTI_FILE_MS = 1_500L
+
+        /**
+         * 촬영 지점에 도착한 뒤 이 시간 안에 온 파일은 그 지점에서 찍었을 수 없다(멈춤·회전·짐벌 뒤 촬영): 앞 지점의 늦은 파일로 본다.
+         * ponytail: 현장 측정 전 값. 늦은 파일이 이보다 더 늦으면 다음 지점으로 붙는다(파일 이름의 지점 번호로 대조하면 없어짐).
+         */
+        const val LATE_FILE_MS = 1_000L
+
+        /**
+         * 한 번 찍을 때 렌즈별 파일은 거의 동시에 온다. 앞 파일보다 이만큼 늦으면 다음 촬영 동작(설비 조준: 짐벌을 돌린 뒤)으로 본다.
+         * 2026-10-31 시뮬레이터: 지점 사진 뒤 설비 사진이 0.9초 뒤. ponytail: 현장 실측으로 맞춘다.
+         */
+        const val BURST_MS = 450L
+
+        /** RC 셔터를 누른 뒤 이 시간 안에 생긴 새 사진은 셔터 사진이다(지점 사진이 기다리는 중이 아니면). 현장 실측 필요. */
+        const val SHUTTER_SKEW_MS = 3_000L
+
+        /** 셔터 사진(미션 중 RC 셔터, 수동 비행 셔터)을 전주에 붙이는 최대 거리(6.4, 2026-10-30 사용자 결정 50m → 20m). */
+        const val SHUTTER_POLE_LINK_M = 20.0
+    }
+
+    /** 실행 상태머신(6.4, `ExecutorConfig` 기본값). */
+    object Executor {
+        /** 도착 후 처리(촬영~분석) 전체 타임아웃(6.5). 방식 B용 초기값. */
+        const val ARRIVAL_TIMEOUT_MS = 60_000L
+
+        /** 구간 업로드·시작 재시도 횟수(6.2). */
+        const val LEG_RETRIES = 3
+
+        /** 구간 업로드·시작 재시도 간격(6.2). */
+        const val LEG_RETRY_DELAY_MS = 2_000L
+
+        /** RTH 권고 후 무응답이면 자동 RTH까지의 시간(5.5). 운용 정책값. */
+        const val RTH_PROMPT_SEC = 10
+
+        /** 복구·재연결 때 기체 미션 일시정지를 기다리는 시간. 현장 실측 필요. */
+        const val PAUSE_TIMEOUT_MS = 5_000L
+    }
+
+    /** 장애물 경고 등급(`ObstacleTracker`). DJI Pilot 2 기본과 비슷하게 잡았다. 현장 확인 필요. */
+    object Obstacle {
+        /** 이 거리 이하면 주의. */
+        const val CAUTION_M = 10.0
+
+        /** 이 거리 이하면 위험. */
+        const val DANGER_M = 5.0
+
+        /** 한 번 오른 등급은 이만큼 더 멀어져야 내린다(깜박임 방지). */
+        const val HYSTERESIS_M = 1.0
+    }
+
+    /** 비행 전 점검 판정(6.7, `PreflightEvaluator`). */
+    object Preflight {
+        /** 최소 GPS 위성 수. */
+        const val MIN_GPS_SATELLITES = 12
+
+        /** 최소 GPS 신호 등급. */
+        const val MIN_GPS_LEVEL = 4
+
+        /** SD 카드 최소 여유 공간(MB). */
+        const val MIN_SD_FREE_MB = 1024L
+
+        /** 배터리 온도 허용 범위(℃). 저온에서는 배터리를 예열해야 한다. 초기값이며 필드 테스트로 조정한다. */
+        val BATTERY_TEMP_RANGE = 15.0..50.0
+    }
+
+    /** RC 5D 버튼 겹침 걸러 내기(`FiveDGate` 기본값). RC Pro 실측(2026-10-29). */
+    object FiveD {
+        /** 누름을 내보내기 전 기다리는 시간. 그 사이 가운데↔방향이 겹치면 둘 다 버린다(실측: 방향이 0~100ms 먼저 옴). */
+        const val SETTLE_MS = 150L
+
+        /** 가운데를 내보낸 뒤 이 시간 안의 방향은 버린다(뗄 때 기울어짐, 실측 약 210ms 뒤). */
+        const val AFTER_CENTER_MS = 300L
+    }
+
+    /** 에너지 모델(5.5, `EnergyParams` 기본값과 `FakeDroneGateway`). 초기값은 보수적으로 잡았고 필드 테스트로 보정한다. */
+    object Energy {
+        /** 순항 소모율(%/s). M3E 공칭 45분 대신 25분 기준. */
+        const val CRUISE_PCT_PER_SEC = 100.0 / (25 * 60)
+
+        /** 호버 소모율(%/s). 28분 기준. */
+        const val HOVER_PCT_PER_SEC = 100.0 / (28 * 60)
+
+        /** 전주 1개 처리 시간(촬영 + 다운로드 + 분석 + 대기, 방식 B). */
+        const val VISIT_SEC = 20.0
+
+        /** 구간 KMZ 생성·업로드·시작 지연(PoC ①에서 실측해 교체). */
+        const val LEG_OVERHEAD_SEC = 10.0
+
+        /** 상승·하강 속도. 이착륙과 점검 고도 하강·재상승 비용 계산에 쓴다. */
+        const val VERTICAL_SPEED_MPS = 3.0
+
+        /** 계획 예산에서 빼는 RTH 여유(%). */
+        const val RTH_MARGIN_PCT = 5.0
+
+        /**
+         * 6.1 방식 A(소티 미션 하나로 계속 비행)의 촬영 지점 하나 처리 시간: 멈춤·짐벌·촬영 후 출발.
+         * 2026-10-30 시뮬레이터 실측 지점 간격 약 6.5초(이동 포함). 다운로드·분석은 비행과 병렬이라 넣지 않는다. 현장 실측 필요.
+         */
+        const val SHOT_SEC = 6.0
+    }
+
+    /** 비행 안전 한도(6.3, 5.6). */
+    object Safety {
+        /** 법정 최대 고도(m). */
+        const val MAX_ALTITUDE_M = 150.0
+
+        /** RTH 고도 = 이동 고도 + 이 값(6.3). */
+        const val RTH_MARGIN_M = 10.0
+
+        /** 배터리 예비율 최솟값(%). */
+        const val MIN_RESERVE_PCT = 20.0
+
+        /** 배전 전선 높이(전주 16m + 가공 1m, 5.6). 현장 확인 필요. */
+        const val WIRE_HEIGHT_M = 17.0
+
+        /** 사선 촬영 때 전선과 지킬 최소 간격(5.6). */
+        const val WIRE_CLEARANCE_M = 10.0
+
+        /** 이동 고도 지점을 끼우는 최소 높이 차(m). 같은 자리·같은 높이 지점이 겹치면 기체가 거절할 수 있다. */
+        const val MIN_CLIMB_M = 2.0
+
+        /** KMZ 이륙 안전 고도 최솟값(m, WPML `takeOffSecurityHeight`). */
+        const val TAKEOFF_SECURITY_M = 20.0
+    }
+
+    /** 경로 계획·전주 가져오기. */
+    object Route {
+        /** TSP 탐색 시간 한도(ms). */
+        const val TSP_TIME_LIMIT_MS = 2_000L
+
+        /** 선로번호 이웃이 이보다 멀면 실제 이웃이 아니라고 본다(대평선 본선 이웃 7~89m). */
+        const val MAX_NEIGHBOR_M = 150.0
+
+        /** 전주 좌표 유효 위도 범위(대한민국). */
+        val LAT_RANGE = 32.0..39.5
+
+        /** 전주 좌표 유효 경도 범위(대한민국). */
+        val LON_RANGE = 124.0..132.0
+    }
+}

@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.fake
 
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.FlightMode
@@ -45,9 +46,9 @@ class FakeDroneGateway(
         val tickMs: Long = 200,
         /** 실제 1초에 흐르는 모의 시간(초). UI 시연 때 키워서 빨리 돌린다. */
         val timeScale: Double = 1.0,
-        val cruisePctPerSec: Double = 100.0 / (25 * 60),
-        val hoverPctPerSec: Double = 100.0 / (28 * 60),
-        val verticalSpeedMps: Double = 3.0,
+        val cruisePctPerSec: Double = Tuning.Energy.CRUISE_PCT_PER_SEC,
+        val hoverPctPerSec: Double = Tuning.Energy.HOVER_PCT_PER_SEC,
+        val verticalSpeedMps: Double = Tuning.Energy.VERTICAL_SPEED_MPS,
         val takeoffMs: Long = 3_000,
         val legStartMs: Long = 2_000,
         val captureMs: Long = 1_000,

@@ -15,6 +15,7 @@ import com.example.myfirstapp.core.executor.ExecState.ReturningHome
 import com.example.myfirstapp.core.executor.ExecState.SortieDone
 import com.example.myfirstapp.core.executor.ExecState.Takeoff
 import com.example.myfirstapp.core.executor.ExecState.Waiting
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.Detection
 import com.example.myfirstapp.core.model.FlightMode
@@ -53,12 +54,12 @@ import kotlin.math.sin
 
 data class ExecutorConfig(
     /** 도착 후 처리(촬영~분석) 전체 타임아웃(6.5). */
-    val arrivalTimeoutMs: Long = 60_000,
+    val arrivalTimeoutMs: Long = Tuning.Executor.ARRIVAL_TIMEOUT_MS,
     /** 구간 업로드·시작 재시도(6.2). */
-    val legRetries: Int = 3,
-    val legRetryDelayMs: Long = 2_000,
+    val legRetries: Int = Tuning.Executor.LEG_RETRIES,
+    val legRetryDelayMs: Long = Tuning.Executor.LEG_RETRY_DELAY_MS,
     /** RTH 권고 후 무응답이면 자동 RTH까지의 시간(5.5). */
-    val rthPromptSec: Int = 10,
+    val rthPromptSec: Int = Tuning.Executor.RTH_PROMPT_SEC,
     /**
      * 6.1 방식 A: 소티 전체를 미션 하나로 날고(`startSortie`), 지점마다 찍힌 사진을 비행과 병렬로 처리한다.
      * false면 방식 B(전주마다 구간 미션, 도착 후 촬영·다운로드·분석·대기).
@@ -73,9 +74,6 @@ data class ExecutorConfig(
  * 오래 걸리는 작업(업로드, 촬영, 다운로드, 분석, 대기)은 상태마다 하나의 작업(step)으로 실행하고,
  * 결과를 다시 채널로 보낸다. 상태가 바뀌면 이전 작업은 취소되고 늦게 온 결과는 세대 번호로 버린다.
  */
-/** 복구·재연결 때 기체 미션 일시정지를 기다리는 시간. */
-private const val PAUSE_TIMEOUT_MS = 5_000L
-
 class InspectionExecutor(
     private val scope: CoroutineScope,
     private val drone: DroneGateway,
@@ -434,7 +432,7 @@ class InspectionExecutor(
     private suspend fun pauseRunningMission(reason: String) {
         if (drone.telemetry.value.flightMode == FlightMode.MISSION) {
             // 실행기 차례를 막지 않게 시간을 둔다. 못 멈추면 운용자가 RC로 멈추게 알린다
-            val ok = withTimeoutOrNull(PAUSE_TIMEOUT_MS) { drone.pauseMission() }?.isSuccess == true
+            val ok = withTimeoutOrNull(Tuning.Executor.PAUSE_TIMEOUT_MS) { drone.pauseMission() }?.isSuccess == true
             if (!ok) {
                 message = "기체 미션을 멈추지 못했습니다 — RC 일시정지 버튼을 누르세요."
                 notifier.play(Sound.ERROR)
@@ -607,7 +605,7 @@ class InspectionExecutor(
     }
 
     /**
-     * RC 셔터 사진(6.4): 찍은 위치에서 [SHUTTER_POLE_LINK_M] 안의 가장 가까운 이번 실행의 방문(남은 전주)에 수동 사진으로 기록하고
+     * RC 셔터 사진(6.4): 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 이번 실행의 방문(남은 전주)에 수동 사진으로 기록하고
      * 처리 줄(다운로드 → 탐지)에 넣는다. 없으면 기록하지 않고 SD에만 남긴다(앞선 비행에서 끝낸 전주는 이번 실행에 없다).
      * 전주 상태도 사진 수([Visit.captureCount])도 바꾸지 않는다: 완료 판정은 자동 사진과 일시정지 중 화면 수동 촬영만 본다.
      */

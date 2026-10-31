@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.csv
 
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import java.nio.ByteBuffer
@@ -9,10 +10,6 @@ import java.nio.charset.CodingErrorAction
 
 /** 전주 CSV·엑셀 가져오기(F-01, F-02, F-03, 4.1, 4.5). */
 object PoleCsvParser {
-
-    /** 대한민국 좌표 범위(도서 지역 포함, 여유 있게). */
-    val LAT_RANGE = 32.0..39.5
-    val LON_RANGE = 124.0..132.0
 
     enum class Column { POLE_ID, LAT, LON, LINE_NAME, NOTE, LINE_NO, LENGTH, EQUIPMENT, VOLTAGE, FORM, INSTALLED }
 
@@ -77,8 +74,8 @@ object PoleCsvParser {
                 issues += CsvIssue(row.line, id, CsvIssue.Kind.INVALID_NUMBER, "좌표가 숫자가 아님: $latText, $lonText")
                 continue
             }
-            if (lat !in LAT_RANGE || lon !in LON_RANGE) {
-                val hint = if (lon in LAT_RANGE && lat in LON_RANGE) " (위도와 경도가 바뀐 것으로 보임)" else ""
+            if (lat !in Tuning.Route.LAT_RANGE || lon !in Tuning.Route.LON_RANGE) {
+                val hint = if (lon in Tuning.Route.LAT_RANGE && lat in Tuning.Route.LON_RANGE) " (위도와 경도가 바뀐 것으로 보임)" else ""
                 issues += CsvIssue(row.line, id, CsvIssue.Kind.OUT_OF_RANGE, "대한민국 좌표 범위 밖: $lat, $lon$hint")
                 continue
             }

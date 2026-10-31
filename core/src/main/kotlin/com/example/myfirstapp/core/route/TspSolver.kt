@@ -1,10 +1,12 @@
 package com.example.myfirstapp.core.route
 
+import com.example.myfirstapp.core.config.Tuning
+
 /**
  * 방문 순서 근사(5.3): 최근접 이웃 초기해 → 2-opt·Or-opt 반복 개선.
  * 0번 점(이륙 지점)에서 출발해 0번으로 돌아오는 순회를 최소화한다.
  */
-class TspSolver(private val timeLimitMs: Long = 2_000) {
+class TspSolver(private val timeLimitMs: Long = Tuning.Route.TSP_TIME_LIMIT_MS) {
 
     /** [points]의 0번은 이륙 지점이다. 0번을 뺀 방문 순서(점 번호)를 돌려준다. */
     fun solve(points: List<Enu>): List<Int> {

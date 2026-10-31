@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.myfirstapp.core.executor.SHUTTER_POLE_LINK_M
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.executor.shutterLinkTarget
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.DownloadMode
@@ -57,7 +57,7 @@ data class ManualFlightUiState(
 
 /**
  * 수동 비행 카메라 뷰(Pilot 2 카메라 뷰, 10.0): 미션 없이 기체 영상·계기·지도를 보고 조종사가 스틱으로 난다.
- * 셔터(화면 버튼·RC 셔터)는 언제든 찍고 원본을 받는다. 남은 전주가 있는 최근 미션의 전주가 [SHUTTER_POLE_LINK_M] 안이면 그 전주의 수동 사진으로,
+ * 셔터(화면 버튼·RC 셔터)는 언제든 찍고 원본을 받는다. 남은 전주가 있는 최근 미션의 전주가 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안이면 그 전주의 수동 사진으로,
  * 아니면 `manual/<날짜>/`에 둔다(6.4 RC 셔터). 자동 점검 비행은 미션의 [비행 시작]으로 한다.
  */
 class ManualFlightViewModel(

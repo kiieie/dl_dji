@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.executor
 
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.Detection
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
@@ -85,12 +86,6 @@ data class ExecutorUiState(
 fun recoveredCaptures(arrivedAtMs: Long?, sdMedia: List<CaptureInfo>, dbMediaIds: Set<String>): List<CaptureInfo> =
     if (arrivedAtMs == null) emptyList() else sdMedia.filter { it.takenAtMs >= arrivedAtMs && it.mediaId !in dbMediaIds }
 
-/** RC 셔터를 누른 뒤 이 시간 안에 생긴 새 사진은 셔터 사진이다(지점 사진이 기다리는 중이 아니면, [MediaClassifier]). */
-const val SHUTTER_SKEW_MS = 3_000L
-
-/** 셔터 사진(미션 중 RC 셔터, 수동 비행 셔터)을 전주에 붙이는 최대 거리(6.4, 2026-10-30 사용자 결정 50m → 20m). */
-const val SHUTTER_POLE_LINK_M = 20.0
-
-/** 셔터 사진을 붙일 전주: 찍은 위치에서 [SHUTTER_POLE_LINK_M] 안의 가장 가까운 후보. 위치가 없거나 20m 안에 없으면 null(SD에만 남김). */
+/** 셔터 사진을 붙일 전주: 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 후보. 위치가 없거나 20m 안에 없으면 null(SD에만 남김). */
 fun <T> shutterLinkTarget(position: GeoPoint?, candidates: List<T>, pos: (T) -> GeoPoint): T? =
-    position?.let { nearestWithin(it, candidates, SHUTTER_POLE_LINK_M, pos) }
+    position?.let { nearestWithin(it, candidates, Tuning.Photo.SHUTTER_POLE_LINK_M, pos) }

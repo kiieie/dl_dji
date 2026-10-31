@@ -1,5 +1,7 @@
 package com.example.myfirstapp.core.executor
 
+import com.example.myfirstapp.core.config.Tuning
+
 /** 새로 생긴 사진 파일의 주인(6.4 RC 셔터). */
 enum class MediaOwner {
     /** 화면 수동 촬영(`capture`)이 기다리는 사진. */
@@ -15,21 +17,6 @@ enum class MediaOwner {
     NONE,
 }
 
-/** 화면 수동 촬영 뒤 이 시간 안에 온 둘째 파일(광각·망원 동시 저장)은 그 촬영 것으로 본다. */
-const val MULTI_FILE_MS = 1_500L
-
-/**
- * 촬영 지점에 도착한 뒤 이 시간 안에 온 파일은 그 지점에서 찍었을 수 없다(멈춤·회전·짐벌 뒤 촬영): 앞 지점의 늦은 파일로 본다.
- * ponytail: 현장 측정 전 값. 늦은 파일이 이보다 더 늦으면 다음 지점으로 붙는다(파일 이름의 지점 번호로 대조하면 없어짐).
- */
-const val LATE_FILE_MS = 1_000L
-
-/**
- * 한 번 찍을 때 렌즈별 파일은 거의 동시에 온다. 앞 파일보다 이만큼 늦으면 다음 촬영 동작(설비 조준: 짐벌을 돌린 뒤)으로 본다.
- * 2026-10-31 시뮬레이터: 지점 사진 뒤 설비 사진이 0.9초 뒤. ponytail: 현장 실측으로 맞춘다.
- */
-const val BURST_MS = 450L
-
 /**
  * 지점 사진 파일: [shot] 촬영 지점, [ordinal] 그 지점에서 몇 번째 파일(0부터),
  * [action] 그 지점의 몇 번째 촬영 동작(0 지점 사진, 1 설비 조준 사진), [lensSlot] 그 동작 안에서 몇 번째 파일(KMZ 렌즈 순서).
@@ -41,7 +28,7 @@ data class WaypointFile(val shot: Int, val ordinal: Int, val action: Int = 0, va
  * 어댑터는 DJI 콜백 스레드 여러 곳에서 부르므로 메서드를 잠근다.
  * ponytail: 촬영 지점 도착 직후 지점 사진보다 셔터 사진이 먼저 오면 둘이 바뀐다(둘 다 기록됨). 실기체에서 파일 이름(fileSuffix)으로 가를 수 있는지 확인한다.
  */
-class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private val tailMs: Long = MULTI_FILE_MS) {
+class MediaClassifier(private val pressWindowMs: Long = Tuning.Photo.SHUTTER_SKEW_MS, private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
     private var pressAt = Long.MIN_VALUE / 2
     private var screenActive = false
     private var screenGot = false
@@ -104,11 +91,11 @@ class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private
     }
 
     /**
-     * 지점 사진의 주인 지점(6.4 사진 순서): 지금 지점에 막 도착했는데([LATE_FILE_MS] 안) 앞 지점 파일이 덜 왔으면 앞 지점의 늦은 파일,
+     * 지점 사진의 주인 지점(6.4 사진 순서): 지금 지점에 막 도착했는데([Tuning.Photo.LATE_FILE_MS] 안) 앞 지점 파일이 덜 왔으면 앞 지점의 늦은 파일,
      * 아직 아무 지점도 없었으면 그 앞 번호 지점. 그 밖에는 지금 지점. 한 지점이 통째로 안 찍혀도 뒤 지점이 밀리지 않는다.
      */
     private fun waypointFile(now: Long, shot: Int): WaypointFile {
-        val justArrived = shot == reachedShot && now - reachedAt < LATE_FILE_MS
+        val justArrived = shot == reachedShot && now - reachedAt < Tuning.Photo.LATE_FILE_MS
         val last = lastShot
         val owner = when {
             !justArrived -> shot
@@ -121,8 +108,8 @@ class MediaClassifier(private val pressWindowMs: Long = SHUTTER_SKEW_MS, private
         files[owner] = n + 1
         // 앞 파일과 떨어져 왔으면 다음 촬영 동작(설비 조준), 붙어 왔으면 같은 동작의 다음 렌즈
         val prev = lastFileAt[owner]
-        val action = actions.getOrDefault(owner, 0) + if (prev != null && now - prev > BURST_MS) 1 else 0
-        val slot = if (prev == null || now - prev > BURST_MS) 0 else slots.getOrDefault(owner, 0) + 1
+        val action = actions.getOrDefault(owner, 0) + if (prev != null && now - prev > Tuning.Photo.BURST_MS) 1 else 0
+        val slot = if (prev == null || now - prev > Tuning.Photo.BURST_MS) 0 else slots.getOrDefault(owner, 0) + 1
         lastFileAt[owner] = now
         actions[owner] = action
         slots[owner] = slot

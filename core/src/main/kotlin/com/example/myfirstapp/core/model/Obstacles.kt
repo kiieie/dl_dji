@@ -1,5 +1,7 @@
 package com.example.myfirstapp.core.model
 
+import com.example.myfirstapp.core.config.Tuning
+
 /** 장애물 방향(기수 기준). 화면 글자는 [label]. */
 enum class ObstacleDirection(val label: String) { FRONT("앞"), RIGHT("오른쪽"), BACK("뒤"), LEFT("왼쪽"), UP("위"), DOWN("아래") }
 
@@ -31,7 +33,7 @@ enum class ObstacleLevel { NONE, CAUTION, DANGER }
 
 /**
  * 방향별 경고 등급과 거리. [next]로 새 측정을 받아 갱신한다.
- * 거리는 DJI Pilot 2 기본과 비슷하게 주의 [CAUTION_M], 위험 [DANGER_M] 이하이고, 한 번 오른 등급은 [HYSTERESIS_M] 더 멀어져야 내린다(깜박임 방지).
+ * 거리는 DJI Pilot 2 기본과 비슷하게 주의 [Tuning.Obstacle.CAUTION_M], 위험 [Tuning.Obstacle.DANGER_M] 이하이고, 한 번 오른 등급은 [Tuning.Obstacle.HYSTERESIS_M] 더 멀어져야 내린다(깜박임 방지).
  * 아래는 땅이 늘 보이므로(이착륙, 낮은 고도) 등급을 매기지 않는다.
  */
 data class ObstacleWarning(
@@ -54,13 +56,9 @@ data class ObstacleWarning(
     }
 
     companion object {
-        const val CAUTION_M = 10.0
-        const val DANGER_M = 5.0
-        const val HYSTERESIS_M = 1.0
-
         fun grade(m: Double, prev: ObstacleLevel): ObstacleLevel = when {
-            m <= DANGER_M || (prev == ObstacleLevel.DANGER && m <= DANGER_M + HYSTERESIS_M) -> ObstacleLevel.DANGER
-            m <= CAUTION_M || (prev != ObstacleLevel.NONE && m <= CAUTION_M + HYSTERESIS_M) -> ObstacleLevel.CAUTION
+            m <= Tuning.Obstacle.DANGER_M || (prev == ObstacleLevel.DANGER && m <= Tuning.Obstacle.DANGER_M + Tuning.Obstacle.HYSTERESIS_M) -> ObstacleLevel.DANGER
+            m <= Tuning.Obstacle.CAUTION_M || (prev != ObstacleLevel.NONE && m <= Tuning.Obstacle.CAUTION_M + Tuning.Obstacle.HYSTERESIS_M) -> ObstacleLevel.CAUTION
             else -> ObstacleLevel.NONE
         }
     }
