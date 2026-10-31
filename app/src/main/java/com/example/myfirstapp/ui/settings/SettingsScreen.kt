@@ -25,6 +25,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,6 +42,8 @@ import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.Equipment
+import com.example.myfirstapp.data.MapSource
+import com.example.myfirstapp.data.vworldAvailable
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.ui.Stepper
@@ -103,6 +106,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             OutlinedButton(onClick = { modelPicker.launch(null) }, enabled = !s.busy, modifier = Modifier.height(36.dp)) {
                 Text("모델 폴더 가져오기")
             }
+        }
+        Section("배경 지도", "다음에 지도 화면을 열 때 적용됩니다 · 계획을 저장하면 미션 영역을 미리 받아 인터넷 없이도 보입니다.") {
+            MapSourcePicker(s.mapSource, s.vworldLabels, vm::setMapSource, vm::setVworldLabels)
         }
         Section("오프라인 지도", "앱 폴더 maps/ · 계획·비행 지도에서 위성 배경 위에 겹쳐 그립니다.") {
             if (s.maps.isEmpty()) Text("지도 파일이 없습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -223,6 +229,27 @@ private fun equipmentDrop(p: FlightParams, e: Equipment): Triple<String, String,
     return Triple("${e.title} 조준(머리 아래)", v?.let { "${"%.1f".format(it)}m" } ?: "끔") { d ->
         val next = if (v == null) (if (d > 0) 0.0 else null) else (v + d * 0.5).takeIf { it >= 0.0 }?.coerceAtMost(10.0)
         p.copy(equipmentDropM = if (next == null) p.equipmentDropM - e else p.equipmentDropM + (e to next))
+    }
+}
+
+/** 배경 지도 고르기(7.4): Bing 위성 / VWorld 위성 / VWorld 일반, VWorld 위성의 도로·지명 라벨. 키가 없으면 VWorld를 막는다. */
+@Composable
+private fun MapSourcePicker(source: MapSource, labels: Boolean, onSource: (MapSource) -> Unit, onLabels: (Boolean) -> Unit) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        MapSource.entries.forEachIndexed { i, src ->
+            SegmentedButton(
+                selected = source == src,
+                onClick = { onSource(src) },
+                enabled = src == MapSource.BING || vworldAvailable,
+                shape = SegmentedButtonDefaults.itemShape(i, MapSource.entries.size),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) { Text(src.title) }
+        }
+    }
+    if (!vworldAvailable) Text("VWorld 키 없음(secrets/vworld.properties)", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("도로·지명 라벨(VWorld 위성)", Modifier.weight(1f))
+        Switch(checked = labels, onCheckedChange = onLabels, enabled = source == MapSource.VWORLD_SATELLITE)
     }
 }
 

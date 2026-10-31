@@ -27,7 +27,8 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.SortieDraft
 import com.example.myfirstapp.data.listMbtiles
-import com.example.myfirstapp.data.onlineSatelliteTilesRetrying
+import com.example.myfirstapp.data.MapBackground
+import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.data.toJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,8 +53,8 @@ data class PlanUiState(
     /** 아직 읽지 않았으면 null. */
     val poles: List<PoleEntity>? = null,
     val mapFiles: List<File> = emptyList(),
-    /** 온라인 위성 배경(Cesium ion의 Bing) 타일 주소. 토큰이 없거나 받지 못하면 빈 목록(7.4 임시 결정). */
-    val onlineTiles: List<String> = emptyList(),
+    /** 배경 지도(설정에서 고른 Bing·VWorld, 7.4). 타일 주소를 못 받으면 비어 있고 캐시만 보인다. */
+    val background: MapBackground = MapBackground.NONE,
     val selected: String? = null,
     val message: String? = null,
     val tool: Tool = Tool.NONE,
@@ -101,7 +102,7 @@ class PlanViewModel(
     /** 기체가 시뮬레이터 모드인지(DJI SimulatorManager). */
     private val simulatorOn: () -> Boolean = { false },
     /** 계획을 저장하면 미션 영역의 위성 타일을 미리 받는다(7.4, 현장은 인터넷 없음). 점들과 이름을 넘긴다. */
-    private val prefetchArea: (List<GeoPoint>, String) -> Unit = { _, _ -> },
+    private val prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit = { _, _, _ -> },
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlanUiState(mapFiles = listMbtiles(mapsDir)))
     val state: StateFlow<PlanUiState> = _state.asStateFlow()
@@ -119,7 +120,7 @@ class PlanViewModel(
         }
         replanFrom?.let { viewModelScope.launch { seedReplan(it) } }
         viewModelScope.launch { currentLocation()?.let(::seedHome) }
-        viewModelScope.launch { onlineSatelliteTilesRetrying().let { urls -> _state.update { it.copy(onlineTiles = urls) } } }
+        viewModelScope.launch { mapBackgroundRetrying(settings).let { bg -> _state.update { it.copy(background = bg) } } }
         // Pilot 2처럼 영역·이륙 지점·설정·제외가 바뀌면 경로를 바로 다시 계산한다. 연달아 바꾸면 마지막 것만 계산한다.
         // 영역·이륙 지점을 찍는 동안은 계산하지 않고, 도구만 바꾼 것(이륙 → 취소)은 입력이 같아 저장한 계획을 그대로 둔다.
         viewModelScope.launch {
@@ -271,7 +272,7 @@ class PlanViewModel(
                         )
                     }
                     Log.i("RoutePlan", "saved mission=$id")
-                    prefetchArea(s.vertices + p.home, "mission-$id")
+                    prefetchArea(s.vertices + p.home, "mission-$id", _state.value.background)
                 }
                 .onFailure { e -> _state.update { it.copy(message = "계획을 저장하지 못했습니다: ${e.message}") } }
             _state.update { it.copy(saving = false) }
@@ -283,7 +284,7 @@ class PlanViewModel(
     companion object {
         fun factory(
             dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, settings: SettingsStore,
-            currentLocation: suspend () -> GeoPoint?, simulatorOn: () -> Boolean, prefetchArea: (List<GeoPoint>, String) -> Unit,
+            currentLocation: suspend () -> GeoPoint?, simulatorOn: () -> Boolean, prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit,
         ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, currentLocation, simulatorOn, prefetchArea) } }
     }
 }

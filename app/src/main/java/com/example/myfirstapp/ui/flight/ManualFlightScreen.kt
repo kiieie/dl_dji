@@ -49,7 +49,7 @@ import com.example.myfirstapp.ui.theme.TextSoft
 fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -> Unit, onOpenMission: (LatestMission) -> Unit, onAlbum: () -> Unit = {}) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
-    val vm: ManualFlightViewModel = viewModel(factory = ManualFlightViewModel.factory(dao, context.getExternalFilesDir(null), app.rcButtons))
+    val vm: ManualFlightViewModel = viewModel(factory = ManualFlightViewModel.factory(dao, context.getExternalFilesDir(null), app.rcButtons, app.settings))
     val s by vm.state.collectAsStateWithLifecycle()
     val f = s.flight
     var mapMain by rememberSaveable { mutableStateOf(false) }

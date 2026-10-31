@@ -90,6 +90,9 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.drone.djiCurrentLocation
 import com.example.myfirstapp.drone.djiSimulatorOn
+import com.example.myfirstapp.data.MapBackground
+import com.example.myfirstapp.data.baseFiles
+import com.example.myfirstapp.data.labelCacheFile
 import com.example.myfirstapp.data.prefetchSatellite
 import com.example.myfirstapp.data.resumeSatellitePrefetch
 import com.example.myfirstapp.core.model.FlightParams
@@ -164,7 +167,7 @@ fun MapScreen(
         factory = PlanViewModel.factory(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() },
             (context.applicationContext as InspectionApp).settings, ::djiCurrentLocation, ::djiSimulatorOn,
-            { points, name -> context.getExternalFilesDir(null)?.let { prefetchSatellite(it, points, name) } },
+            { points, name, bg -> context.getExternalFilesDir(null)?.let { prefetchSatellite(it, points, name, bg) } },
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
@@ -190,7 +193,7 @@ fun MapScreen(
                     PoleMap(
                         poles = it,
                         mapFiles = s.mapFiles,
-                        onlineTiles = s.onlineTiles,
+                        background = s.background,
                         overlay = Overlay(s.vertices, s.home, s.plan, s.excludedPoints, s.params, s.poles?.firstOrNull { p -> p.poleId == s.selected }?.let { p -> GeoPoint(p.lat, p.lon) }),
                         focus = s.focus,
                         fitRequest = fitRequest,
@@ -542,7 +545,7 @@ private data class Overlay(
 private fun PoleMap(
     poles: List<PoleEntity>,
     mapFiles: List<File>,
-    onlineTiles: List<String>,
+    background: MapBackground,
     overlay: Overlay,
     focus: List<GeoPoint>,
     /** 바뀔 때마다 영역(없으면 전주 전체)에 맞춰 다시 보여 준다(Pilot 2 중앙 복귀). */
@@ -576,9 +579,9 @@ private fun PoleMap(
         }
     }
 
-    LaunchedEffect(poles, mapFiles, onlineTiles) {
+    LaunchedEffect(poles, mapFiles, background) {
         mapView.getMapAsync { map ->
-            map.setStyle(Style.Builder().fromJson(styleJson(mapFiles, onlineTiles))) { style ->
+            map.setStyle(Style.Builder().fromJson(styleJson(mapFiles, background))) { style ->
                 val features = poles.map {
                     Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply { addStringProperty("poleId", it.poleId) }
                 }
@@ -768,14 +771,26 @@ private fun routeFeatures(plan: RoutePlan?, params: FlightParams): FeatureCollec
 )
 
 /** 온라인 위성(7.4 임시)을 맨 아래에, 그 위에 MBTiles를 겹친다. */
-internal fun styleJson(mapFiles: List<File>, onlineTiles: List<String>): String {
-    val online = onlineTiles.takeIf { it.isNotEmpty() }?.let { urls ->
-        val tiles = urls.joinToString(",") { "\"$it\"" }
-        """"online":{"type":"raster","tiles":[$tiles],"tileSize":256,"maxzoom":19,"attribution":"© Microsoft Bing, Cesium ion"}"""
+/**
+ * 지도 스타일(7.4): 배경색 → 온라인 배경(설정에서 고른 Bing·VWorld) → MBTiles(사용자 지도 + 지금 배경의 미리 받기 캐시)
+ * → 라벨(VWorld 하이브리드 온라인, 그 위에 라벨 캐시). 다른 배경의 캐시는 섞이지 않게 뺀다.
+ */
+internal fun styleJson(mapFiles: List<File>, background: MapBackground): String {
+    fun raster(id: String, urls: List<String>) = urls.takeIf { it.isNotEmpty() }?.let {
+        """"$id":{"type":"raster","tiles":[${it.joinToString(",") { u -> "\"$u\"" }}],"tileSize":256,"maxzoom":19,"attribution":"${background.attribution}"}"""
     }
-    val sources = listOfNotNull(online) + mapFiles.mapIndexed { i, f -> """"base$i":{"type":"raster","url":"mbtiles://${f.absolutePath}","tileSize":256}""" }
+    val online = raster("online", background.tiles)
+    val labels = raster("labels", background.labelTiles)
+    val base = background.baseFiles(mapFiles)
+    val labelCache = background.labelCacheFile(mapFiles)
+    val sources = listOfNotNull(online) + base.mapIndexed { i, f -> """"base$i":{"type":"raster","url":"mbtiles://${f.absolutePath}","tileSize":256}""" } +
+        listOfNotNull(labels, labelCache?.let { """"labelCache":{"type":"raster","url":"mbtiles://${it.absolutePath}","tileSize":256}""" })
     val layers = listOf("""{"id":"background","type":"background","paint":{"background-color":"#E6EAE7"}}""") +
         listOfNotNull(online?.let { """{"id":"online","type":"raster","source":"online"}""" }) +
-        mapFiles.indices.map { """{"id":"base$it","type":"raster","source":"base$it"}""" }
+        base.indices.map { """{"id":"base$it","type":"raster","source":"base$it"}""" } +
+        listOfNotNull(
+            labels?.let { """{"id":"labels","type":"raster","source":"labels"}""" },
+            labelCache?.let { """{"id":"labelCache","type":"raster","source":"labelCache"}""" },
+        )
     return """{"version":8,"sources":{${sources.joinToString(",")}},"layers":[${layers.joinToString(",")}]}"""
 }

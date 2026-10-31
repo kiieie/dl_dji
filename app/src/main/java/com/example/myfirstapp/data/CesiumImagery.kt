@@ -48,15 +48,6 @@ suspend fun onlineSatelliteTiles(): List<String> {
 fun savedSatelliteTiles(): List<String> =
     runCatching { savedSatelliteTilesFile?.takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() } }.getOrNull().orEmpty()
 
-/** 받을 때까지 10초마다 다시 시도한다(화면을 연 뒤에 인터넷이 붙는 경우). 토큰이 없으면 바로 빈 목록. 화면을 닫으면 취소된다. */
-suspend fun onlineSatelliteTilesRetrying(): List<String> {
-    if (BuildConfig.CESIUM_ION_TOKEN.isBlank()) return emptyList()
-    while (true) {
-        onlineSatelliteTiles().takeIf { it.isNotEmpty() }?.let { return it }
-        delay(10_000)
-    }
-}
-
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
 private fun getJson(url: String): JSONObject {

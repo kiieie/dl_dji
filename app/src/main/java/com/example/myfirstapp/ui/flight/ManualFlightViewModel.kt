@@ -23,7 +23,9 @@ import com.example.myfirstapp.data.RoomRecorder
 import com.example.myfirstapp.ui.home.LatestMission
 import com.example.myfirstapp.ui.home.loadLatestMission
 import com.example.myfirstapp.data.listMbtiles
-import com.example.myfirstapp.data.onlineSatelliteTilesRetrying
+import com.example.myfirstapp.data.MapBackground
+import com.example.myfirstapp.data.SettingsStore
+import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.drone.DjiDroneGateway
 import com.example.myfirstapp.drone.djiAircraftConnected
 import com.example.myfirstapp.sound.ToneNotifier
@@ -62,6 +64,8 @@ class ManualFlightViewModel(
     private val dao: ProjectDao,
     private val appFilesDir: File?,
     rcButtons: Flow<RcButton> = emptyFlow(),
+    /** 배경 지도 선택(7.4). 없으면 Bing. */
+    private val settings: SettingsStore? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ManualFlightUiState())
     val state: StateFlow<ManualFlightUiState> = _state.asStateFlow()
@@ -79,8 +83,8 @@ class ManualFlightViewModel(
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
             _state.update { it.copy(flight = it.flight.copy(mapFiles = files)) }
-            val tiles = onlineSatelliteTilesRetrying()
-            _state.update { it.copy(flight = it.flight.copy(onlineTiles = tiles)) }
+            val bg = settings?.let { mapBackgroundRetrying(it) } ?: MapBackground.NONE
+            _state.update { it.copy(flight = it.flight.copy(background = bg)) }
         }
         viewModelScope.launch { loadLatestMission(dao)?.let { m -> _state.update { it.copy(latest = m) } } }
         // RC: C2는 짐벌 전환(비행 화면과 같음). 이 화면 위에 설정 등이 열려 있을 때([active] 거짓)는 받지 않는다
@@ -172,7 +176,7 @@ class ManualFlightViewModel(
     }
 
     companion object {
-        fun factory(dao: ProjectDao, appFilesDir: File?, rcButtons: Flow<RcButton>) =
-            viewModelFactory { initializer { ManualFlightViewModel(dao, appFilesDir, rcButtons) } }
+        fun factory(dao: ProjectDao, appFilesDir: File?, rcButtons: Flow<RcButton>, settings: SettingsStore) =
+            viewModelFactory { initializer { ManualFlightViewModel(dao, appFilesDir, rcButtons, settings) } }
     }
 }

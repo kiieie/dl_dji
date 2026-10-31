@@ -1,6 +1,7 @@
 package com.example.myfirstapp.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -22,6 +23,20 @@ class SettingsStore(context: Context) {
     /** 고른 모델 폴더 이름(`models/<이름>/`). null이면 이름이 가장 뒤인 모델을 쓴다(9.1). */
     val modelDir: Flow<String?> = store.data.map { it[MODEL] }
 
+    /** 배경 지도(7.4): Bing 위성(기본) / VWorld 위성 / VWorld 일반지도. 다음에 지도 화면을 열 때 적용된다. */
+    val mapSource: Flow<MapSource> = store.data.map { p -> MapSource.entries.firstOrNull { it.name == p[MAP_SOURCE] } ?: MapSource.BING }
+
+    /** VWorld 위성 위에 도로·지명 라벨(하이브리드)을 겹칠지. */
+    val vworldLabels: Flow<Boolean> = store.data.map { it[VWORLD_LABELS] ?: true }
+
+    suspend fun setMapSource(s: MapSource) {
+        store.edit { it[MAP_SOURCE] = s.name }
+    }
+
+    suspend fun setVworldLabels(on: Boolean) {
+        store.edit { it[VWORLD_LABELS] = on }
+    }
+
     suspend fun setFlightDefaults(p: FlightParams) {
         store.edit { it[FLIGHT] = p.toJson() }
     }
@@ -33,5 +48,7 @@ class SettingsStore(context: Context) {
     private companion object {
         val FLIGHT = stringPreferencesKey("flight_defaults")
         val MODEL = stringPreferencesKey("model_dir")
+        val MAP_SOURCE = stringPreferencesKey("map_source")
+        val VWORLD_LABELS = booleanPreferencesKey("vworld_labels")
     }
 }

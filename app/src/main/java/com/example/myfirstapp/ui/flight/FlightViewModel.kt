@@ -46,7 +46,8 @@ import com.example.myfirstapp.data.RoomRecorder
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.fakePhotoSource
 import com.example.myfirstapp.data.listMbtiles
-import com.example.myfirstapp.data.onlineSatelliteTilesRetrying
+import com.example.myfirstapp.data.MapBackground
+import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.data.toEntity
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.detect.TfliteYoloDetector
@@ -84,9 +85,9 @@ data class FlightUiState(
     val returnNeedPct: Int = 0,
     val home: GeoPoint? = null,
     val poles: List<Pole> = emptyList(),
-    /** 지도 배경: 앱 폴더의 MBTiles와 온라인 위성 타일(7.4 임시). 계획 화면과 같다. */
+    /** 지도 배경: 앱 폴더의 MBTiles와 설정에서 고른 배경(Bing·VWorld, 7.4). 계획 화면과 같다. */
     val mapFiles: List<File> = emptyList(),
-    val onlineTiles: List<String> = emptyList(),
+    val background: MapBackground = MapBackground.NONE,
     /** 모의 기체면 true: 모의 RC 조작 줄을 보여 준다. */
     val simulated: Boolean = false,
     val modelVersion: String? = null,
@@ -146,8 +147,8 @@ class FlightViewModel(
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
             _state.update { it.copy(mapFiles = files) }
-            val tiles = onlineSatelliteTilesRetrying()
-            _state.update { it.copy(onlineTiles = tiles) }
+            val bg = mapBackgroundRetrying(settings)
+            _state.update { it.copy(background = bg) }
         }
     }
 

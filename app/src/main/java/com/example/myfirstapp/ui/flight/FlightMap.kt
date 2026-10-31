@@ -89,12 +89,12 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
         }
     }
 
-    LaunchedEffect(s.mapFiles, s.onlineTiles) {
+    LaunchedEffect(s.mapFiles, s.background) {
         mapView.getMapAsync { map ->
             map.uiSettings.setAllGesturesEnabled(interactive)
             map.uiSettings.isLogoEnabled = interactive
             map.uiSettings.isAttributionEnabled = interactive
-            map.setStyle(Style.Builder().fromJson(styleJson(s.mapFiles, s.onlineTiles))) { style ->
+            map.setStyle(Style.Builder().fromJson(styleJson(s.mapFiles, s.background))) { style ->
                 listOf("route", "poles", "home", "aircraft").forEach { style.addSource(GeoJsonSource(it)) }
                 style.addLayer(LineLayer("route-line", "route").withProperties(lineColor("#E9ECEF"), lineWidth(2f)))
                 style.addLayer(

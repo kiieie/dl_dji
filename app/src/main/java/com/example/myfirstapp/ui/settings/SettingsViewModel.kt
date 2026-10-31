@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.data.ModelInfo
+import com.example.myfirstapp.data.MapSource
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.copyMbtiles
 import com.example.myfirstapp.data.importModelFolder
@@ -46,6 +47,9 @@ data class SettingsUiState(
     val message: String? = null,
     val deleting: PendingDelete? = null,
     val busy: Boolean = false,
+    /** 배경 지도(7.4)와 VWorld 위성 라벨. */
+    val mapSource: MapSource = MapSource.BING,
+    val vworldLabels: Boolean = true,
 ) {
     val paramErrors get() = params.validate()
     val canSave get() = params != savedParams && paramErrors.isEmpty()
@@ -68,7 +72,12 @@ class SettingsViewModel(
     init {
         viewModelScope.launch {
             val p = settings.flightDefaults.first()
-            _state.update { it.copy(params = p, savedParams = p, selectedModel = settings.modelDir.first()) }
+            _state.update {
+                it.copy(
+                    params = p, savedParams = p, selectedModel = settings.modelDir.first(),
+                    mapSource = settings.mapSource.first(), vworldLabels = settings.vworldLabels.first(),
+                )
+            }
             refreshFiles()
         }
     }
@@ -84,6 +93,19 @@ class SettingsViewModel(
             settings.setFlightDefaults(s.params)
             _state.update { it.copy(savedParams = s.params, message = "비행 기본값을 저장했습니다. 새 계획부터 적용됩니다.") }
         }
+    }
+
+    /** 배경 지도 고르기(7.4). 다음에 지도 화면을 열 때 적용된다. */
+    fun setMapSource(src: MapSource) = viewModelScope.launch {
+        OpLog.log("setting", "mapSource", mapOf("source" to src.name))
+        settings.setMapSource(src)
+        _state.update { it.copy(mapSource = src, message = "배경 지도를 ${src.title}(으)로 바꿨습니다. 다음에 지도를 열 때 적용됩니다.") }
+    }
+
+    fun setVworldLabels(on: Boolean) = viewModelScope.launch {
+        OpLog.log("setting", "vworldLabels", mapOf("on" to on))
+        settings.setVworldLabels(on)
+        _state.update { it.copy(vworldLabels = on) }
     }
 
     fun selectModel(dir: String) = viewModelScope.launch {
