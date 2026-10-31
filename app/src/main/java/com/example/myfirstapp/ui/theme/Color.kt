@@ -43,3 +43,22 @@ val TextSoft = Color(0xFFC8C8C8)
 val Warning = Color(0xFFFF9F0A)
 /** 일시정지 버튼, 이륙 지점 H, RTH 테두리. */
 val Caution = Color(0xFFFFC400)
+
+/** 영상 위 카드·버튼 바탕(10.4 시안 #121212 90%). */
+val CardBg = Color(0xE6121212)
+/** 꺼진 아이콘·신호 막대·셔터 테두리. */
+val Inactive = Color(0xFF555555)
+/** 상태를 모를 때의 점, 고르지 않은 칸 글자. */
+val Muted = Color(0xFF8A8A8A)
+/** 탐지 있음 글자(판독·앨범 필터, 탐지 이름). */
+val DetectedText = Color(0xFFFF6B61)
+
+// 지도(MapLibre) 색: 스타일 식에 문자열로 넘긴다.
+/** 점검 영역 면·선·꼭짓점 테두리. */
+const val MAP_AREA = "#1864AB"
+/** 이륙 지점 H([Caution]과 같은 값). */
+const val MAP_HOME = "#FFC400"
+/** 미니맵 경로 선. */
+const val MAP_ROUTE = "#E9ECEF"
+/** 이륙 지점 점의 어두운 테두리. */
+const val MAP_STROKE_DARK = "#212529"

@@ -13,7 +13,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.sp
 import com.example.myfirstapp.core.route.LineNumbers
 import com.example.myfirstapp.ui.PoleSymbolRow
 import com.example.myfirstapp.ui.poleSymbols
@@ -124,6 +123,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
+import com.example.myfirstapp.ui.theme.DetectedText
+import com.example.myfirstapp.ui.theme.Dimens
+import com.example.myfirstapp.ui.theme.FontSize
+import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 
 /** 사진 위 데이터 표시 색(10.1 예외): 검출 대상은 빨강, 그 밖의 탐지는 노랑. */
 private val DetectedBox = Color(0xFFFF5449)
@@ -134,7 +137,6 @@ private val VerdictNone = Color(0xFF4CD08A)
 private val PanelBg = Color.Black.copy(alpha = 0.55f)
 
 /** 어두운 바탕 위 빨간 글자(대비용, 10.4 시안 #FF6B61). */
-private val DetectedText = Color(0xFFFF6B61)
 
 /** 판독 화면(10.4.3 시안 ⑥, F-19 1차 판독). 상태는 [ResultViewModel]이 갖고, 이 화면은 그리기와 입력 전달만 한다. */
 @Composable
@@ -166,20 +168,20 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
     Box(Modifier.fillMaxSize().background(Color.Black).focusRequester(focus).focusable().onKeyEvent { e -> e.type == KeyEventType.KeyDown && on5dKey(e.key, vm) }) {
         Column(Modifier.fillMaxSize()) {
             // 머리글 40dp(10.4.2): 뒤로 · 미션 · 가운데 제목 · 필터 · 내보내기
-            Box(Modifier.fillMaxWidth().height(40.dp).padding(start = 4.dp, end = 10.dp)) {
+            Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp, end = 10.dp)) {
                 Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall)) {
                         Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
                     }
                     Text(
-                        "미션 #${s.missionId} · 판독 ${s.reviews.size}/${s.statusCounts["완료"] ?: 0}", fontSize = 12.sp, color = TextSoft, maxLines = 1,
+                        "미션 #${s.missionId} · 판독 ${s.reviews.size}/${s.statusCounts["완료"] ?: 0}", fontSize = FontSize.Body, color = TextSoft, maxLines = 1,
                     )
                 }
-                Text("판독", Modifier.align(Alignment.Center), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("판독", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
                 Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     ResultFilter.entries.forEach { f -> FilterButton(f, s.filter == f, s.count(f)) { vm.setFilter(f) } }
                     Box(
-                        Modifier.size(30.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
+                        Modifier.size(Dimens.ButtonChip).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
                             .clickable(enabled = !s.loading, onClickLabel = "내보내기", onClick = vm::export),
                         contentAlignment = Alignment.Center,
                     ) { Icon(painterResource(R.drawable.ic_export), contentDescription = "내보내기", modifier = Modifier.size(13.dp)) }
@@ -188,11 +190,11 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
             if (s.loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             } else Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PoleList(s, vm, Modifier.width(196.dp).fillMaxHeight())
+                PoleList(s, vm, Modifier.width(Dimens.CardWidth).fillMaxHeight())
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val row = s.selected
                     Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
-                        if (row == null) Text("왼쪽에서 전주를 고르세요.", Modifier.align(Alignment.Center), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (row == null) Text("왼쪽에서 전주를 고르세요.", Modifier.align(Alignment.Center), fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         else PhotoViewer(row, s.photos, s.photoIndex, vm::showPhoto, Modifier.fillMaxSize())
                     }
                     VerdictRow(s, vm, onMemo = { memoOpen = true })
@@ -221,14 +223,14 @@ private fun on5dKey(key: Key, vm: ResultViewModel): Boolean {
 @Composable
 private fun FilterButton(f: ResultFilter, on: Boolean, count: Int, onClick: () -> Unit) {
     Box(
-        Modifier.height(30.dp).clip(RoundedCornerShape(4.dp))
+        Modifier.height(Dimens.ButtonChip).clip(RoundedCornerShape(4.dp))
             .background(if (on) Accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainer)
             .border(1.dp, if (on) Accent else Color.Transparent, RoundedCornerShape(4.dp))
             .clickable(onClick = onClick).padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            "${if (f == ResultFilter.DETECTED) "탐지" else f.title} $count", fontSize = 11.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+            "${if (f == ResultFilter.DETECTED) "탐지" else f.title} $count", fontSize = FontSize.Caption, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
             color = when { on -> Color.White; f == ResultFilter.DETECTED -> DetectedText; else -> TextSoft },
         )
     }
@@ -268,7 +270,7 @@ private fun PoleList(s: ResultUiState, vm: ResultViewModel, modifier: Modifier) 
                 else -> "미판독"
             }
             Row(
-                Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(4.dp))
+                Modifier.fillMaxWidth().height(Dimens.RowList).clip(RoundedCornerShape(4.dp))
                     .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
                     .clickable { vm.select(r.visitId) },
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -276,12 +278,12 @@ private fun PoleList(s: ResultUiState, vm: ResultViewModel, modifier: Modifier) 
                 Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
                 Box(Modifier.size(7.dp).clip(CircleShape).background(dotColor(r, review)))
                 Text(
-                    r.displayName, Modifier.weight(1f), fontSize = 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    r.displayName, Modifier.weight(1f), fontSize = FontSize.Body, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (selected) Color.White else TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 PoleSymbolRow(poleSymbols(r.voltage, r.equipment))
                 Text(
-                    tag, Modifier.padding(end = 8.dp), fontSize = 11.sp, maxLines = 1,
+                    tag, Modifier.padding(end = 8.dp), fontSize = FontSize.Caption, maxLines = 1,
                     color = if (review == ReviewVerdict.CONFIRMED || (review == null && r.detectCount > 0)) DetectedText else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -298,7 +300,7 @@ private fun PhotoViewer(r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto
     // 고른 검출 객체(상자를 누르거나 칩을 누름). 사진이 바뀌면 지운다
     var selected by remember(p?.capture?.id) { mutableStateOf<Int?>(null) }
     Box(modifier) {
-        if (p == null) Text("사진이 없습니다.", Modifier.align(Alignment.Center), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (p == null) Text("사진이 없습니다.", Modifier.align(Alignment.Center), fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
         else Photo(p, selected, { selected = it }, onTapEmpty = {}, Modifier.fillMaxSize())
         Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -306,12 +308,12 @@ private fun PhotoViewer(r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto
             Text(
                 listOfNotNull(r.displayName, r.poleId, r.lengthM?.let { "${it.toInt()}M" }, point?.let { "$it ${index + 1}/${photos.size}" }).joinToString(" · "),
                 Modifier.background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(3.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
-                fontSize = 11.sp, color = Color.White, maxLines = 1,
+                fontSize = FontSize.Caption, color = Color.White, maxLines = 1,
             )
             p?.let {
                 Text(
                     if (it.capture.equipmentShot) "${it.capture.lens} · 설비" else it.capture.lens, Modifier.background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(3.dp)).border(1.dp, Tertiary, RoundedCornerShape(3.dp)).padding(horizontal = 6.dp),
-                    style = numberStyle(11.sp), color = Tertiary,
+                    style = numberStyle(FontSize.Caption), color = Tertiary,
                 )
             }
             }
@@ -323,7 +325,7 @@ private fun PhotoViewer(r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto
                         "${TargetLabels.title(d.label)} ${(d.score * 100).toInt()}%",
                         Modifier.clip(RoundedCornerShape(3.dp)).background(if (selected == i) (if (d.alert) DetectedBox else OtherBox) else Color.Black.copy(alpha = 0.65f))
                             .clickable { selected = if (selected == i) null else i }.padding(horizontal = 6.dp, vertical = 2.dp),
-                        fontSize = 11.sp, color = if (selected == i) Color.Black else if (d.alert) DetectedText else Color.White,
+                        fontSize = FontSize.Caption, color = if (selected == i) Color.Black else if (d.alert) DetectedText else Color.White,
                     )
                 }
             }
@@ -350,7 +352,7 @@ internal fun Thumbnail(p: PhotoUi, selected: Boolean, modifier: Modifier, onClic
             p.capture.filePath?.let { BitmapFactory.decodeFile(it, BitmapFactory.Options().apply { inSampleSize = 16 }) }?.asImageBitmap()
         }
     }
-    Box(modifier.clip(RoundedCornerShape(2.dp)).background(Color(0xFF333333)).clickable(onClick = onClick)) {
+    Box(modifier.clip(RoundedCornerShape(2.dp)).background(SurfaceContainerHighest).clickable(onClick = onClick)) {
         bitmap?.let { Image(it, contentDescription = null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
         if (selected) Box(Modifier.fillMaxSize().border(2.dp, Color.White, RoundedCornerShape(2.dp)))
         if (p.boxes.any { it.alert }) Box(Modifier.padding(3.dp).size(6.dp).clip(CircleShape).background(DetectedBox))
@@ -365,7 +367,7 @@ internal fun Thumbnail(p: PhotoUi, selected: Boolean, modifier: Modifier, onClic
 private fun VerdictRow(s: ResultUiState, vm: ResultViewModel, onMemo: () -> Unit) {
     val row = s.selected
     val saved = row?.let { s.reviews[it.visitId] }?.let { ReviewVerdict.valueOf(it.verdict) }
-    Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(Modifier.fillMaxWidth().height(Dimens.RowTable), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             buildAnnotatedString {
                 append("1차 판정 · ")
@@ -374,13 +376,13 @@ private fun VerdictRow(s: ResultUiState, vm: ResultViewModel, onMemo: () -> Unit
                     append(v)
                 }
             },
-            Modifier.weight(1f), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            Modifier.weight(1f), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
-        if (saved != null) Text("저장됨 ${saved.short}", fontSize = 11.sp, color = VerdictNone)
+        if (saved != null) Text("저장됨 ${saved.short}", fontSize = FontSize.Caption, color = VerdictNone)
         Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surfaceContainer).clickable(enabled = row != null, onClickLabel = "대상·메모", onClick = onMemo),
+            Modifier.size(Dimens.TouchMedium).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surfaceContainer).clickable(enabled = row != null, onClickLabel = "대상·메모", onClick = onMemo),
             contentAlignment = Alignment.Center,
-        ) { Text("⋯", fontSize = 15.sp, color = TextSoft) }
+        ) { Text("⋯", fontSize = FontSize.Number, color = TextSoft) }
         listOf(ReviewVerdict.NONE, ReviewVerdict.CONFIRMED, ReviewVerdict.RETAKE).forEach { v ->
             val on = s.draft.verdict == v
             val bg = when {
@@ -391,9 +393,9 @@ private fun VerdictRow(s: ResultUiState, vm: ResultViewModel, onMemo: () -> Unit
             }
             Button(
                 onClick = { vm.setVerdict(v); vm.saveReviewAndNext() }, enabled = row != null && row.status == "DONE",
-                modifier = Modifier.size(72.dp, 36.dp), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.size(72.dp, Dimens.ButtonStd), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
                 colors = ButtonDefaults.buttonColors(bg, if (on && v == ReviewVerdict.RETAKE) Color.Black else Color.White),
-            ) { Text(v.short, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal) }
+            ) { Text(v.short, fontSize = FontSize.Body, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal) }
         }
     }
 }
@@ -411,7 +413,7 @@ private fun MemoDialog(s: ResultUiState, vm: ResultViewModel, onClose: () -> Uni
                     s.tagOptions.forEach { t -> FilterChip(t in s.draft.tags, { vm.toggleTag(t) }, label = { Text(TargetLabels.title(t)) }) }
                 }
                 OutlinedTextField(s.draft.memo, vm::setMemo, placeholder = { Text("메모") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("판정 버튼을 누르면 함께 저장됩니다.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("판정 버튼을 누르면 함께 저장됩니다.", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { TextButton(onClick = onClose) { Text("닫기") } },

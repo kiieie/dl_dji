@@ -20,7 +20,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.ui.theme.numberStyle
 import org.maplibre.android.maps.MapLibreMap
@@ -59,6 +58,10 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
+import com.example.myfirstapp.ui.theme.FontSize
+import com.example.myfirstapp.ui.theme.MAP_HOME
+import com.example.myfirstapp.ui.theme.MAP_ROUTE
+import com.example.myfirstapp.ui.theme.MAP_STROKE_DARK
 
 /**
  * 비행 화면 지도(10장): 계획 화면과 같은 배경(위성·MBTiles) 위에 소티 경로, 전주 상태, 이륙 지점, 기체를 그린다.
@@ -97,7 +100,7 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
             map.uiSettings.isAttributionEnabled = interactive
             map.setStyle(Style.Builder().fromJson(styleJson(s.mapFiles, s.background))) { style ->
                 listOf("route", "poles", "home", "aircraft").forEach { style.addSource(GeoJsonSource(it)) }
-                style.addLayer(LineLayer("route-line", "route").withProperties(lineColor("#E9ECEF"), lineWidth(2f)))
+                style.addLayer(LineLayer("route-line", "route").withProperties(lineColor(MAP_ROUTE), lineWidth(2f)))
                 style.addLayer(
                     CircleLayer("poles-point", "poles").withProperties(
                         circleColor(
@@ -114,7 +117,7 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
                 )
                 style.addLayer(
                     CircleLayer("home-point", "home").withProperties(
-                        circleColor("#FFC400"), circleRadius(6f), circleStrokeColor("#212529"), circleStrokeWidth(2f),
+                        circleColor(MAP_HOME), circleRadius(6f), circleStrokeColor(MAP_STROKE_DARK), circleStrokeWidth(2f),
                     ),
                 )
                 style.addLayer(
@@ -178,7 +181,7 @@ internal fun FlightMap(s: FlightUiState, interactive: Boolean, pad: List<Dp>, mo
                 Modifier.offset { IntOffset(at.x.toInt() + 18, at.y.toInt() - 42) }.background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Text(poleLabel(p), style = numberStyle(if (interactive) 16.5.sp else 13.5.sp), color = Color.White, maxLines = 1)
+                Text(poleLabel(p), style = numberStyle(if (interactive) FontSize.MapLabel else FontSize.MapLabelMini), color = Color.White, maxLines = 1)
                 PoleSymbolRow(poleSymbols(p.voltage, p.equipment), size = if (interactive) 15.dp else 12.dp)
             }
         }

@@ -40,6 +40,7 @@ import com.example.myfirstapp.ui.theme.numberStyle
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import com.example.myfirstapp.ui.theme.FontSize
 
 /**
  * 내비게이션 디스플레이(10.4.3 시안, Pilot 2 57~58쪽) 300×104: 원판에 기수(흰 화살표, 위에 기수 각도)와 홈(H) 방향,
@@ -86,16 +87,16 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = Obsta
                 )
             }
         }
-        Text("%03d".format(t.headingDeg.toInt().mod(360)), Modifier.align(Alignment.TopCenter), style = numberStyle(11.sp), color = Color.White)
+        Text("%03d".format(t.headingDeg.toInt().mod(360)), Modifier.align(Alignment.TopCenter), style = numberStyle(FontSize.Caption), color = Color.White)
         Column(Modifier.offset(y = 34.dp).width(94.dp), horizontalAlignment = Alignment.End) {
-            Text("짐벌 %.0f°".format(t.gimbalPitchDeg), style = numberStyle(11.sp, FontWeight.Medium), color = TextSoft)
+            Text("짐벌 %.0f°".format(t.gimbalPitchDeg), style = numberStyle(FontSize.Caption, FontWeight.Medium), color = TextSoft)
             Text("%04.1f".format(t.speedMps), style = numberStyle(24.sp), color = Tertiary)
-            Text("SPD m/s", fontSize = 11.sp, color = TextSoft)
+            Text("SPD m/s", fontSize = FontSize.Caption, color = TextSoft)
         }
         Column(Modifier.align(Alignment.TopEnd).offset(y = 34.dp).width(94.dp)) {
-            Text("%.1f VS".format(if (abs(t.verticalSpeedMps) < 0.05) 0.0 else t.verticalSpeedMps), style = numberStyle(11.sp, FontWeight.Medium), color = TextSoft)
+            Text("%.1f VS".format(if (abs(t.verticalSpeedMps) < 0.05) 0.0 else t.verticalSpeedMps), style = numberStyle(FontSize.Caption, FontWeight.Medium), color = TextSoft)
             Text("%05.1f".format(t.altitudeM), style = numberStyle(24.sp), color = Tertiary)
-            Text("ALT m · ${homeDist?.let { "%.0fm".format(it) } ?: "--"}", fontSize = 11.sp, color = TextSoft)
+            Text("ALT m · ${homeDist?.let { "%.0fm".format(it) } ?: "--"}", fontSize = FontSize.Caption, color = TextSoft)
         }
     }
 }

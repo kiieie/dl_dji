@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.sp
 import com.example.myfirstapp.R
 import com.example.myfirstapp.drone.AircraftStatus
 import com.example.myfirstapp.drone.CheckItem
@@ -82,6 +81,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.drone.AircraftSetting
 import com.example.myfirstapp.drone.djiAircraftSettingTabs
 import com.example.myfirstapp.ui.Stepper
+import com.example.myfirstapp.ui.theme.Dimens
+import com.example.myfirstapp.ui.theme.FontSize
+import com.example.myfirstapp.ui.theme.Muted
 
 /**
  * 기체 점검·설정(10.4.3 ⑧, Pilot 2 설정 메뉴 57쪽): 머리글 40dp, 왼쪽 160dp 탭(상태 점검 · 기체 탭 · 일반), 오른쪽 내용.
@@ -118,17 +120,17 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().height(40.dp).padding(start = 4.dp, end = 10.dp)) {
-            IconButton(onClick = onBack, modifier = Modifier.size(32.dp).align(Alignment.CenterStart)) {
+        Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp, end = 10.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall).align(Alignment.CenterStart)) {
                 Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
             }
-            Text(if (tab == general) "설정" else "기체 점검", Modifier.align(Alignment.Center), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(if (tab == general) "설정" else "기체 점검", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
             Row(
                 Modifier.align(Alignment.CenterEnd).height(26.dp).background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(if (c?.connected == true) MaterialTheme.colorScheme.tertiary else Color(0xFF8A8A8A)))
-                Text(if (c?.connected == true) "${c.model ?: "기체"} 연결됨" else "기체 연결 안 됨", fontSize = 11.sp)
+                Box(Modifier.size(6.dp).clip(CircleShape).background(if (c?.connected == true) MaterialTheme.colorScheme.tertiary else Muted))
+                Text(if (c?.connected == true) "${c.model ?: "기체"} 연결됨" else "기체 연결 안 됨", fontSize = FontSize.Caption)
             }
         }
         Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -175,19 +177,19 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false) {
 @Composable
 private fun TabRow(name: String, selected: Boolean, badge: Int?, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(4.dp))
+        Modifier.fillMaxWidth().height(Dimens.RowList).clip(RoundedCornerShape(4.dp))
             .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
             .selectable(selected, role = Role.Tab, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
         Text(
-            name, Modifier.weight(1f).padding(start = 8.dp), fontSize = 12.sp, maxLines = 1,
+            name, Modifier.weight(1f).padding(start = 8.dp), fontSize = FontSize.Body, maxLines = 1,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Color.White else TextSoft,
         )
         badge?.let {
             Box(Modifier.padding(end = 8.dp).size(16.dp).clip(CircleShape).background(Warning), contentAlignment = Alignment.Center) {
-                Text("$it", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                Text("$it", fontSize = FontSize.Micro, fontWeight = FontWeight.Bold, color = Color.Black)
             }
         }
     }
@@ -212,17 +214,17 @@ private fun StatusTab(s: AircraftSettingsUiState, vm: AircraftSettingsViewModel,
             Column(Modifier.weight(1f)) {
                 Text(
                     when { c == null -> "점검 중"; issues > 0 -> "확인 ${issues}건 · 비행 전에 처리"; else -> "모두 정상" },
-                    fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    fontSize = FontSize.Label, fontWeight = FontWeight.Bold,
                 )
                 Text(
                     s.checkedAt?.let { "마지막 점검 " + SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(Date(it)) } ?: "기체에서 읽는 중",
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Button(
-                onClick = vm::recheck, enabled = !s.checking, modifier = Modifier.height(32.dp), shape = RoundedCornerShape(4.dp),
+                onClick = vm::recheck, enabled = !s.checking, modifier = Modifier.height(Dimens.TouchSmall), shape = RoundedCornerShape(4.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp), colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
-            ) { Text(if (s.checking) "점검 중" else "다시 점검", fontSize = 11.sp) }
+            ) { Text(if (s.checking) "점검 중" else "다시 점검", fontSize = FontSize.Caption) }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -243,9 +245,9 @@ private fun InfoPair(label: String, name: String, detail: String) {
         buildAnnotatedString {
             append("$label ")
             withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.SemiBold)) { append(name) }
-            if (detail.isNotEmpty()) withStyle(numberStyle(12.sp, FontWeight.Medium).toSpanStyle()) { append("  $detail") }
+            if (detail.isNotEmpty()) withStyle(numberStyle(FontSize.Body, FontWeight.Medium).toSpanStyle()) { append("  $detail") }
         },
-        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
     )
 }
 
@@ -259,32 +261,32 @@ private fun CheckRow(item: CheckItem, mode: Char?, onGuide: (String) -> Unit) {
     }
     val bad = item.level != AircraftStatus.Level.OK
     Row(
-        Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(4.dp)).background(if (bad) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent).padding(horizontal = 8.dp),
+        Modifier.fillMaxWidth().height(Dimens.RowTable).clip(RoundedCornerShape(4.dp)).background(if (bad) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(Modifier.size(7.dp).clip(CircleShape).background(color))
-        Text(item.name, Modifier.width(96.dp), fontSize = 12.sp, fontWeight = if (bad) FontWeight.SemiBold else FontWeight.Normal, color = if (bad) Color.White else TextSoft)
+        Text(item.name, Modifier.width(96.dp), fontSize = FontSize.Body, fontWeight = if (bad) FontWeight.SemiBold else FontWeight.Normal, color = if (bad) Color.White else TextSoft)
         if (item.name == "비행 모드") {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 listOf('F', 'N', 'S').forEach { m ->
                     val on = m == mode
                     Text(
                         "$m", Modifier.width(22.dp).background(if (on) (if (m == 'N') MaterialTheme.colorScheme.tertiary else Warning) else MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(3.dp)),
-                        style = numberStyle(13.sp), color = if (on) Color.Black else Color(0xFF8A8A8A), textAlign = TextAlign.Center,
+                        style = numberStyle(FontSize.Label), color = if (on) Color.Black else Muted, textAlign = TextAlign.Center,
                     )
                 }
-                Text("자동 비행은 N에서만", Modifier.padding(start = 6.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("자동 비행은 N에서만", Modifier.padding(start = 6.dp), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            Text(item.value, Modifier.weight(1f), fontSize = 12.sp, color = if (bad) color else TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.value, Modifier.weight(1f), fontSize = FontSize.Body, color = if (bad) color else TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         val g = item.guide
         if (g != null) {
-            Button(onClick = { onGuide(g) }, modifier = Modifier.height(30.dp), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
-                Text("보정 안내", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Button(onClick = { onGuide(g) }, modifier = Modifier.height(Dimens.ButtonChip), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(horizontal = 12.dp)) {
+                Text("보정 안내", fontSize = FontSize.Caption, fontWeight = FontWeight.Bold)
             }
         } else {
-            Text(when (item.level) { AircraftStatus.Level.OK -> "정상"; AircraftStatus.Level.WARN -> "주의"; AircraftStatus.Level.ERROR -> "확인" }, fontSize = 11.sp, color = color)
+            Text(when (item.level) { AircraftStatus.Level.OK -> "정상"; AircraftStatus.Level.WARN -> "주의"; AircraftStatus.Level.ERROR -> "확인" }, fontSize = FontSize.Caption, color = color)
         }
     }
 }
@@ -336,7 +338,7 @@ private fun SettingRow(item: AircraftSetting, value: Any?, vm: AircraftSettingsV
                 }
             }
             AircraftSetting.Kind.Info -> Text(value?.toString() ?: "--", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            is AircraftSetting.Kind.Action -> Button(onClick = { vm.ask(item) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("실행") }
+            is AircraftSetting.Kind.Action -> Button(onClick = { vm.ask(item) }, modifier = Modifier.heightIn(min = Dimens.TouchLarge)) { Text("실행") }
         }
     }
 }

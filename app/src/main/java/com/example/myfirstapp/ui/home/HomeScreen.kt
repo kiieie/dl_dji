@@ -76,6 +76,8 @@ import com.example.myfirstapp.ui.theme.Warning
 import com.example.myfirstapp.ui.theme.numberStyle
 import kotlin.math.cos
 import kotlin.math.min
+import com.example.myfirstapp.ui.theme.Dimens
+import com.example.myfirstapp.ui.theme.FontSize
 
 /**
  * 홈(10.4 시안, Pilot 2 홈페이지): 머리글 40dp(앱 이름, 기체 칩, 설정), 왼쪽 최근 미션 카드(경로 미리보기,
@@ -118,7 +120,7 @@ fun HomeScreen(
 
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().height(40.dp).padding(start = 12.dp, end = 4.dp),
+            Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             // 소속 표시: 공식 로고 파일을 받으면 이미지로 바꾼다. 로고 모양을 흉내 내 그리지 않는다
@@ -127,12 +129,12 @@ fun HomeScreen(
                     append("KEPCO ")
                     withStyle(SpanStyle(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("전주 점검") }
                 },
-                fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                fontSize = FontSize.Title, fontWeight = FontWeight.Bold,
                 modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onVerification),
             )
             Spacer(Modifier.weight(1f))
             AircraftChip(s.aircraft) { showAircraft = true }
-            IconButton(onClick = onSettings, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onSettings, modifier = Modifier.size(Dimens.TouchSmall)) {
                 Icon(painterResource(R.drawable.ic_settings), contentDescription = "설정", modifier = Modifier.size(16.dp))
             }
         }
@@ -170,13 +172,13 @@ private fun MissionCard(
             if (m != null) RoutePreview(m, Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(top = 28.dp))
             Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("최근 미션", fontSize = 11.sp, color = TextSoft)
+                    Text("최근 미션", fontSize = FontSize.Caption, color = TextSoft)
                     if (m != null) StatusBadge(m.status)
                 }
                 Spacer(Modifier.weight(1f))
                 if (m == null) {
                     Text("아직 미션이 없습니다", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("비행경로에서 전주 파일을 가져오고 계획을 세우세요.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("비행경로에서 전주 파일을 가져오고 계획을 세우세요.", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     MainButton("비행경로 열기", onRoutes)
                 } else {
                     Text(
@@ -190,7 +192,7 @@ private fun MissionCard(
                         Figure("전주", "${m.done}", "/${m.total}")
                         Figure("소티", "${m.sorties}")
                         Figure("사진", "${m.photos}")
-                        Text(if (m.shotMode == ShotMode.DIAGONAL4) "4방향 사선" else "전주 위", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (m.shotMode == ShotMode.DIAGONAL4) "4방향 사선" else "전주 위", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     when {
                         m.total == 0 -> MainButton("비행경로 열기", onRoutes)
@@ -206,12 +208,12 @@ private fun MissionCard(
 /** 화면에 하나뿐인 채운 버튼(44dp). */
 @Composable
 private fun MainButton(label: String, onClick: () -> Unit, play: Boolean = false) {
-    Button(onClick = onClick, modifier = Modifier.fillMaxWidth().height(44.dp), shape = RoundedCornerShape(4.dp)) {
+    Button(onClick = onClick, modifier = Modifier.fillMaxWidth().height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp)) {
         if (play) {
             Icon(painterResource(R.drawable.ic_play), contentDescription = null, modifier = Modifier.size(12.dp))
             Spacer(Modifier.size(8.dp))
         }
-        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(label, fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -219,7 +221,7 @@ private fun MainButton(label: String, onClick: () -> Unit, play: Boolean = false
 private fun StatusBadge(status: String) {
     val color = statusColor(status)
     Text(
-        STATUS_TITLE[status] ?: status, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color, lineHeight = 16.sp,
+        STATUS_TITLE[status] ?: status, fontSize = FontSize.Caption, fontWeight = FontWeight.SemiBold, color = color, lineHeight = 16.sp,
         modifier = Modifier.border(1.dp, color, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp),
     )
 }
@@ -229,9 +231,9 @@ private fun StatusBadge(status: String) {
 private fun Figure(label: String, value: String, suffix: String = "") {
     Text(
         buildAnnotatedString {
-            withStyle(SpanStyle(fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("$label ") }
+            withStyle(SpanStyle(fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("$label ") }
             withStyle(numberStyle(17.sp).toSpanStyle()) { append(value) }
-            if (suffix.isNotEmpty()) withStyle(numberStyle(13.sp).toSpanStyle().copy(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append(suffix) }
+            if (suffix.isNotEmpty()) withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = MaterialTheme.colorScheme.onSurfaceVariant)) { append(suffix) }
         },
         maxLines = 1,
     )
@@ -245,7 +247,7 @@ private fun Figure(label: String, value: String, suffix: String = "") {
 private fun RoutePreview(m: LatestMission, modifier: Modifier) {
     val measurer = rememberTextMeasurer()
     val routeColor = MaterialTheme.colorScheme.tertiary
-    val labelStyle = numberStyle(11.sp, FontWeight.Medium).copy(color = TextSoft)
+    val labelStyle = numberStyle(FontSize.Caption, FontWeight.Medium).copy(color = TextSoft)
     Canvas(modifier) {
         val pts = m.route.flatten()
         if (pts.isEmpty()) return@Canvas
@@ -294,7 +296,7 @@ private fun RoutePreview(m: LatestMission, modifier: Modifier) {
         }
         if (home != null) {
             drawCircle(Caution, 8.dp.toPx(), home)
-            val t = measurer.measure("H", TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black))
+            val t = measurer.measure("H", TextStyle(fontSize = FontSize.Micro, fontWeight = FontWeight.Bold, color = Color.Black))
             drawText(t, topLeft = Offset(home.x - t.size.width / 2f, home.y - t.size.height / 2f))
         }
     }
@@ -324,8 +326,8 @@ private fun HomeTile(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Icon(painterResource(icon), contentDescription = null, tint = if (enabled) iconTint else dim, modifier = Modifier.size(26.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (enabled) Color.White else dim)
-                Text(subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = if (enabled) Color.White else dim)
+                Text(subtitle, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -338,8 +340,8 @@ private fun AircraftChip(a: AircraftStatus, onClick: () -> Unit) {
     Surface(onClick = onClick, modifier = Modifier.height(26.dp), shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
         Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Box(Modifier.size(6.dp).clip(CircleShape).background(color))
-            Text(a.model ?: "기체 연결 안 됨", fontSize = 11.sp, color = TextSoft, maxLines = 1)
-            a.batteryPct?.let { Text("$it%", style = numberStyle(13.sp), color = TextSoft) }
+            Text(a.model ?: "기체 연결 안 됨", fontSize = FontSize.Caption, color = TextSoft, maxLines = 1)
+            a.batteryPct?.let { Text("$it%", style = numberStyle(FontSize.Label), color = TextSoft) }
         }
     }
 }

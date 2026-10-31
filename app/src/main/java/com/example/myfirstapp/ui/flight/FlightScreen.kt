@@ -6,7 +6,6 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.sp
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.Error
@@ -71,6 +70,10 @@ import com.example.myfirstapp.core.executor.PreflightEvaluator
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.ui.theme.CardBg
+import com.example.myfirstapp.ui.theme.Dimens
+import com.example.myfirstapp.ui.theme.FontSize
+import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 
 /** 지도의 전주 색(데이터 표시, 10.1 예외): 완료·건너뜀·실패·진행·대기, 기체. */
 internal val PoleDone = Color(0xFF4CD08A)
@@ -149,10 +152,10 @@ private fun FlightContent(
         }
 
         TopBar(s, onExit, onOpenSettings)
-        ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = TOP_BAR_HEIGHT + 9.dp))
+        ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
 
         if (ui.state != ExecState.SortieDone) {
-            Column(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = TOP_BAR_HEIGHT + 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 MissionCard(s, missionId, vm, onShowResult)
                 Notices(s)
                 if (s.simulated) MockRcControls(vm)
@@ -162,7 +165,7 @@ private fun FlightContent(
             s = s, onLens = vm::setLens,
             shutterEnabled = ui.state == ExecState.Paused || s.recordingSinceMs != null, onShutter = vm::shutter,
             cameraEnabled = ui.state == ExecState.Paused, onVideoMode = vm::setVideoMode, onZoom = vm::zoom,
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = TOP_BAR_HEIGHT + 37.dp, end = 6.dp),
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 37.dp, end = 6.dp),
             onAlbum = onAlbum,
         )
 
@@ -208,21 +211,21 @@ private fun MissionCard(s: FlightUiState, missionId: Long, vm: FlightViewModel, 
     val paused = ui.state == ExecState.Paused
     val canPause = ui.state.airborne && !paused && ui.state != ExecState.ReturningHome
     Column(
-        Modifier.width(CARD_WIDTH).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 8.dp),
+        Modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("#$missionId · 소티 ${ui.sortieIndex + 1}/${s.sortieCount}", Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = OnTertiaryContainer, maxLines = 1)
-            Text("$pct%", style = numberStyle(13.sp), color = Color.White)
+            Text("#$missionId · 소티 ${ui.sortieIndex + 1}/${s.sortieCount}", Modifier.weight(1f), fontSize = FontSize.Body, fontWeight = FontWeight.Bold, color = OnTertiaryContainer, maxLines = 1)
+            Text("$pct%", style = numberStyle(FontSize.Label), color = Color.White)
         }
-        Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF333333))) {
+        Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceContainerHighest)) {
             Box(Modifier.fillMaxWidth(pct / 100f).height(3.dp).background(Tertiary))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
             CardFigure("전주", "$done", "/${all.size}")
             CardFigure("사진", "$photos", "/$planned")
             Text(
-                ui.target?.pole?.displayName ?: stateLabel(ui.state, ui.remaining), Modifier.weight(1f), fontSize = 11.sp, color = TextSoft,
+                ui.target?.pole?.displayName ?: stateLabel(ui.state, ui.remaining), Modifier.weight(1f), fontSize = FontSize.Caption, color = TextSoft,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End,
             )
         }
@@ -231,8 +234,8 @@ private fun MissionCard(s: FlightUiState, missionId: Long, vm: FlightViewModel, 
             paused -> {
                 CardButton("▶ 재개 (C1)", Tertiary, Color.Black, vm::resume)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    CardButton("건너뛰기", MaterialTheme.colorScheme.surfaceContainer, Color.White, vm::skip, Modifier.weight(1f), height = 30.dp)
-                    CardButton("완료 처리", MaterialTheme.colorScheme.surfaceContainer, Color.White, vm::markDone, Modifier.weight(1f), height = 30.dp)
+                    CardButton("건너뛰기", MaterialTheme.colorScheme.surfaceContainer, Color.White, vm::skip, Modifier.weight(1f), height = Dimens.ButtonChip)
+                    CardButton("완료 처리", MaterialTheme.colorScheme.surfaceContainer, Color.White, vm::markDone, Modifier.weight(1f), height = Dimens.ButtonChip)
                 }
             }
             canPause -> CardButton("Ⅱ 일시정지 · 수동 비행", Caution, Color.Black, vm::pause)
@@ -248,7 +251,7 @@ private fun MissionCard(s: FlightUiState, missionId: Long, vm: FlightViewModel, 
                     withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.SemiBold)) { append("C1") }
                     append(" 재개")
                 },
-                fontSize = 11.sp, color = TextSoft,
+                fontSize = FontSize.Caption, color = TextSoft,
             )
         }
     }
@@ -259,10 +262,10 @@ private fun CardFigure(label: String, value: String, suffix: String) {
     Text(
         buildAnnotatedString {
             append("$label ")
-            withStyle(numberStyle(12.sp).toSpanStyle().copy(color = Color.White)) { append(value) }
+            withStyle(numberStyle(FontSize.Body).toSpanStyle().copy(color = Color.White)) { append(value) }
             append(suffix)
         },
-        fontSize = 11.sp, color = TextSoft, maxLines = 1,
+        fontSize = FontSize.Caption, color = TextSoft, maxLines = 1,
     )
 }
 
@@ -271,7 +274,7 @@ private fun CardButton(label: String, bg: Color, fg: Color, onClick: () -> Unit,
     Button(
         onClick = onClick, modifier = modifier.height(height), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(horizontal = 6.dp),
         colors = ButtonDefaults.buttonColors(bg, fg),
-    ) { Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1) }
+    ) { Text(label, fontSize = FontSize.Body, fontWeight = FontWeight.Bold, maxLines = 1) }
 }
 
 /** 카드 아래 안내·점검 실패 줄(있을 때만). 배터리 부족 카운트다운은 상단 상태 칸에 보인다. */
@@ -280,8 +283,8 @@ private fun Notices(s: FlightUiState) {
     val lines = listOfNotNull(s.exec.message?.let { it to Color.White }) + s.exec.preflightFailures.map { "점검 실패: $it" to Error }
     lines.forEach { (text, color) ->
         Text(
-            text, Modifier.width(CARD_WIDTH).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
-            color = color, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            text, Modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+            color = color, fontSize = FontSize.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -315,16 +318,16 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
                 val blocked = PreflightEvaluator.blocked(items)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                     if (ok) {
-                        Button(onClick = { vm.confirmPreflight() }, modifier = Modifier.height(44.dp), shape = RoundedCornerShape(4.dp)) { Text("업로드 후 시작") }
+                        Button(onClick = { vm.confirmPreflight() }, modifier = Modifier.height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp)) { Text("업로드 후 시작") }
                     } else {
                         // Pilot 2처럼 경고가 있어도 조종사가 확인하고 시작할 수 있다. 기체 연결이 없거나 LDM이 꺼져 있으면 시작할 수 없다
                         Button(
                             onClick = { vm.confirmPreflight(ignoreWarnings = true) }, enabled = !blocked,
                             colors = ButtonDefaults.buttonColors(containerColor = PolePending, contentColor = Color.Black),
-                            modifier = Modifier.height(44.dp), shape = RoundedCornerShape(4.dp),
+                            modifier = Modifier.height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp),
                         ) { Text("경고 확인하고 시작") }
                     }
-                    TextButton(onClick = vm::closePreflight, modifier = Modifier.height(36.dp)) { Text("취소") }
+                    TextButton(onClick = vm::closePreflight, modifier = Modifier.height(Dimens.ButtonStd)) { Text("취소") }
                     if (!ok) Text(
                         items.firstOrNull { !it.ok && it.blocking }?.problem ?: "▲ ${items.count { !it.ok }}개 항목을 확인하세요",
                         color = PoleFailed, maxLines = 2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
@@ -347,8 +350,8 @@ private fun FpvView(simulated: Boolean, modifier: Modifier) {
 /** 착륙 보호: 지면 바로 위에서 기체가 확인을 기다린다(Pilot 2 [착륙 확인]). RC 왼쪽 스틱을 내려도 된다. */
 @Composable
 internal fun LandingConfirmButton(onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = Modifier.padding(bottom = 6.dp).size(200.dp, 44.dp), shape = RoundedCornerShape(4.dp)) {
-        Text("착륙 확인", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    Button(onClick = onClick, modifier = Modifier.padding(bottom = 6.dp).size(200.dp, Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp)) {
+        Text("착륙 확인", fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -356,12 +359,12 @@ internal fun LandingConfirmButton(onClick: () -> Unit) {
 @Composable
 private fun MockRcControls(vm: FlightViewModel) {
     // [장애물]이 들어가게 카드보다 조금 넓다
-    Row(Modifier.width(CARD_WIDTH + 56.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("모의 RC", fontSize = 11.sp, color = TextSoft)
-        CardButton("Ⅱ", CardBg, Color.White, { vm.rcPause() }, Modifier.weight(1f), height = 30.dp)
-        CardButton("C1", CardBg, Color.White, { vm.rcResume() }, Modifier.weight(1f), height = 30.dp)
-        CardButton("−30%", CardBg, Color.White, { vm.dropBattery() }, Modifier.weight(1f), height = 30.dp)
-        CardButton("장애물", CardBg, Color.White, { vm.cycleObstacle() }, Modifier.weight(1f), height = 30.dp)
+    Row(Modifier.width(Dimens.CardWidth + 56.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("모의 RC", fontSize = FontSize.Caption, color = TextSoft)
+        CardButton("Ⅱ", CardBg, Color.White, { vm.rcPause() }, Modifier.weight(1f), height = Dimens.ButtonChip)
+        CardButton("C1", CardBg, Color.White, { vm.rcResume() }, Modifier.weight(1f), height = Dimens.ButtonChip)
+        CardButton("−30%", CardBg, Color.White, { vm.dropBattery() }, Modifier.weight(1f), height = Dimens.ButtonChip)
+        CardButton("장애물", CardBg, Color.White, { vm.cycleObstacle() }, Modifier.weight(1f), height = Dimens.ButtonChip)
     }
 }
 
@@ -383,8 +386,8 @@ private fun SortieDonePanel(s: FlightUiState, vm: FlightViewModel) {
                 CheckRow("배터리 교체", battery) { battery = it }
                 CheckRow("프로펠러·기체 확인", props) { props = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    Button(onClick = vm::nextSortie, enabled = battery && props, modifier = Modifier.height(44.dp), shape = RoundedCornerShape(4.dp)) { Text("다음 소티 시작") }
-                    OutlinedButton(onClick = vm::endMission, modifier = Modifier.height(44.dp), shape = RoundedCornerShape(4.dp)) { Text("미션 종료") }
+                    Button(onClick = vm::nextSortie, enabled = battery && props, modifier = Modifier.height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp)) { Text("다음 소티 시작") }
+                    OutlinedButton(onClick = vm::endMission, modifier = Modifier.height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp)) { Text("미션 종료") }
                 }
             }
         }
