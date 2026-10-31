@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myfirstapp.InspectionApp
+import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.R
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.model.Lens
@@ -291,10 +292,7 @@ private fun <T> Segments(items: List<Pair<T, String>>, selected: T, enabled: Boo
     }
 }
 
-/** RTH를 누르고 있어야 하는 시간(10장). 시스템 길게 누르기(약 0.5초)보다 길다. */
-internal const val RTH_HOLD_MS = 1_000L
-
-/** 오른쪽 아래 RTH(노랑 테두리, [RTH_HOLD_MS] 이상 눌러야 동작, 10장). 손을 떼기 전에 동작하고, 그 뒤 뗄 때까지는 다시 안 걸린다. */
+/** 오른쪽 아래 RTH(노랑 테두리, [AppConfig.Rth.HOLD_MS] 이상 눌러야 동작, 10장). 손을 떼기 전에 동작하고, 그 뒤 뗄 때까지는 다시 안 걸린다. */
 @Composable
 internal fun RthButton(onLongPress: () -> Unit, modifier: Modifier = Modifier) {
     val action by rememberUpdatedState(onLongPress)
@@ -309,7 +307,7 @@ internal fun RthButton(onLongPress: () -> Unit, modifier: Modifier = Modifier) {
                 awaitEachGesture {
                     awaitFirstDown()
                     var released = false
-                    withTimeoutOrNull(RTH_HOLD_MS) { waitForUpOrCancellation(); released = true }
+                    withTimeoutOrNull(AppConfig.Rth.HOLD_MS) { waitForUpOrCancellation(); released = true }
                     if (!released) {
                         action()
                         waitForUpOrCancellation()

@@ -137,6 +137,7 @@ docs/
 - DJI SDK 호출은 `DroneGateway` 인터페이스 뒤에만 둡니다.
 - YOLO 탐지는 Kotlin + TFLite API로 구현하고 `Detector` 인터페이스 뒤에 둡니다. C++(NDK)는 PoC에서 측정해 목표 시간을 넘는 단계에만 적용합니다(`docs/design/05-detection.md` 9.4).
 - 의존성 버전은 `libs.versions.toml`에 추가하고 `libs.*`로 참조합니다.
+- 조정값은 코드에 숫자로 박지 않습니다(2026-10-31 사용자 지정): 현장 조정값은 `:core` `core/config/Tuning.kt`, 앱 설정값(시간 제한·주기·캐시·점검 기준·신호음·탐지)은 `:app` `AppConfig.kt`, 화면 크기·글자·색은 `ui/theme/Dimens.kt`·`Type.kt`(`FontSize`)·`Color.kt`, 전주 표지(고/저압·설비·지선주·근입) 규칙은 `core/model/PoleCodes.kt`(전문가 확인 대기). 2~8dp 여백과 한 번만 쓰는 배치 숫자는 그대로 둡니다.
 - 외부 네트워크로 데이터를 보내는 코드나 라이브러리를 추가하지 않습니다.
 
 ## Android 개발 규칙 (2026-09-29 사용자 지정)
