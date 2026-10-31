@@ -10,6 +10,7 @@
 | 06-ground-reject-idle.png | 땅에서 거절되면(이륙은 KMZ가 함) 대기로 돌아가 묻도록 고친 뒤 다시 확인 | 고침 → 통과 |
 | (로그) | 화면 일시정지 → `INTERRUPTED`, 재개 → `RECOVERING` → `EXECUTING` | 통과 |
 | 08-map-labels.png | 큰 지도에 전주번호(선로번호) 라벨 | 통과 |
+| 10-offline-map-labels.png | 계획 저장 때 미션 영역 위성 타일을 `maps/satellite-cache.mbtiles`로 미리 받기(677장, 약 7.7MB, 끊기면 이어 받음) → **Wi-Fi를 끄고** 비행 지도: 위성 배경과 전주번호 라벨 보임. 대평선은 고/저압 열 전에 가져와 기호 값이 비어 있음([전주 파일로 속성 갱신]으로 채움) | 통과 |
 
 ## 시뮬레이터에서 발견해 고친 것
 
