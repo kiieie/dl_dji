@@ -2,6 +2,7 @@ package com.example.myfirstapp.core.executor
 
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.Detection
+import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Pole
@@ -9,9 +10,9 @@ import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.route.nearestWithin
 
-/** 실행 상태(6.4 상태도). */
+/** 실행 상태(6.4 상태도). [Uploaded]: 체크리스트 [비행 임무 업로드]로 미션을 올리고 [시작]을 기다림(땅, 10.5.5). */
 enum class ExecState {
-    Idle, PreflightCheck, Takeoff, PreparingLeg, FlyingLeg, Arrived, Capturing, Downloading, Analyzing, Waiting,
+    Idle, PreflightCheck, Uploaded, Takeoff, PreparingLeg, FlyingLeg, Arrived, Capturing, Downloading, Analyzing, Waiting,
     Paused, LinkLost, ReturningHome, SortieDone, MissionDone;
 
     /** 기체가 공중에 있을 수 있는 상태. 연결 끊김·기체 주도 RTH를 이 상태들에서 받는다. */
@@ -21,11 +22,21 @@ enum class ExecState {
 
 /** 운용자 명령. 하드웨어 버튼 입력은 `DroneEvent`로 들어온다. */
 sealed interface Command {
-    /** 비행 시작(Idle) 또는 배터리 교체 후 다음 소티(SortieDone). */
+    /** 비행 시작(Idle) 또는 배터리 교체 후 다음 소티(SortieDone): 점검·업로드·시작을 한 번에. [ExecState.Uploaded]에서는 올린 미션 시작. */
     data object Start : Command
 
     /** 비행 전 점검 경고를 운용자가 확인하고 그대로 시작(Pilot 2처럼 판단은 조종사, 2026-10-30 사용자 요청). 기체 연결은 여전히 필요하다. */
     data object StartIgnoringWarnings : Command
+
+    /**
+     * 웨이포인트 경로 체크리스트 [비행 임무 업로드](10.5.5): 비행 전 점검 → 미션 업로드까지 하고 [ExecState.Uploaded]에서 기다린다.
+     * 그다음 [Start]가 이륙·시작한다. [params]가 있으면 체크리스트에서 고친 값(속도·완료 동작 등)으로 올린다.
+     * [ignoreWarnings]는 [StartIgnoringWarnings]와 같다(운용자가 비행 전 점검 경고를 보고 넘어감).
+     */
+    data class Upload(val params: FlightParams? = null, val ignoreWarnings: Boolean = false) : Command
+
+    /** [ExecState.Uploaded]에서 올린 미션을 시작하지 않고 대기로(체크리스트 [업로드 취소]). */
+    data object CancelUpload : Command
 
     /** 화면 [일시정지] 버튼(보조 수단). */
     data object Pause : Command

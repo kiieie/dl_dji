@@ -22,6 +22,8 @@ import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Equipment
+import com.example.myfirstapp.core.model.FinishAction
+import com.example.myfirstapp.core.model.RcLostAction
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.model.Pole
@@ -126,6 +128,10 @@ fun FlightParams.toJson(): String = JSONObject()
     .put("shotMode", shotMode.name).put("diagonalAltitudeM", diagonalAltitudeM).put("diagonalDistanceM", diagonalDistanceM).put("aimHeightM", aimHeightM)
     .put("terrainFollow", terrainFollow)
     .put("equipmentDropM", JSONObject(equipmentDropM.mapKeys { it.key.name }))
+    // 웨이포인트 경로 체크리스트(10.5.5). 없는 값(null)은 넣지 않는다
+    .put("climbToStart", climbToStart).put("finishAction", finishAction.name).put("rcLostAction", rcLostAction.name)
+    .apply { takeoffSecurityM?.let { put("takeoffSecurityM", it) } }
+    .apply { photoFolder?.let { put("photoFolder", it) } }
     .toString()
 
 @Entity(
@@ -272,6 +278,11 @@ fun flightParamsFromJson(json: String, legacyTerrainFollow: Boolean = false): Fl
         equipmentDropM = o.optJSONObject("equipmentDropM")?.let { m ->
             Equipment.entries.filter { m.has(it.name) }.associateWith { m.getDouble(it.name) }
         } ?: d.equipmentDropM,
+        takeoffSecurityM = if (o.has("takeoffSecurityM")) o.getDouble("takeoffSecurityM") else d.takeoffSecurityM,
+        climbToStart = o.optBoolean("climbToStart", d.climbToStart),
+        finishAction = o.optString("finishAction").let { m -> FinishAction.entries.firstOrNull { it.name == m } } ?: d.finishAction,
+        rcLostAction = o.optString("rcLostAction").let { m -> RcLostAction.entries.firstOrNull { it.name == m } } ?: d.rcLostAction,
+        photoFolder = if (o.has("photoFolder")) o.getString("photoFolder") else d.photoFolder,
     )
 }
 
@@ -421,6 +432,10 @@ interface ProjectDao {
     /** 미션의 남은 전주(미점검·진행 중) 수. */
     @Query("SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId AND v.status IN ('PENDING', 'IN_PROGRESS')")
     suspend fun remainingVisits(missionId: Long): Int
+
+    /** 체크리스트(10.5.5)에서 고친 비행 파라미터를 미션에 남긴다. */
+    @Query("UPDATE mission SET flightParams = :json WHERE id = :missionId")
+    suspend fun setMissionParams(missionId: Long, json: String)
 
     @Query("UPDATE mission SET flownHeightMode = :mode WHERE id = :missionId")
     suspend fun setFlownHeightMode(missionId: Long, mode: String)

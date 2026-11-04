@@ -7,6 +7,16 @@ enum class DownloadMode { PREVIEW, ORIGINAL }
 /** 촬영 방식(5.6). [OVERHEAD]는 전주 상공 1곳, [DIAGONAL4]는 전주 대각선 4곳에서 머리를 향해 찍는다. */
 enum class ShotMode { OVERHEAD, DIAGONAL4 }
 
+/** 비행 경로 완료 동작(10.5.5 체크리스트, WPML `finishAction`). */
+enum class FinishAction(val wpml: String, val label: String) {
+    GO_HOME("goHome", "리턴 투 홈 (RTH)"), NO_ACTION("noAction", "호버링"), AUTO_LAND("autoLand", "착륙"), GOTO_FIRST("gotoFirstWaypoint", "첫 웨이포인트로"),
+}
+
+/** 신호 끊김 조치(10.5.5 체크리스트, WPML `exitOnRCLost`·`executeRCLostAction`). [CONTINUE]는 신호가 끊겨도 경로를 계속 난다. */
+enum class RcLostAction(val wpml: String, val label: String) {
+    GO_BACK("goBack", "리턴 투 홈 (RTH)"), HOVER("hover", "호버링"), LANDING("landing", "착륙"), CONTINUE("goContinue", "경로 계속"),
+}
+
 /**
  * 비행 파라미터(6.3). 기본값은 설계서의 기본값을 따른다.
  * 실행 시점의 값이 미션에 그대로 저장된다(4.2).
@@ -38,6 +48,14 @@ data class FlightParams(
      * 기기가 여럿이면 가장 많이 내리는 값. 비우면 설비 사진을 찍지 않는다.
      */
     val equipmentDropM: Map<Equipment, Double> = Equipment.entries.associateWith { 2.0 },
+    /** 체크리스트(10.5.5) 안전한 이륙 고도(KMZ `takeOffSecurityHeight`). null이면 첫 지점 고도와 [Tuning.Safety.TAKEOFF_SECURITY_M] 중 큰 값. */
+    val takeoffSecurityM: Double? = null,
+    /** 체크리스트 시작 위치로 상승: 켜면 이륙 안전 고도로 오른 뒤 첫 지점으로(WPML `flyToWaylineMode` safely), 끄면 곧바로(pointToPoint). */
+    val climbToStart: Boolean = true,
+    val finishAction: FinishAction = FinishAction.GO_HOME,
+    val rcLostAction: RcLostAction = RcLostAction.GO_BACK,
+    /** 체크리스트 폴더 만들기: SD 사진 폴더 이름. null이면 앱이 "<프로젝트>-#<미션>"으로 정한다. */
+    val photoFolder: String? = null,
 ) {
     /** 촬영 고도: 4방향 사선은 사선 고도, 전주 위는 점검 고도(5.6). */
     val shotAltitudeM: Double get() = if (shotMode == ShotMode.DIAGONAL4) diagonalAltitudeM else inspectAltitudeM
@@ -68,6 +86,7 @@ data class FlightParams(
         if (waitSec < 0) add("대기 시간은 0초 이상이어야 합니다.")
         if (batteryReservePct < Tuning.Safety.MIN_RESERVE_PCT) add("배터리 예비율은 20% 이상이어야 합니다.")
         if (vlosRadiusM <= 0.0) add("가시권 반경은 0m보다 커야 합니다.")
+        takeoffSecurityM?.let { if (it !in Tuning.Safety.TAKEOFF_SECURITY_RANGE_M) add("안전한 이륙 고도는 ${Tuning.Safety.TAKEOFF_SECURITY_RANGE_M.start.toInt()}~${Tuning.Safety.TAKEOFF_SECURITY_RANGE_M.endInclusive.toInt()}m여야 합니다.") }
         if (shotMode == ShotMode.DIAGONAL4) {
             // 지형 추적이면 지면 기준이라 경사지에서 여유가 줄지 않아 전선 위 7.5m(대각 10m 배치)까지 허용한다(5.6)
             // 지형 추적은 기체 아래 땅 기준이라 비탈 아래쪽 사선 지점에서는 전선 여유가 줄어든다. 현장 PoC 전까지 지형 추적이어도 27m(2026-10-30 사용자 결정)

@@ -234,6 +234,8 @@ private fun MissionCard(s: FlightUiState, missionId: Long, vm: FlightViewModel, 
         }
         when {
             ui.state == ExecState.Idle -> CardButton("▶ 비행 시작", MaterialTheme.colorScheme.primary, Color.White, vm::openPreflight)
+            // 체크리스트에서 올리고 닫았으면 다시 열어 [시작](10.5.5)
+            ui.state == ExecState.Uploaded -> CardButton("▶ 시작", MaterialTheme.colorScheme.primary, Color.White, { vm.confirmPreflight() })
             paused -> {
                 CardButton("▶ 재개 (C1)", Tertiary, Color.Black, vm::resume)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -364,6 +366,7 @@ private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Uni
 internal fun stateLabel(s: ExecState, remaining: Int = 0) = when (s) {
     ExecState.Idle -> "비행 대기"
     ExecState.PreflightCheck -> "비행 전 점검"
+    ExecState.Uploaded -> "업로드 완료 · 시작 대기"
     ExecState.Takeoff -> "이륙 중"
     ExecState.PreparingLeg -> "구간 준비"
     ExecState.FlyingLeg -> "임무 비행"
