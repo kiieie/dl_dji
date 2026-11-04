@@ -62,3 +62,9 @@ const val MAP_HOME = "#FFC400"
 const val MAP_ROUTE = "#E9ECEF"
 /** 이륙 지점 점의 어두운 테두리. */
 const val MAP_STROKE_DARK = "#212529"
+/** 기체 화살표(Pilot 2 기체 표지, 홈 노랑과 구별되는 파랑). */
+const val MAP_AIRCRAFT = "#1C7CFF"
+/** 조종기 위치 점(Pilot 2 조종기 표지). */
+const val MAP_RC = "#4DABF7"
+/** 기체 화살표·조종기 점 테두리. */
+const val MAP_STROKE_LIGHT = "#FFFFFF"

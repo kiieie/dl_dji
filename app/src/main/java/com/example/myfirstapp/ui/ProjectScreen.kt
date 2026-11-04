@@ -152,6 +152,14 @@ fun ProjectScreen(
 
     if (s.importing) ImportDialog(s, vm, onPick = { picker.launch(arrayOf("*/*")) }, onClose = vm::cancelImport)
     s.attrTarget?.let { AttrUpdateDialog(it, s, vm, onPick = { attrPicker.launch(arrayOf("*/*")) }) }
+    s.notice?.let { notice ->
+        FullscreenAlertDialog(
+            onDismissRequest = vm::dismissNotice,
+            title = { Text("전주 파일 가져오기") },
+            text = { Text(notice) },
+            confirmButton = { TextButton(onClick = vm::dismissNotice) { Text("확인") } },
+        )
+    }
 
     s.deleting?.let { project ->
         FullscreenAlertDialog(

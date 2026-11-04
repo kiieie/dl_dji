@@ -180,6 +180,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         }
         on(GimbalKey.KeyGimbalAttitude) { g -> _telemetry.update { it.copy(gimbalPitchDeg = g?.pitch ?: 0.0) } }
         on(FlightControllerKey.KeyCompassHeading) { h -> _telemetry.update { it.copy(headingDeg = ((h ?: 0.0) + 360) % 360) } }
+        // 조종기 위치(지도 파란 점, 10.5.4)
+        on(RemoteControllerKey.KeyRcGPSInfo) { g ->
+            _telemetry.update { it.copy(rcPosition = g?.takeIf { g.isValid == true && validGeo(g.location?.latitude, g.location?.longitude) }?.let { GeoPoint(g.location.latitude, g.location.longitude) }) }
+        }
         keys.listen(KeyTools.createKey(CameraKey.KeyNewlyGeneratedMediaFile, camera), holder) { _, info ->
             if (info == null) return@listen
             // 녹화한 영상은 SD에만 둔다(10.4.3). 지점·수동 사진으로 넘기지 않는다

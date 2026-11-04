@@ -18,7 +18,8 @@ class WpmlTransitTest {
 
     /** 첫 전주가 200m 멀고, P0→P1은 50m(짧음), P1→P2는 150m(김). */
     private val poles = listOf(pole("P0", 200.0), pole("P1", 250.0), pole("P2", 400.0))
-    private val overhead = FlightParams(shotMode = ShotMode.OVERHEAD)
+    /** 아래 배치(50m 짧음, 150m 김)에 맞춘 기준 60m(11-03 전 기본값). */
+    private val overhead = FlightParams(shotMode = ShotMode.OVERHEAD, transitLegThresholdM = 60.0)
 
     private fun files(points: List<Viewpoint>, p: FlightParams, start: GeoPoint?): Map<String, String> {
         val bytes = ByteArrayOutputStream().also { WpmlWriter.write(points, p, it, nowMs = 0, start = start) }.toByteArray()
@@ -66,6 +67,18 @@ class WpmlTransitTest {
         val d = LocalProjection.distanceM(v[0].position, v[1].position)
         assertEquals(2, WpmlWriter.waypoints(v, overhead.copy(transitLegThresholdM = d)).size)
         assertEquals(4, WpmlWriter.waypoints(v, overhead.copy(transitLegThresholdM = d - 0.5)).size)
+    }
+
+    @Test
+    fun `기본 기준 150m - 이웃 전주 62m는 그대로, 200m는 이동 고도(11-03 현장)`() {
+        fun transits(gapM: Double): Int {
+            val p = FlightParams(shotMode = ShotMode.OVERHEAD)
+            val v = Viewpoints.expand(listOf(pole("A", 0.0), pole("B", gapM)), p, home)
+            return WpmlWriter.waypoints(v, p).count { it.shot == null }
+        }
+        assertEquals(150.0, FlightParams().transitLegThresholdM, 0.0)
+        assertEquals(0, transits(62.0))
+        assertEquals(2, transits(200.0))
     }
 
     @Test

@@ -75,13 +75,12 @@ import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 
-/** 지도의 전주 색(데이터 표시, 10.1 예외): 완료·건너뜀·실패·진행·대기, 기체. */
+/** 지도의 전주 색(데이터 표시, 10.1 예외): 완료·건너뜀·실패·진행·대기. 기체·홈·조종기 표지 색은 Color.kt(MAP_*). */
 internal val PoleDone = Color(0xFF4CD08A)
 internal val PoleSkipped = Color(0xFF80858E)
 internal val PoleFailed = Color(0xFFFF5449)
 internal val PoleActive = Color(0xFF5B9BFF)
 internal val PolePending = Color(0xFFFF9F43)
-internal val Aircraft = Color(0xFFFFC53D)
 
 /** 영상·지도 위 버튼과 글자 바탕(10.1 DJI 톤): 뒤가 비치도록 반투명 검정. */
 

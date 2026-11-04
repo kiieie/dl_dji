@@ -22,6 +22,8 @@ data class Telemetry(
     val satellites: Int = 0,
     val signalPct: Int? = null,
     val verticalSpeedMps: Double = 0.0,
+    /** 조종기 GPS 위치(지도의 파란 점, 10.5.4). 모르면 null. */
+    val rcPosition: GeoPoint? = null,
 ) {
     val isFlying: Boolean get() = flightMode != FlightMode.ON_GROUND && flightMode != FlightMode.UNKNOWN
 
@@ -29,3 +31,6 @@ data class Telemetry(
         val DISCONNECTED = Telemetry(null, 0.0, 0.0, 0.0, FlightMode.UNKNOWN, 0, false, null)
     }
 }
+
+/** 계획 화면의 지금 위치(10.5.5): 기체(연결되고 위성이 충분할 때)와 기수, 조종기 GPS. 모르면 null. */
+data class LivePositions(val aircraft: GeoPoint? = null, val headingDeg: Double = 0.0, val rc: GeoPoint? = null)

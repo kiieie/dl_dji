@@ -88,7 +88,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.data.PoleEntity
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.InspectionApp
-import com.example.myfirstapp.drone.djiCurrentLocation
+import com.example.myfirstapp.drone.deviceLocation
+import com.example.myfirstapp.drone.djiPositions
 import com.example.myfirstapp.drone.djiSimulatorOn
 import com.example.myfirstapp.data.MapBackground
 import com.example.myfirstapp.data.baseFiles
@@ -142,7 +143,6 @@ import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.MAP_AREA
 import com.example.myfirstapp.ui.theme.MAP_HOME
-import com.example.myfirstapp.ui.theme.MAP_STROKE_DARK
 import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 
 /** 소티별 경로 색. 전주(주황)·제외(회색)·영역(파랑)과 겹치지 않는 색을 돌려 쓴다(10.1 데이터 시각화 색). */
@@ -170,7 +170,7 @@ fun MapScreen(
     val vm: PlanViewModel = viewModel(
         factory = PlanViewModel.factory(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() },
-            (context.applicationContext as InspectionApp).settings, ::djiCurrentLocation, ::djiSimulatorOn,
+            (context.applicationContext as InspectionApp).settings, ::djiPositions, { fresh -> deviceLocation(context.applicationContext, fresh) }, ::djiSimulatorOn,
             { points, name, bg -> context.getExternalFilesDir(null)?.let { prefetchSatellite(it, points, name, bg) } },
         ),
     )
@@ -198,7 +198,8 @@ fun MapScreen(
                         poles = it,
                         mapFiles = s.mapFiles,
                         background = s.background,
-                        overlay = Overlay(s.vertices, s.home, s.plan, s.excludedPoints, s.params, s.poles?.firstOrNull { p -> p.poleId == s.selected }?.let { p -> GeoPoint(p.lat, p.lon) }),
+                        overlay = Overlay(s.vertices, s.plan, s.excludedPoints, s.params, s.poles?.firstOrNull { p -> p.poleId == s.selected }?.let { p -> GeoPoint(p.lat, p.lon) }),
+                        markers = MapMarkers(home = s.home, aircraft = s.aircraft, headingDeg = s.aircraftHeadingDeg, rc = s.rc),
                         focus = s.focus,
                         fitRequest = fitRequest,
                         showBackground = showBackground,
@@ -315,7 +316,12 @@ private fun HintChip(s: PlanUiState, inAreaCount: Int, vm: PlanViewModel) {
                         ChipButton("되돌리기", enabled = s.vertices.isNotEmpty(), onClick = vm::undoVertex)
                         ChipButton("완료", enabled = s.vertices.size >= 3, filled = true, onClick = vm::finishArea)
                     }
-                    Tool.HOME -> ChipButton("취소", onClick = vm::cancelTool)
+                    Tool.HOME -> {
+                        // Pilot 2 홈포인트 [기체][조종기](10.5.5): 위치를 모르면 꺼 둔다
+                        ChipButton("기체 위치로", enabled = s.aircraft != null, onClick = vm::homeFromAircraft)
+                        ChipButton("조종기 위치로", enabled = s.rc != null, onClick = vm::homeFromRc)
+                        ChipButton("취소", onClick = vm::cancelTool)
+                    }
                     Tool.NONE -> Unit
                 }
             }
@@ -536,7 +542,7 @@ private fun fmt(v: Double) = String.format(Locale.ROOT, "%.1f", v)
 
 /** 지도 위에 그릴 계획 요소. */
 private data class Overlay(
-    val vertices: List<GeoPoint>, val home: GeoPoint?, val plan: RoutePlan?, val excluded: List<GeoPoint>, val params: FlightParams,
+    val vertices: List<GeoPoint>, val plan: RoutePlan?, val excluded: List<GeoPoint>, val params: FlightParams,
     /** 오른쪽 패널에 연 전주. 노란 고리로 표시한다(Pilot 2 선택한 웨이포인트). */
     val selected: GeoPoint?,
 )
@@ -551,6 +557,8 @@ private fun PoleMap(
     mapFiles: List<File>,
     background: MapBackground,
     overlay: Overlay,
+    /** 이륙 지점 H·기체 화살표·조종기 점(10.5.4). 기체가 움직일 때마다 바뀌어 [overlay]와 따로 둔다. */
+    markers: MapMarkers,
     focus: List<GeoPoint>,
     /** 바뀔 때마다 영역(없으면 전주 전체)에 맞춰 다시 보여 준다(Pilot 2 중앙 복귀). */
     fitRequest: Int,
@@ -594,7 +602,6 @@ private fun PoleMap(
                 // 영역과 경로는 전주 아래에, 꼭짓점과 이륙 지점은 맨 위에 그린다.
                 style.addSource(GeoJsonSource("draw"))
                 style.addSource(GeoJsonSource("route"))
-                style.addSource(GeoJsonSource("home"))
                 style.addSource(GeoJsonSource("selected"))
                 style.addSource(GeoJsonSource("excluded"))
                 style.addLayer(
@@ -636,12 +643,8 @@ private fun PoleMap(
                         circleColor("#00000000"), circleRadius(14f), circleStrokeColor(MAP_HOME), circleStrokeWidth(4f),
                     ),
                 )
-                // 이륙 지점은 Pilot 2 홈 포인트(H)처럼 노란 점
-                style.addLayer(
-                    CircleLayer("home-point", "home").withProperties(
-                        circleColor(MAP_HOME), circleRadius(10f), circleStrokeColor(MAP_STROKE_DARK), circleStrokeWidth(3f),
-                    ),
-                )
+                // 이륙 지점 H·기체·조종기는 맨 위(Pilot 2 표지)
+                style.addMarkerLayers()
                 styleGen++
                 if (!fitted && poles.isNotEmpty()) {
                     fitted = true
@@ -684,10 +687,11 @@ private fun PoleMap(
             style.getSourceAs<GeoJsonSource>("selected")?.setGeoJson(
                 FeatureCollection.fromFeatures(listOfNotNull(overlay.selected?.let { Feature.fromGeometry(it.toPoint()) })),
             )
-            style.getSourceAs<GeoJsonSource>("home")?.setGeoJson(
-                FeatureCollection.fromFeatures(listOfNotNull(overlay.home?.let { Feature.fromGeometry(it.toPoint()) })),
-            )
         }
+    }
+
+    LaunchedEffect(markers, styleGen) {
+        mapView.getMapAsync { map -> map.style?.takeIf { it.isFullyLoaded }?.setMarkers(markers) }
     }
 
     AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())

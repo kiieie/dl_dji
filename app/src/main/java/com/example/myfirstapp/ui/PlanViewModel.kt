@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.LivePositions
 import com.example.myfirstapp.core.model.ParamItem
 import com.example.myfirstapp.core.model.items
 import com.example.myfirstapp.core.model.moveItem
@@ -61,6 +62,12 @@ data class PlanUiState(
     val tool: Tool = Tool.NONE,
     val vertices: List<GeoPoint> = emptyList(),
     val home: GeoPoint? = null,
+    /** 이륙 지점을 어디서 정했나(운용 로그): aircraft, rc, device(조종기 안드로이드 GPS), map. */
+    val homeSource: String? = null,
+    /** 지금 기체 위치·기수(지도 화살표, [기체 위치로])와 조종기 위치([조종기 위치로], 파란 점). 모르면 null(10.5.5). */
+    val aircraft: GeoPoint? = null,
+    val aircraftHeadingDeg: Double = 0.0,
+    val rc: GeoPoint? = null,
     val plan: RoutePlan? = null,
     val planMs: Long = 0,
     val planning: Boolean = false,
@@ -98,8 +105,10 @@ class PlanViewModel(
     private val replanFrom: Long?,
     private val mapsDir: File,
     private val settings: SettingsStore,
-    /** 지금 위치(기체 GPS → 조종기 GPS). 새 계획의 이륙 지점과 지도 초기 위치가 된다. */
-    private val currentLocation: suspend () -> GeoPoint? = { null },
+    /** 지금 위치(기체 GPS·기수, DJI 조종기 GPS). 새 계획의 이륙 지점과 지도 초기 위치가 된다. */
+    private val positions: suspend () -> LivePositions = { LivePositions() },
+    /** 조종기 안드로이드 GPS(셋째 대안). true면 마지막 위치가 없을 때 새 위치를 기다린다. */
+    private val deviceLocation: suspend (fresh: Boolean) -> GeoPoint? = { null },
     /** 기체가 시뮬레이터 모드인지(DJI SimulatorManager). */
     private val simulatorOn: () -> Boolean = { false },
     /** 계획을 저장하면 미션 영역의 위성 타일을 미리 받는다(7.4, 현장은 인터넷 없음). 점들과 이름을 넘긴다. */
@@ -120,7 +129,18 @@ class PlanViewModel(
             dao.observePoles(projectId).collect { list -> _state.update { it.copy(poles = list) } }
         }
         replanFrom?.let { viewModelScope.launch { seedReplan(it) } }
-        viewModelScope.launch { currentLocation()?.let(::seedHome) }
+        // 지금 위치를 계속 읽는다(10.5.5): 기체 화살표·버튼을 갱신하고, 이륙 지점이 없으면 기체 → DJI 조종기 → 안드로이드 GPS 순으로 정한다.
+        // 한 번 읽고 끝내지 않는다(11-03 현장: 화면을 열 때 GPS가 없으면 손으로 찍어야 했음)
+        viewModelScope.launch {
+            while (true) {
+                val p = positions()
+                val noHome = _state.value.home == null
+                val rc = p.rc ?: deviceLocation(noHome && p.aircraft == null)
+                _state.update { it.copy(aircraft = p.aircraft, aircraftHeadingDeg = p.headingDeg, rc = rc) }
+                if (noHome) (p.aircraft?.let { it to "aircraft" } ?: p.rc?.let { it to "rc" } ?: rc?.let { it to "device" })?.let { (at, src) -> seedHome(at, src) }
+                delay(AppConfig.Polling.PLAN_LOCATION_MS)
+            }
+        }
         viewModelScope.launch { mapBackgroundRetrying(settings).let { bg -> _state.update { it.copy(background = bg) } } }
         // Pilot 2처럼 영역·이륙 지점·설정·제외가 바뀌면 경로를 바로 다시 계산한다. 연달아 바꾸면 마지막 것만 계산한다.
         // 영역·이륙 지점을 찍는 동안은 계산하지 않고, 도구만 바꾼 것(이륙 → 취소)은 입력이 같아 저장한 계획을 그대로 둔다.
@@ -142,13 +162,26 @@ class PlanViewModel(
     )
 
     /** 이륙 지점이 아직 없으면 지금 위치로 두고, 그 둘레 약 500m로 지도를 옮긴다. */
-    private fun seedHome(p: GeoPoint) = _state.update {
-        if (it.home != null) return@update it
-        val d = 0.005
-        it.copy(
-            home = p,
-            focus = if (it.focus.isEmpty()) listOf(GeoPoint(p.lat - d, p.lon - d), GeoPoint(p.lat + d, p.lon + d)) else it.focus,
-        )
+    private fun seedHome(p: GeoPoint, source: String) {
+        if (_state.value.home != null) return
+        _state.update {
+            if (it.home != null) return@update it
+            val d = 0.005
+            it.copy(
+                home = p, homeSource = source,
+                focus = if (it.focus.isEmpty()) listOf(GeoPoint(p.lat - d, p.lon - d), GeoPoint(p.lat + d, p.lon + d)) else it.focus,
+            )
+        }
+        OpLog.log("plan", "homeAuto", mapOf("source" to source, "home" to p.toString()))
+    }
+
+    /** Pilot 2 [기체 위치로]·[조종기 위치로](10.5.5): 지금 위치를 이륙 지점으로. 모르면 아무것도 하지 않는다(버튼이 꺼져 있음). */
+    fun homeFromAircraft() = setHomeFrom(_state.value.aircraft, "aircraft")
+    fun homeFromRc() = setHomeFrom(_state.value.rc, "rc")
+    private fun setHomeFrom(p: GeoPoint?, source: String) {
+        p ?: return
+        OpLog.log("plan", "homeFrom", mapOf("source" to source, "home" to p.toString()))
+        _state.update { it.copy(home = p, homeSource = source, tool = Tool.NONE, plan = null) }
     }
 
     /** 남은 전주를 감싸는 사각형을 영역으로 두고, 그 안의 다른 전주는 제외한다(F-06 제외와 같은 방식). */
@@ -177,7 +210,7 @@ class PlanViewModel(
         when (it.tool) {
             Tool.NONE -> it
             Tool.AREA -> it.copy(vertices = Polygon.untangle(it.vertices + p), plan = null)
-            Tool.HOME -> it.copy(home = p, tool = Tool.NONE, plan = null)
+            Tool.HOME -> it.copy(home = p, homeSource = "map", tool = Tool.NONE, plan = null)
         }
     }
 
@@ -220,7 +253,7 @@ class PlanViewModel(
         val s = _state.value
         val start = s.home
         if (start == null || !s.canPlan) return _state.update { it.copy(plan = null, planning = false) }
-        OpLog.log("plan", "compute", mapOf("project" to projectId, "home" to start.toString(), "inArea" to s.inArea.size))
+        OpLog.log("plan", "compute", mapOf("project" to projectId, "home" to start.toString(), "homeSource" to s.homeSource, "inArea" to s.inArea.size))
         _state.update { it.copy(planning = true) }
         try {
             val t0 = System.nanoTime()
@@ -253,7 +286,7 @@ class PlanViewModel(
         val s = _state.value
         if (s.saving) return
         val p = s.plan ?: return
-        OpLog.log("plan", "save", mapOf("project" to projectId, "sorties" to p.sorties.size))
+        OpLog.log("plan", "save", mapOf("project" to projectId, "sorties" to p.sorties.size, "homeSource" to s.homeSource))
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
             val rowIds = s.poles.orEmpty().associate { it.poleId to it.id }
@@ -285,7 +318,8 @@ class PlanViewModel(
     companion object {
         fun factory(
             dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, settings: SettingsStore,
-            currentLocation: suspend () -> GeoPoint?, simulatorOn: () -> Boolean, prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit,
-        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, currentLocation, simulatorOn, prefetchArea) } }
+            positions: suspend () -> LivePositions, deviceLocation: suspend (Boolean) -> GeoPoint?, simulatorOn: () -> Boolean,
+            prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit,
+        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, positions, deviceLocation, simulatorOn, prefetchArea) } }
     }
 }
