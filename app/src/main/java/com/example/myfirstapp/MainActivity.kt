@@ -43,6 +43,8 @@ import com.example.myfirstapp.ui.procedure.PreflightScreen
 import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.album.AlbumScreen
 import com.example.myfirstapp.ui.result.ResultScreen
+import com.example.myfirstapp.ui.replay.FlightRecordsScreen
+import com.example.myfirstapp.ui.replay.ReplayScreen
 import com.example.myfirstapp.ui.settings.SettingsHub
 import com.example.myfirstapp.ui.theme.LightScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
@@ -53,7 +55,7 @@ import java.io.File
 import java.nio.ByteBuffer
 
 /** RC 5D ←를 뒤로 가기로 쓰는 화면(10.3 허용 목록). 계획 화면은 ↔가 값 바꾸기라 뺀다. */
-private val FIVE_D_BACK_ROUTES = listOf("projects", "settings", "verify", "album")
+private val FIVE_D_BACK_ROUTES = listOf("projects", "settings", "verify", "album", "records")
 
 class MainActivity : ComponentActivity() {
 
@@ -176,7 +178,24 @@ class MainActivity : ComponentActivity() {
                     onSettings = { nav.navigate("settings?general=true") { launchSingleTop = true } },
                     onAircraftCheck = { nav.navigate("settings") { launchSingleTop = true } },
                     onVerification = { nav.navigate("verify") },
+                    onFlightRecords = { nav.navigate("records") },
                 ) }
+            }
+            // 비행 기록(10.4.6, Pilot 2 프로필 → 비행 기록): 자동 비행 소티·수동 비행 최신순 → 다시 보기
+            composable("records") {
+                LightScreen {
+                    FlightRecordsScreen(dao, onBack = { nav.popBackStack() }) { r ->
+                        nav.navigate(if (r.sessionId != null) "replay?session=${r.sessionId}" else "replay?mission=${r.missionId}&sortie=${r.sortieId}")
+                    }
+                }
+            }
+            // 비행 다시 보기(10.4.6): 미션(소티, 없으면 첫 소티) 또는 수동 비행. 5D ←→는 찾기라 뒤로 가기에 넣지 않는다
+            composable(
+                "replay?mission={mission}&sortie={sortie}&session={session}",
+                listOf("mission", "sortie", "session").map { n -> navArgument(n) { type = NavType.LongType; defaultValue = -1L } },
+            ) { e ->
+                fun arg(n: String) = e.arguments!!.getLong(n).takeIf { it > 0 }
+                ReplayScreen(dao, arg("mission"), arg("sortie"), arg("session"), onBack = { nav.popBackStack() }, onReview = { pid, mid -> nav.navigate("result/$pid/$mid") })
             }
             // 수동 비행 카메라 뷰(Pilot 2 카메라 뷰): 미션 없이 조종사가 스틱으로 난다. 경로 알약을 누르면 최근 미션 비행 화면으로
             composable("camera") {
@@ -213,6 +232,7 @@ class MainActivity : ComponentActivity() {
                     onReplan = { pid, mid -> nav.navigate("map/$pid?replan=$mid") },
                     onResult = { pid, mid -> nav.navigate("result/$pid/$mid") },
                     onCopy = { pid, mid -> nav.navigate("map/$pid?copy=$mid") },
+                    onReplay = { mid -> nav.navigate("replay?mission=$mid") },
                 ) }
             }
             composable(
@@ -244,7 +264,8 @@ class MainActivity : ComponentActivity() {
                 )
             }
             composable("result/{pid}/{mid}", ids) { e ->
-                ResultScreen(e.arguments!!.getLong("pid"), e.arguments!!.getLong("mid"), dao, onBack = { nav.popBackStack() })
+                val mid = e.arguments!!.getLong("mid")
+                ResultScreen(e.arguments!!.getLong("pid"), mid, dao, onBack = { nav.popBackStack() }, onReplay = { nav.navigate("replay?mission=$mid") })
             }
             composable(
                 "settings?general={general}&camera={camera}",

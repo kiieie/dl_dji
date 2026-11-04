@@ -147,7 +147,7 @@ private val PanelBg = Color.Black.copy(alpha = 0.55f)
 
 /** 판독 화면(10.4.3 시안 ⑥, F-19 1차 판독). 상태는 [ResultViewModel]이 갖고, 이 화면은 그리기와 입력 전달만 한다. */
 @Composable
-fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, onBack: () -> Unit) {
+fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, onBack: () -> Unit, onReplay: () -> Unit = {}) {
     val context = LocalContext.current
     val vm: ResultViewModel = viewModel(
         factory = ResultViewModel.factory(
@@ -162,11 +162,11 @@ fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, onBack: () -
     LaunchedEffect(vm) {
         vm.events.collect { e -> when (e) { is ResultEvent.PickSaveTarget -> saver.launch(e.fileName) } }
     }
-    ResultContent(state, vm, onBack)
+    ResultContent(state, vm, onBack, onReplay)
 }
 
 @Composable
-private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> Unit) {
+private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> Unit, onReplay: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(s.message) { s.message?.let { snackbar.showSnackbar(it); vm.messageShown() } }
     var memoOpen by rememberSaveable { mutableStateOf(false) }
@@ -191,6 +191,10 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
                 Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     // 설비(9.6): 표시만 하는 탐지 수. "탐지"(검출 대상)에는 세지 않는다
                     if (s.facilityCount > 0) Text("설비 ${s.facilityCount}", Modifier.padding(horizontal = 6.dp), fontSize = FontSize.Caption, color = FacilityBox)
+                    // 비행 다시 보기(10.4.6): 소티가 여럿이면 그 화면 위에서 고른다
+                    TextButton(onClick = onReplay, contentPadding = PaddingValues(horizontal = 6.dp), modifier = Modifier.height(Dimens.ButtonChip)) {
+                        Text("비행 다시 보기", fontSize = FontSize.Caption)
+                    }
                     ResultFilter.entries.forEach { f -> FilterButton(f, s.filter == f, s.count(f)) { vm.setFilter(f) } }
                     Box(
                         Modifier.size(Dimens.ButtonChip).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surfaceContainer)

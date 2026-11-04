@@ -96,6 +96,8 @@ fun ProjectScreen(
     onResult: (projectId: Long, missionId: Long) -> Unit,
     /** [다시 날기]: 같은 경로로 계획 화면. */
     onCopy: (projectId: Long, missionId: Long) -> Unit = { _, _ -> },
+    /** ⋯ [비행 다시 보기](10.4.6). */
+    onReplay: (missionId: Long) -> Unit = {},
 ) {
     val context = LocalContext.current
     val resolver = context.contentResolver
@@ -121,6 +123,7 @@ fun ProjectScreen(
                 is MissionNav.Replan -> onReplan(m.projectId, m.id)
                 is MissionNav.Result -> onResult(m.projectId, m.id)
                 is MissionNav.Copy -> onCopy(m.projectId, m.id)
+                is MissionNav.Replay -> onReplay(m.id)
             }
         }
     }

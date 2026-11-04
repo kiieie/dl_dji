@@ -242,6 +242,7 @@ private fun CardMenu(m: MissionSummary, open: Boolean, vm: MissionListViewModel)
         DropdownMenu(open, onDismissRequest = { vm.setMenu(null) }, properties = MENU_PROPERTIES) {
             if (m.doneCount > 0 && m.primaryAction() != MissionAction.RESULT) DropdownMenuItem(text = { Text("결과") }, onClick = { vm.result(m) })
             DropdownMenuItem(text = { Text("다시 날기") }, onClick = { vm.copy(m) })
+            if (m.hasTrack) DropdownMenuItem(text = { Text("비행 다시 보기") }, onClick = { vm.replay(m) })
             DropdownMenuItem(text = { Text(if (m.favorite) "즐겨찾기 해제" else "즐겨찾기") }, onClick = { vm.toggleFavorite(m) })
             DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { vm.askDelete(m) })
         }

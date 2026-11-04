@@ -214,6 +214,51 @@ data class FlightEventEntity(
     val at: Long,
 )
 
+/**
+ * 수동 비행 한 번(Room 10, 10.4.6 비행 다시 보기): 수동 비행 화면에서 기체가 뜬 때부터 내리거나 화면을 떠날 때까지.
+ * [endedAt]은 앱이 갑자기 꺼지면 비어 있다(길이는 궤적 시각으로 셈). [projectId]는 그때 남은 전주가 있는 최근 미션의 프로젝트(없으면 null, 표시용).
+ */
+@Entity(tableName = "manual_session")
+data class ManualSessionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val startedAt: Long,
+    val endedAt: Long? = null,
+    val projectId: Long? = null,
+)
+
+/** 수동 비행 궤적 한 점([TelemetrySampleEntity]와 같은 열, 1초 간격). */
+@Entity(
+    tableName = "manual_track",
+    foreignKeys = [ForeignKey(ManualSessionEntity::class, ["id"], ["sessionId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("sessionId")],
+)
+data class ManualTrackEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sessionId: Long,
+    val at: Long,
+    val lat: Double?,
+    val lon: Double?,
+    val altRel: Double,
+    val speed: Double,
+    val heading: Double,
+    val gimbalPitch: Double,
+    val batteryPct: Int,
+    val flightMode: String,
+)
+
+/** 비행 기록 목록(10.4.6) 한 줄: 자동 비행 소티([sortieId]) 또는 수동 비행([sessionId]). */
+data class FlightRecordRow(
+    val sortieId: Long? = null,
+    val sessionId: Long? = null,
+    val missionId: Long? = null,
+    val projectId: Long? = null,
+    val seq: Int? = null,
+    val projectName: String? = null,
+)
+
+/** 비행 기록 목록의 거리·시간 계산용 궤적 점(소티 또는 수동 비행 [id]). */
+data class TrackPointRow(val id: Long, val at: Long, val lat: Double?, val lon: Double?)
+
 /** 비행 궤적 한 점(1초 간격, 4.2). 내보내기의 실제 비행 궤적과 에너지 보정(5.5)에 쓴다. */
 @Entity(
     tableName = "telemetry_sample",
@@ -357,6 +402,8 @@ data class MissionSummary(
     val homeLon: Double = 0.0,
     /** 미션에서 찍은 사진(CAPTURE 행) 수. */
     val photoCount: Int = 0,
+    /** 비행 궤적(TELEMETRY_SAMPLE)이 있음: ⋯ [비행 다시 보기](10.4.6). */
+    val hasTrack: Boolean = false,
 ) {
     /** Pilot 2 "업데이트 시간": 마지막 비행, 날지 않았으면 만든 때. */
     val updatedAt get() = lastFlightAt ?: createdAt
@@ -504,6 +551,47 @@ interface ProjectDao {
     suspend fun lastTelemetryPosition(): TelemetrySampleEntity?
 
     @Insert
+    suspend fun insertManualSession(session: ManualSessionEntity): Long
+
+    @Query("UPDATE manual_session SET endedAt = :at WHERE id = :sessionId")
+    suspend fun endManualSession(sessionId: Long, at: Long)
+
+    @Insert
+    suspend fun insertManualTrack(sample: ManualTrackEntity)
+
+    @Query("SELECT * FROM manual_track WHERE sessionId = :sessionId ORDER BY at")
+    suspend fun manualTrack(sessionId: Long): List<ManualTrackEntity>
+
+    /** 비행 기록(10.4.6): 궤적이 있는 자동 비행 소티. */
+    @Query(
+        "SELECT s.id AS sortieId, NULL AS sessionId, s.missionId, m.projectId, s.seq, p.name AS projectName FROM sortie s JOIN mission m ON m.id = s.missionId " +
+            "JOIN project p ON p.id = m.projectId WHERE EXISTS (SELECT 1 FROM telemetry_sample t WHERE t.sortieId = s.id)",
+    )
+    suspend fun sortieRecords(): List<FlightRecordRow>
+
+    /** 비행 기록: 궤적이 있는 수동 비행. 프로젝트를 지웠으면 이름이 비어 있다. */
+    @Query(
+        "SELECT NULL AS sortieId, ms.id AS sessionId, NULL AS missionId, ms.projectId, NULL AS seq, p.name AS projectName " +
+            "FROM manual_session ms LEFT JOIN project p ON p.id = ms.projectId " +
+            "WHERE EXISTS (SELECT 1 FROM manual_track t WHERE t.sessionId = ms.id)",
+    )
+    suspend fun manualRecords(): List<FlightRecordRow>
+
+    @Query("SELECT sortieId AS id, at, lat, lon FROM telemetry_sample ORDER BY sortieId, at")
+    suspend fun sortieTrackPoints(): List<TrackPointRow>
+
+    @Query("SELECT sessionId AS id, at, lat, lon FROM manual_track ORDER BY sessionId, at")
+    suspend fun manualTrackPoints(): List<TrackPointRow>
+
+    /** 소티에서 찍은 사진(비행 다시 보기 표지), 찍은 순서. */
+    @Query("$ALBUM_PHOTO WHERE v.sortieId = :sortieId ORDER BY c.takenAt")
+    suspend fun sortiePhotos(sortieId: Long): List<AlbumPhoto>
+
+    /** [from]~[to]에 찍어 전주에 붙인 사진(수동 비행 다시 보기 표지). */
+    @Query("$ALBUM_PHOTO WHERE c.takenAt BETWEEN :from AND :to ORDER BY c.takenAt")
+    suspend fun photosBetween(from: Long, to: Long): List<AlbumPhoto>
+
+    @Insert
     suspend fun insertCapture(capture: CaptureEntity): Long
 
     @Query("UPDATE capture SET filePath = :path, originalDownloaded = :original WHERE id = :captureId")
@@ -611,7 +699,8 @@ interface ProjectDao {
             "(SELECT COUNT(DISTINCT r.visitId) FROM review r JOIN visit v ON v.id = r.visitId JOIN sortie s ON s.id = v.sortieId " +
             "WHERE s.missionId = m.id) AS reviewedCount, " +
             "(SELECT MAX(COALESCE(s.endedAt, s.startedAt)) FROM sortie s WHERE s.missionId = m.id) AS lastFlightAt, " +
-            "(SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS photoCount " +
+            "(SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS photoCount, " +
+            "EXISTS (SELECT 1 FROM telemetry_sample t JOIN sortie s ON s.id = t.sortieId WHERE s.missionId = m.id) AS hasTrack " +
             "FROM mission m JOIN project p ON p.id = m.projectId ORDER BY m.id DESC",
     )
     fun observeLibrary(): Flow<List<MissionSummary>>
@@ -671,8 +760,9 @@ interface ProjectDao {
     entities = [
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
+        ManualSessionEntity::class, ManualTrackEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -680,7 +770,24 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10).build()
+
+        /** 9 → 10(2026-11-04): 수동 비행 궤적(10.4.6 비행 다시 보기). 새 표만 만든다. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `manual_session` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startedAt` INTEGER NOT NULL, " +
+                        "`endedAt` INTEGER, `projectId` INTEGER)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `manual_track` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessionId` INTEGER NOT NULL, " +
+                        "`at` INTEGER NOT NULL, `lat` REAL, `lon` REAL, `altRel` REAL NOT NULL, `speed` REAL NOT NULL, `heading` REAL NOT NULL, " +
+                        "`gimbalPitch` REAL NOT NULL, `batteryPct` INTEGER NOT NULL, `flightMode` TEXT NOT NULL, " +
+                        "FOREIGN KEY(`sessionId`) REFERENCES `manual_session`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_manual_track_sessionId` ON `manual_track` (`sessionId`)")
+            }
+        }
 
         /** 7 → 8(2026-11-04): 사진별 정밀 탐지 모델 버전(9.6). 옛 사진은 비어 있어 최근 미션이면 정밀 탐지가 다시 한다. */
         val MIGRATION_7_8 = object : Migration(7, 8) {

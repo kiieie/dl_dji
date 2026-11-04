@@ -103,6 +103,8 @@ sealed interface MissionNav {
     data class Result(override val mission: MissionSummary) : MissionNav
     /** [다시 날기](10.5.8): 같은 프로젝트·영역·전주·파라미터로 계획 화면을 연다. 저장하면 새 미션, 옛 미션은 그대로. */
     data class Copy(override val mission: MissionSummary) : MissionNav
+    /** [비행 다시 보기](10.4.6): 기록한 궤적을 시간 막대로. */
+    data class Replay(override val mission: MissionSummary) : MissionNav
 }
 
 /**
@@ -161,6 +163,7 @@ class MissionListViewModel(
     }
 
     fun result(m: MissionSummary) = _nav.trySend(MissionNav.Result(m)).let { setMenu(null) }
+    fun replay(m: MissionSummary) = _nav.trySend(MissionNav.Replay(m)).let { setMenu(null) }
 
     /** [다시 날기]: 계획 화면에서 같은 경로로 새 미션을 만든다(옛 미션은 그대로). */
     fun copy(m: MissionSummary) {

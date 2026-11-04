@@ -116,6 +116,8 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onAircraftCheck: () -> Unit,
     onVerification: () -> Unit,
+    /** 프로필 → 비행 기록(10.4.6 비행 다시 보기). */
+    onFlightRecords: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.factory(dao, ::djiAircraftStatus) { clearCacheAndLogs(context.applicationContext) })
@@ -126,7 +128,7 @@ fun HomeScreen(
         onPauseOrDispose { vm.setActive(false) }
     }
     val latest = s.latest
-    // 화면 배치 상태: 열린 판(기체 세부, 프로필, 데이터 보호, 앱 정보, 비행 기록 안내)
+    // 화면 배치 상태: 열린 판(기체 세부, 프로필, 데이터 보호, 앱 정보)
     var sheet by remember { mutableStateOf<HomeSheet?>(null) }
     // RC `<`(안드로이드 뒤로)를 홈에서 누르면 바로 꺼지지 않고 묻는다(10.4.4)
     var confirmExit by remember { mutableStateOf(false) }
@@ -169,13 +171,10 @@ fun HomeScreen(
     when (sheet) {
         HomeSheet.AIRCRAFT -> AircraftDialog(s.aircraft) { sheet = null }
         HomeSheet.PROFILE -> SheetDialog("프로필", onClose = { sheet = null }) {
-            SheetItem("비행 기록", "지난 비행 리플레이(궤적·시간 막대·사진)") { sheet = HomeSheet.REPLAY }
+            SheetItem("비행 기록", "지난 비행 다시 보기(궤적·시간 막대·사진)") { sheet = null; onFlightRecords() }
             SheetItem("오프라인 지도", "MBTiles 추가·삭제, 배경 지도") { sheet = null; onSettings() }
             SheetItem("설정", "비행 기본값 · 탐지 모델 · 지도") { sheet = null; onSettings() }
             SheetItem("앱 정보", "버전 · 데이터 주권") { sheet = HomeSheet.ABOUT }
-        }
-        HomeSheet.REPLAY -> SheetDialog("비행 기록", onClose = { sheet = null }) {
-            Text("리플레이(궤적·시간 막대·사진)는 F묶음에서 만듭니다. 지금은 미션 결과 화면과 운용 로그(logs/)로 확인하세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         HomeSheet.ABOUT -> SheetDialog("앱 정보", onClose = { sheet = null }) {
             Item("앱", "KEPCO 전주 점검 ${BuildConfig.VERSION_NAME}")
@@ -206,7 +205,7 @@ fun HomeScreen(
 }
 
 /** 홈에서 여는 판. */
-private enum class HomeSheet { AIRCRAFT, PROFILE, REPLAY, ABOUT, PRIVACY, CLEAR }
+private enum class HomeSheet { AIRCRAFT, PROFILE, ABOUT, PRIVACY, CLEAR }
 
 @Composable
 private fun SheetDialog(title: String, onClose: () -> Unit, content: @Composable () -> Unit) {

@@ -139,6 +139,21 @@ object AppConfig {
         const val FOCUS_PAD_DEG = 0.0005
     }
 
+    /** 비행 다시 보기(10.4.6). */
+    object Replay {
+        /** 궤적 두 점 사이가 이보다 멀면(기록 끊김) 보간하지 않고 머물며, 재생 시간도 이만큼으로 줄인다. 기록 간격은 [Polling.TRACK_MS]. */
+        const val HOLD_GAP_MS = 3_000L
+
+        /** 재생 배속(누를 때마다 차례로). */
+        val SPEEDS = listOf(1, 4, 16)
+
+        /** 재생 화면 갱신 간격. */
+        const val FRAME_MS = 100L
+
+        /** RC 5D ↔ 한 번에 옮기는 재생 시간. */
+        const val SEEK_STEP_MS = 10_000L
+    }
+
     object Storage {
         /** 조종기 쪽 저장 공간 기준(6.5). SD 여유 기준(6.7)과 같게 1GB. */
         const val MIN_FREE_BYTES = 1L shl 30
