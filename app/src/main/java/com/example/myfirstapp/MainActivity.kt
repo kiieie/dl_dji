@@ -1,6 +1,9 @@
 package com.example.myfirstapp
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
 import android.view.KeyEvent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -51,6 +54,10 @@ private val FIVE_D_BACK_ROUTES = listOf("projects", "settings", "verify", "album
 
 class MainActivity : ComponentActivity() {
 
+    private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+        OpLog.log("permission", "location", granted.mapValues { it.value })
+    }
+
     /** 운용 로그(4.4): 안드로이드 키 입력(볼륨, 뒤로, 게임패드 등). RC Pro 전용 버튼은 SDK로 따로 받는다(drone/DjiInputLog.kt). */
     // lint 오탐: Activity.dispatchKeyEvent는 공개 프레임워크 API인데 androidx.core의 ComponentActivity 재정의에 붙은 @RestrictTo가 걸린다
     @SuppressLint("RestrictedApi")
@@ -82,6 +89,10 @@ class MainActivity : ComponentActivity() {
         WindowCompat.getInsetsController(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        // 계획 이륙 지점의 셋째 대안(조종기 자체 GPS, 10.5.5). 거절해도 기체·DJI 조종기 GPS와 지도 선택은 된다
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
         val dao = (application as InspectionApp).database.projectDao()
         setContent {

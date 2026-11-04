@@ -1,7 +1,16 @@
 package com.example.myfirstapp.drone
 
 import com.example.myfirstapp.AppConfig
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.LocationManager
+import androidx.core.os.CancellationSignal
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.LivePositions
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.RemoteControllerKey
@@ -13,10 +22,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
- * 지금 위치: 기체 GPS(위성 6개 이상일 때만) → 조종기 GPS → 없음(지도에서 선택). 계획 화면의 이륙 지점·지도 초기 위치에 쓴다(2026-10-30 사용자 지정).
+ * 지금 위치들(10.5.5): 기체 GPS(연결되고 위성 6개 이상일 때만)와 기수, DJI 조종기 GPS. 계획 화면의 이륙 지점·[기체 위치로]·[조종기 위치로]·기체 화살표에 쓴다.
  * 기체는 GPS가 없어도 마지막 위치(예: 꺼진 시뮬레이터 위치)를 주므로 위성 수로 거른다. SDK가 없거나(에뮬레이터) 답이 없으면 null.
  */
-suspend fun djiCurrentLocation(): GeoPoint? = runCatching {
+suspend fun djiPositions(): LivePositions = runCatching {
     val keys = KeyManager.getInstance()
     suspend fun <T> read(key: dji.sdk.keyvalue.key.DJIKey<T>): T? = withTimeoutOrNull(AppConfig.Timeouts.KEY_READ_MS) {
         suspendCancellableCoroutine { c ->
@@ -26,16 +35,43 @@ suspend fun djiCurrentLocation(): GeoPoint? = runCatching {
             })
         }
     }
-    val aircraft = if (keys.getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false) &&
-        (read(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount)) ?: 0) >= AppConfig.Checks.LOCATION_MIN_SATELLITES
-    ) {
+    val connected = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false)
+    val aircraft = if (connected && (read(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount)) ?: 0) >= AppConfig.Checks.LOCATION_MIN_SATELLITES) {
         read(KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D))?.takeIf { validGeo(it.latitude, it.longitude) }?.let { GeoPoint(it.latitude, it.longitude) }
     } else {
         null
     }
-    aircraft ?: read(KeyTools.createKey(RemoteControllerKey.KeyRcGPSInfo))
-        ?.takeIf { it.isValid == true && validGeo(it.location?.latitude, it.location?.longitude) }
-        ?.let { GeoPoint(it.location.latitude, it.location.longitude) }
+    LivePositions(
+        aircraft = aircraft,
+        headingDeg = if (aircraft == null) 0.0 else ((read(KeyTools.createKey(FlightControllerKey.KeyCompassHeading)) ?: 0.0) + 360) % 360,
+        rc = read(KeyTools.createKey(RemoteControllerKey.KeyRcGPSInfo))
+            ?.takeIf { it.isValid == true && validGeo(it.location?.latitude, it.location?.longitude) }
+            ?.let { GeoPoint(it.location.latitude, it.location.longitude) },
+    )
+}.getOrDefault(LivePositions())
+
+/**
+ * 조종기(RC Pro) 안드로이드 GPS: 마지막 위치(GPS·네트워크 중 새것), 없고 [fresh]면 GPS로 새 위치를 한 번 기다린다(10.5.5 셋째 대안).
+ * 새 위치는 GPS 공급자만 켠다(네트워크 위치는 외부 서버에 묻기 때문, 데이터 주권). 권한이 없거나 못 찾으면 null.
+ */
+@SuppressLint("MissingPermission") // 권한은 바로 위에서 확인한다
+suspend fun deviceLocation(context: Context, fresh: Boolean): GeoPoint? = runCatching {
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return null
+    val lm = context.getSystemService(LocationManager::class.java) ?: return null
+    val last = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }
+    val loc = last ?: if (fresh && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+        withTimeoutOrNull(AppConfig.Timeouts.DEVICE_LOCATION_MS) {
+            suspendCancellableCoroutine { c ->
+                val cancel = CancellationSignal()
+                c.invokeOnCancellation { cancel.cancel() }
+                LocationManagerCompat.getCurrentLocation(lm, LocationManager.GPS_PROVIDER, cancel, ContextCompat.getMainExecutor(context)) { c.resume(it) }
+            }
+        }
+    } else {
+        null
+    }
+    loc?.takeIf { validGeo(it.latitude, it.longitude) }?.let { GeoPoint(it.latitude, it.longitude) }
 }.getOrNull()
 
 /** 기체가 SDK에 연결되어 있는지. SDK가 없거나 등록 전이면 false. */

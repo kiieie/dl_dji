@@ -9,6 +9,9 @@ object AppConfig {
         /** DJI 키 값 하나 읽기(기체 점검·상태·지금 위치). */
         const val KEY_READ_MS = 2_000L
 
+        /** 조종기 안드로이드 GPS 새 위치 한 번 기다림(계획 이륙 지점, 기체·DJI 조종기 GPS가 없을 때). */
+        const val DEVICE_LOCATION_MS = 10_000L
+
         /** 실제 기체 연결부(DjiDroneGateway)의 키 값 하나 읽기. */
         const val GATEWAY_KEY_READ_MS = 3_000L
 
@@ -43,6 +46,9 @@ object AppConfig {
     object Polling {
         /** 홈 화면 기체 상태 다시 읽기 간격. */
         const val HOME_AIRCRAFT_MS = 2_000L
+
+        /** 계획 화면 지금 위치(기체·조종기) 다시 읽기 간격. 이륙 지점을 못 정했으면 찾을 때까지 계속 읽는다(10.5.5). */
+        const val PLAN_LOCATION_MS = 2_000L
 
         /** 떠 있는 동안 비행 궤적 기록 간격(4.4). */
         const val TRACK_MS = 1_000L
