@@ -38,6 +38,9 @@ object DjiSdAlbum {
     /** 마지막으로 읽은 목록의 SDK 파일(이름 → 파일). 썸네일·받기·지우기에 쓴다. */
     @Volatile private var files: Map<String, MediaFile> = emptyMap()
 
+    /** 비행 화면 실행기가 받을 미션 사진이 남았는지(착륙 뒤에도 받기는 이어진다). 그동안 SD 지우기는 막는다(보기·받기는 됨). */
+    @Volatile var missionPhotosPending = false
+
     /** 기체 앨범을 열 수 없는 이유(Pilot 2 안내문). 열 수 있으면 null. */
     fun blocked(): String? = when {
         !djiAircraftConnected() -> "기체 연결 안 됨. 기체 앨범을 볼 수 없습니다."

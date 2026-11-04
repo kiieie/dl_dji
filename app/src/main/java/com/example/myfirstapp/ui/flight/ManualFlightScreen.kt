@@ -69,7 +69,7 @@ fun ManualFlightScreen(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
-    val vm: ManualFlightViewModel = viewModel(factory = ManualFlightViewModel.factory(dao, context.getExternalFilesDir(null), app.rcButtons, app.settings, app.precise))
+    val vm: ManualFlightViewModel = viewModel(factory = ManualFlightViewModel.factory(dao, context.getExternalFilesDir(null), app.rcButtons, app.settings, app.precise, app.appScope))
     val s by vm.state.collectAsStateWithLifecycle()
     val f = s.flight
     val mapMain = f.mapMain

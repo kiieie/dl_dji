@@ -42,6 +42,8 @@ internal class CameraControl(
     private val tag: String,
     /** 타이머 사진 한 장마다(수동 사진 경로: 받아서 가까운 전주 또는 기타로, [ManualPhotos]). */
     private val onTimerPhoto: suspend (CaptureInfo) -> Unit = {},
+    /** 타이머 사진 저장을 돌릴 곳: 앱 수명(화면을 나가도 받은 사진은 끝까지 저장, SD에만 남지 않게). */
+    private val saveScope: CoroutineScope = scope,
 ) {
     /** 기체 줌 범위 안의 단계(처음 줌을 누를 때 읽는다). */
     private var steps: List<Double> = ZOOM_STEPS
@@ -255,7 +257,7 @@ internal class CameraControl(
         timerJob = scope.launch {
             val r = try {
                 // 받기는 타이머와 따로 돈다: 멈춤(재개 전 기다림)이 받기를 기다리지 않게
-                d.intervalShots(sec).collect { info -> scope.launch { onTimerPhoto(info) } }
+                d.intervalShots(sec).collect { info -> saveScope.launch { onTimerPhoto(info) } }
                 Result.success(Unit)
             } catch (e: CancellationException) {
                 throw e

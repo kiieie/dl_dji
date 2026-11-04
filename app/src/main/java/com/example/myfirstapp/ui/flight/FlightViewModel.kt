@@ -22,6 +22,7 @@ import com.example.myfirstapp.ui.procedure.ProcedurePage
 import com.example.myfirstapp.data.TelemetrySampleEntity
 import com.example.myfirstapp.drone.DjiDroneGateway
 import com.example.myfirstapp.drone.DjiFlySafe
+import com.example.myfirstapp.drone.DjiSdAlbum
 import com.example.myfirstapp.drone.djiAircraftConnected
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -196,12 +197,15 @@ class FlightViewModel(
     private val rcButtons: Flow<RcButton> = emptyFlow(),
     /** 착륙 뒤 정밀 탐지(9.6): 떠 있는 동안 쉬게 알리고, 사진을 저장하면 깨운다. */
     private val precise: PreciseDetection? = null,
+    /** 앱 수명 작업(타이머 사진 저장). 없으면 [viewModelScope]. */
+    appScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(FlightUiState())
     val state: StateFlow<FlightUiState> = _state.asStateFlow()
     private val camera = CameraControl(
         viewModelScope, { drone }, { _state.value }, { f -> _state.update(f) }, "flight",
         onTimerPhoto = { info -> drone?.let { d -> manualSaved(info, photos.keep(d, info, _state.value.lens)) } },
+        saveScope = appScope ?: viewModelScope,
     )
 
     private val notifier = ToneNotifier()
@@ -339,9 +343,10 @@ class FlightViewModel(
             )
         }
         combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->
-            val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
+            val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, t.home ?: home) } ?: 0.0).toInt()
             val wasPaused = paused
             precise?.setFlying("auto", ui.state.airborne || t.isFlying)
+            DjiSdAlbum.missionPhotosPending = ui.state.airborne || ui.photosInProgress > 0
             _state.update {
                 it.copy(exec = ui, telemetry = t, returnNeedPct = need, nextWaypoint = nextWaypoint(ui, t)).withTrack(t)
                     .let { s -> if (ui.state in CLOSES_PROCEDURE) s.copy(page = null) else s }
@@ -634,18 +639,19 @@ class FlightViewModel(
         notifier.release()
         live.close()
         precise?.setFlying("auto", false)
+        DjiSdAlbum.missionPhotosPending = false
     }
 
     companion object {
         /** 기체가 연결돼 있으면 실제 기체([DjiDroneGateway]), 아니면 모의 기체. 올린 KMZ는 미션 폴더 `kmz/`에 남는다(4.3). */
         fun factory(
             dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore, rcButtons: Flow<RcButton>,
-            sdkReady: StateFlow<Boolean>, sdkInitialized: StateFlow<Boolean>, precise: PreciseDetection,
+            sdkReady: StateFlow<Boolean>, sdkInitialized: StateFlow<Boolean>, precise: PreciseDetection, appScope: CoroutineScope,
         ) =
             viewModelFactory {
                 initializer {
                     FlightViewModel(
-                        dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons, precise = precise,
+                        dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons, precise = precise, appScope = appScope,
                         droneFactory = { scope, home, dir, airborneAt ->
                             // 앱 재시작 복구(열린 소티, [airborneAt] 있음): 앱이 막 켜져 SDK 등록·기체 연결 전일 수 있으니 기다린다(6.4).
                             // 실제 RC(SDK 초기화됨, 등록 실패여도)에서는 연결이 안 돼도 모의 기체로 가지 않는다 — 실행기가 연결 끊김으로 두고 붙으면 맞춘다

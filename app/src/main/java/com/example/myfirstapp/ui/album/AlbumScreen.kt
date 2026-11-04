@@ -100,7 +100,7 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
     val app = context.applicationContext as InspectionApp
     val vm: AlbumViewModel = viewModel(factory = AlbumViewModel.factory(dao, context.getExternalFilesDir(null), app.settings))
     val s by vm.state.collectAsStateWithLifecycle()
-    val sdVm: SdAlbumViewModel = viewModel(factory = SdAlbumViewModel.factory(context.getExternalFilesDir(null)))
+    val sdVm: SdAlbumViewModel = viewModel(factory = SdAlbumViewModel.factory(dao, context.getExternalFilesDir(null)))
     val sd by sdVm.state.collectAsStateWithLifecycle()
     // Pilot 2 [기체 앨범 | 다운로드 완료](10.4.9). 처음은 다운로드 완료(우리 앨범)
     var aircraftTab by rememberSaveable { mutableStateOf(false) }

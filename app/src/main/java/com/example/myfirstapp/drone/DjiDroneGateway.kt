@@ -313,6 +313,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
                 maybeRestored()
             }
         } else if (lostJob?.isActive != true) {
+            DjiMedia.enabled = false // 다시 붙은 기체(재부팅·배터리 교체)는 미디어 모드가 꺼져 있다
             // 3초 넘게 끊겨야 연결 끊김으로 본다(6.4)
             lostJob = scope.launch {
                 delay(AppConfig.Timeouts.LINK_LOST_MS)

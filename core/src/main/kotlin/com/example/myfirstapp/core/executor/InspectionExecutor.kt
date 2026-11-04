@@ -940,7 +940,8 @@ class InspectionExecutor(
         recorder.updateVisit(v.sortieIndex, v.order, status, reason)
     }
 
-    private fun homePoint(): GeoPoint? = home ?: drone.telemetry.value.home
+    /** 복귀 판단의 홈: 기체가 알리는 홈(비행 중 H 지정으로 바뀔 수 있음, RTH가 가는 곳)이 기준, 비행 전 점검 값은 없을 때만. */
+    private fun homePoint(): GeoPoint? = drone.telemetry.value.home ?: home
 
     private fun distance(a: GeoPoint?, b: GeoPoint?): Double =
         if (a == null || b == null) 0.0 else LocalProjection.distanceM(a, b)
