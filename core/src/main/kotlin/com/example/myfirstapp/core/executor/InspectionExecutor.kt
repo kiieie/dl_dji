@@ -108,6 +108,9 @@ class InspectionExecutor(
         data class ArrivalTimeout(val token: Int) : Msg
         data class Recover(val sortieIndex: Int) : Msg
 
+        /** RC 셔터로 앱이 찍은 사진(실패면 null). */
+        data class Shutter(val capture: CaptureInfo?) : Msg
+
         /** 방식 A 사진 처리 결과(다운로드 실패면 [bytes]가 null). */
         data class Photo(val captureId: Long, val bytes: ByteArray?, val detections: List<Detection>?, val error: String?) : Msg
     }
@@ -147,6 +150,10 @@ class InspectionExecutor(
     private var lastDetections: List<Detection> = emptyList()
     private var captured: List<Pair<Long, CaptureInfo>> = emptyList()
     private var terrainFallbackAsk = false
+    private var shutterBusy = false
+
+    /** 실행기가 기체를 움직이지 않는 상태(떠 있으면 조종사가 수동 조종 중). */
+    private val REST = setOf(Idle, SortieDone, MissionDone)
 
     private var arrivalToken = 0
     private var arrivalJob: Job? = null
@@ -190,6 +197,13 @@ class InspectionExecutor(
             is Msg.ArrivalTimeout -> if (m.token == arrivalToken) onArrivalTimeout()
             is Msg.Recover -> recover(m.sortieIndex)
             is Msg.Photo -> onPhotoProcessed(m)
+            is Msg.Shutter -> {
+                shutterBusy = false
+                if (m.capture == null) {
+                    message = "셔터 촬영 실패"
+                    notifier.play(Sound.ERROR)
+                } else onShutterPhoto(m.capture)
+            }
         }
         publish()
     }
@@ -232,6 +246,11 @@ class InspectionExecutor(
                 val image = info?.let { drone.download(it, params.downloadMode).getOrNull() }
                 StepResult.ManualCaptured(info, image)
             }
+            // 일시정지 중, 또는 실행기는 쉬는데 기체가 떠 있음(수동 비행에서 넘어옴·소티 완료 뒤). 화면 촬영과 같은 capture → download 경로
+            is Command.RcShutter -> if (!shutterBusy && (state == Paused || (state in REST && drone.telemetry.value.isFlying))) {
+                shutterBusy = true
+                scope.launch { inbox.send(Msg.Shutter(drone.capture(c.lens, params.gimbalPitchDeg, params.zoomRatio).getOrNull()?.copy(lens = c.lens))) }
+            }
             Command.EndMission -> if (state == SortieDone) enter(MissionDone, "운용자 미션 종료")
             Command.FlyTakeoffHeight -> when {
                 !terrainFallbackAsk -> Unit
@@ -260,8 +279,6 @@ class InspectionExecutor(
             DroneEvent.LegCompleted -> if (state == FlyingLeg) enter(Arrived, "구간 미션 완료")
             is DroneEvent.WaypointReached -> if (missionActive) onWaypoint(e.index)
             is DroneEvent.PhotoTaken -> if (missionPoints.isNotEmpty()) onPhoto(e.index, e.capture)
-            // 기체가 이미 찍었다. 자동 비행을 건드리지 않고 기록만 한다
-            is DroneEvent.ShutterPhoto -> if (state.airborne || state == ReturningHome) onShutterPhoto(e.capture)
             DroneEvent.MissionFinished -> if (missionActive) {
                 missionActive = false
                 if (state == FlyingLeg) {
@@ -605,7 +622,7 @@ class InspectionExecutor(
     }
 
     /**
-     * RC 셔터 사진(6.4): 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 이번 실행의 방문(남은 전주)에 수동 사진으로 기록하고
+     * RC 셔터 사진(6.4, 앱이 찍음): 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 이번 실행의 방문(남은 전주)에 수동 사진으로 기록하고
      * 처리 줄(다운로드 → 탐지)에 넣는다. 없으면 기록하지 않고 SD에만 남긴다(앞선 비행에서 끝낸 전주는 이번 실행에 없다).
      * 전주 상태도 사진 수([Visit.captureCount])도 바꾸지 않는다: 완료 판정은 자동 사진과 일시정지 중 화면 수동 촬영만 본다.
      */

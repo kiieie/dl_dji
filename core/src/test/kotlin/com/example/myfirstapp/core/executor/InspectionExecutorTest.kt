@@ -675,34 +675,49 @@ class InspectionExecutorTest {
     }
 
     @Test
-    fun `방식 A - RC 셔터 사진은 가까운 전주의 수동 사진이 되고 자동 사진과 섞이지 않는다`() = runTest {
+    fun `방식 A - RC 셔터는 일시정지 중 앱이 찍어 가까운 전주의 수동 사진으로, 자동 사진과 섞이지 않는다`() = runTest {
         val h = harness(config = sortieMode, params = wideOnly)
         h.send(Command.Start)
         h.awaitUntil { h.visit("B").captureCount == 1 } // B 상공에서 자동 사진을 찍은 직후
-        val shot = h.drone.pressRcShutter()
+        h.drone.pressRcPause()
+        h.awaitState(ExecState.Paused)
+        h.send(Command.RcShutter(Lens.ZOOM))
         h.awaitUntil { h.recorder.captures.any { it.second == CaptureSource.MANUAL } }
+        assertTrue("capture:ZOOM" in h.drone.calls) // 앱이 찍는다(화면 셔터와 같은 경로)
         assertEquals(1 to CaptureSource.MANUAL, h.recorder.captures.last()) // B는 소티 안 순서 1
         assertEquals(1, h.visit("B").captureCount) // 셔터 사진은 완료 판정 사진 수에 안 셈
-        h.awaitUntil { "download:${shot.mediaId}" in h.drone.calls }
+        h.awaitUntil { h.drone.calls.count { it.startsWith("download:") } == 3 }
 
+        h.send(Command.Resume)
         h.awaitState(ExecState.MissionDone)
         assertEquals(3, h.recorder.captures.count { it.second == CaptureSource.AUTO })
         assertEquals(1, h.recorder.captures.count { it.second == CaptureSource.MANUAL })
         h.awaitUntil { h.recorder.images.size == 4 }
         h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
-        assertTrue("listMedia" !in h.drone.calls) // 셔터 사진은 SD 목록을 읽지 않는다
     }
 
     @Test
-    fun `방식 A - 자동 사진이 없고 셔터 사진만 있는 전주는 완료가 아니라 실패다`() = runTest {
-        val h = harness(config = sortieMode) { it.failNextCaptures = 1 } // A 자동 사진 실패
+    fun `방식 A - 미션 비행 중(자동 촬영 중) RC 셔터는 받지 않는다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly)
         h.send(Command.Start)
-        h.awaitUntil { h.visit("A").status == VisitStatus.IN_PROGRESS }
-        h.drone.pressRcShutter() // A 상공
+        h.awaitUntil { h.visit("A").captureCount == 1 }
+        h.send(Command.RcShutter(Lens.WIDE))
+        h.awaitState(ExecState.MissionDone)
+        assertTrue(h.drone.calls.none { it.startsWith("capture") })
+        assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
+    }
+
+    @Test
+    fun `방식 A - 자동 사진이 없고 셔터 사진만 있는 전주는 완료로 세지 않는다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly) { it.failNextCaptures = 1 } // A 자동 사진 실패
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("A").status == VisitStatus.IN_PROGRESS && h.drone.failNextCaptures == 0 }
+        h.drone.pressRcPause() // A를 막 떠남(20m 안)
+        h.awaitState(ExecState.Paused)
+        h.send(Command.RcShutter(Lens.WIDE))
         h.awaitUntil { h.recorder.captures.any { it.second == CaptureSource.MANUAL } }
         assertEquals(0 to CaptureSource.MANUAL, h.recorder.captures.first())
-        h.awaitState(ExecState.MissionDone)
-        assertEquals(VisitStatus.FAILED, h.visit("A").status)
+        assertEquals(VisitStatus.IN_PROGRESS, h.visit("A").status)
         assertEquals(0, h.visit("A").captureCount)
     }
 
@@ -713,17 +728,20 @@ class InspectionExecutorTest {
         h.awaitUntil { h.visit("A").captureCount == 1 }
         // A(100,0)와 B(100,100) 사이, 어느 전주에서도 20m 넘게 떨어진 곳
         h.awaitUntil { h.drone.telemetry.value.position?.let { p -> threePoles.all { LocalProjection.distanceM(p, it.position) > Tuning.Photo.SHUTTER_POLE_LINK_M + 5 } } == true }
-        h.drone.pressRcShutter()
+        h.drone.pressRcPause()
+        h.awaitState(ExecState.Paused)
+        h.send(Command.RcShutter(Lens.WIDE))
         h.awaitUntil { h.executor.uiState.value.message?.contains("연결할 전주가 없습니다") == true }
         assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
     }
 
     @Test
-    fun `RC 셔터 - 땅에서 찍은 셔터 사진은 기록하지 않는다`() = runTest {
+    fun `RC 셔터 - 땅에서는 찍지 않는다`() = runTest {
         val h = harness(config = sortieMode)
-        h.drone.pressRcShutter()
+        h.send(Command.RcShutter(Lens.WIDE))
         h.scope.advanceTimeBy(5_000)
         h.scope.runCurrent()
+        assertTrue(h.drone.calls.none { it.startsWith("capture") })
         assertTrue(h.recorder.captures.isEmpty())
     }
 

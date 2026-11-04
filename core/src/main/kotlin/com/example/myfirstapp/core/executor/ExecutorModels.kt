@@ -3,6 +3,7 @@ package com.example.myfirstapp.core.executor
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.Detection
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.port.CaptureInfo
@@ -43,6 +44,12 @@ sealed interface Command {
 
     /** 일시정지 중: 수동 촬영(F-12). */
     data object ManualCapture : Command
+
+    /**
+     * RC 셔터(6.4, 2026-11-04 앱이 찍음): 일시정지·수동 조종 중이면 앱이 [lens]로 찍어 20m 안의 가장 가까운 남은 전주에 수동 사진으로 붙인다.
+     * 미션 비행 중(자동 촬영 중)·땅에서는 받지 않는다.
+     */
+    data class RcShutter(val lens: Lens) : Command
 
     /** SortieDone에서 남은 전주를 포기하고 미션 종료. */
     data object EndMission : Command

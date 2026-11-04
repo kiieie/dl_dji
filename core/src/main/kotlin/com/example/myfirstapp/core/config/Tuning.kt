@@ -6,9 +6,9 @@ package com.example.myfirstapp.core.config
  */
 object Tuning {
 
-    /** 사진 파일 주인 가르기(6.4 RC 셔터, `MediaClassifier`). */
+    /** 사진 파일 주인 가르기(6.4, `MediaClassifier`). */
     object Photo {
-        /** 화면 수동 촬영 뒤 이 시간 안에 온 둘째 파일(광각·망원 동시 저장)은 그 촬영 것으로 본다. 현장 실측 필요. */
+        /** 앱 촬영(화면·RC 셔터) 뒤 이 시간 안에 온 둘째 파일(광각·망원 동시 저장)은 그 촬영 것으로 본다. 현장 실측 필요. */
         const val MULTI_FILE_MS = 1_500L
 
         /**
@@ -18,13 +18,10 @@ object Tuning {
         const val LATE_FILE_MS = 1_000L
 
         /**
-         * 한 번 찍을 때 렌즈별 파일은 거의 동시에 온다. 앞 파일보다 이만큼 늦으면 다음 촬영 동작(설비 조준: 짐벌을 돌린 뒤)으로 본다.
-         * 2026-10-31 시뮬레이터: 지점 사진 뒤 설비 사진이 0.9초 뒤. ponytail: 현장 실측으로 맞춘다.
+         * 방식 A KMZ에서 렌즈마다 촬영 동작을 따로 둔다(광각 → 망원, 2026-11-04). 2026-11-03 현장에서 `payloadLensIndex` `wide,zoom` 한 동작은 파일 1장(`_V`)만 남겼다.
+         * false면 옛 방식(한 동작에 렌즈를 쉼표로)이다. 실내 기체 시험에서 두 방식을 비교한 뒤 정한다(13.0).
          */
-        const val BURST_MS = 450L
-
-        /** RC 셔터를 누른 뒤 이 시간 안에 생긴 새 사진은 셔터 사진이다(지점 사진이 기다리는 중이 아니면). 현장 실측 필요. */
-        const val SHUTTER_SKEW_MS = 3_000L
+        const val ACTION_PER_LENS = true
 
         /** 셔터 사진(미션 중 RC 셔터, 수동 비행 셔터)을 전주에 붙이는 최대 거리(6.4, 2026-10-30 사용자 결정 50m → 20m). */
         const val SHUTTER_POLE_LINK_M = 20.0
@@ -58,6 +55,9 @@ object Tuning {
 
         /** 한 번 오른 등급은 이만큼 더 멀어져야 내린다(깜박임 방지). */
         const val HYSTERESIS_M = 1.0
+
+        /** 어느 방향(위·아래 포함)이든 이 거리 안이면 운용 로그에 `obstacle`을 남긴다(4.4, 11-03 현장에서 판정 근거가 없었음). */
+        const val LOG_M = 15.0
     }
 
     /** 비행 전 점검 판정(6.7, `PreflightEvaluator`). */
