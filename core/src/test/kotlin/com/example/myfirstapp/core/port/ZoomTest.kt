@@ -14,4 +14,13 @@ class ZoomTest {
         assertEquals(7.0, nextZoom(5.0, up = true), 0.0)
         assertEquals(4.0, nextZoom(5.0, up = false), 0.0)
     }
+
+    @Test
+    fun 기체_줌_범위_밖_단계는_범위_끝으로_모은다() {
+        val steps = zoomSteps(2.0..14.0)
+        assertEquals(listOf(2.0, 4.0, 7.0, 14.0), steps)
+        assertEquals(14.0, nextZoom(14.0, up = true, steps), 0.0)
+        assertEquals(2.0, nextZoom(4.0, up = false, steps), 0.0)
+        assertEquals(ZOOM_STEPS, zoomSteps(null))
+    }
 }

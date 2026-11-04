@@ -45,11 +45,11 @@ class WpmlTransitTest {
         val v = Viewpoints.expand(poles, overhead, home)
         val wpml = files(v, overhead, home).getValue("wpmz/waylines.wpml")
         assertEquals(8, Regex("<Placemark>").findAll(wpml).count())
-        assertEquals(3, Regex("takePhoto").findAll(wpml).count())
+        assertEquals(6, Regex("takePhoto").findAll(wpml).count()) // 지점마다 광각·망원
         assertEquals(3, Regex("<wpml:actionGroup>").findAll(wpml).count())
         // 동작 묶음은 촬영 웨이포인트 번호(2, 3, 6)에 붙고, 파일 이름은 전주 순서 그대로
         assertEquals(listOf(2, 3, 6), Regex("<wpml:actionGroupStartIndex>(\\d+)<").findAll(wpml).map { it.groupValues[1].toInt() }.toList())
-        assertEquals(listOf("P0_0", "P1_0", "P2_0"), Regex("<wpml:fileSuffix>([^<]+)<").findAll(wpml).map { it.groupValues[1] }.toList())
+        assertEquals(listOf("P0_0", "P0_0", "P1_0", "P1_0", "P2_0", "P2_0"), Regex("<wpml:fileSuffix>([^<]+)<").findAll(wpml).map { it.groupValues[1] }.toList())
     }
 
     @Test
@@ -102,10 +102,13 @@ class WpmlTransitTest {
     }
 
     @Test
-    fun `촬영 지점은 설정한 렌즈로 한 번에 찍는다(기본 광각+망원)`() {
+    fun `촬영 지점은 렌즈마다 촬영 동작을 따로 둔다(광각 → 망원, 11-03 현장)`() {
         val v = Viewpoints.expand(poles, overhead, home)
         val both = files(v, overhead, null).getValue("wpmz/waylines.wpml")
-        assertEquals(3, Regex("<wpml:payloadLensIndex>wide,zoom</wpml:payloadLensIndex>").findAll(both).count())
+        val lenses = Regex("<wpml:payloadLensIndex>([^<]+)<").findAll(both).map { it.groupValues[1] }.toList()
+        assertEquals(List(3) { listOf("wide", "zoom") }.flatten(), lenses)
+        // 옛 방식(한 동작에 렌즈를 쉼표로)은 비교 시험용으로 남긴다
+        assertEquals(List(1) { WpmlWriter.PhotoAction(listOf(com.example.myfirstapp.core.model.Lens.WIDE, com.example.myfirstapp.core.model.Lens.ZOOM), false) }, WpmlWriter.photoActions(v[0], overhead, perLens = false))
         val wideOnly = files(v, overhead.copy(lenses = listOf(com.example.myfirstapp.core.model.Lens.WIDE)), null).getValue("wpmz/template.kml")
         assertTrue("<wpml:payloadLensIndex>wide</wpml:payloadLensIndex>" in wideOnly && "zoom</wpml:payloadLensIndex>" !in wideOnly)
     }
@@ -120,8 +123,8 @@ class WpmlTransitTest {
         bank.forEach { assertTrue(it.equipmentPitchDeg!! < it.gimbalPitchDeg) } // 머리보다 2m 아래라 더 숙임
         assertTrue(v.filter { it.pole.poleId != "P0" }.all { it.equipmentPitchDeg == null })
         val wpml = files(v, diag, null).getValue("wpmz/waylines.wpml")
-        assertEquals(4, Regex("_E</wpml:fileSuffix>").findAll(wpml).count())
-        assertEquals(12 + 4, Regex("<wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>").findAll(wpml).count())
+        assertEquals(8, Regex("_E</wpml:fileSuffix>").findAll(wpml).count())
+        assertEquals((12 + 4) * 2, Regex("<wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>").findAll(wpml).count())
         // 전주 위 방식과 설정에서 비운 기기는 설비 사진이 없다
         assertTrue(Viewpoints.expand(withBank, overhead, home).all { it.equipmentPitchDeg == null })
         assertTrue(Viewpoints.expand(withBank, diag.copy(equipmentDropM = emptyMap()), home).all { it.equipmentPitchDeg == null })

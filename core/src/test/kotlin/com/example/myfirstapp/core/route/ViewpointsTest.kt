@@ -82,7 +82,7 @@ class ViewpointsTest {
         assertEquals(setOf("wpmz/template.kml", "wpmz/waylines.wpml"), files.keys)
         val wpml = files.getValue("wpmz/waylines.wpml")
         assertEquals(12, Regex("<Placemark>").findAll(wpml).count())
-        assertEquals(12, Regex("takePhoto").findAll(wpml).count())
+        assertEquals(24, Regex("takePhoto").findAll(wpml).count()) // 렌즈마다 동작(광각·망원)
         assertTrue("<wpml:fileSuffix>P0_0</wpml:fileSuffix>" in wpml)
         assertTrue("coordinateTurn" !in wpml) // 모든 지점에서 멈춘 뒤 돈다(오류 1546 방지)
         val headings = Regex("<wpml:waypointHeadingAngle>([-0-9.]+)<").findAll(wpml).map { it.groupValues[1].toDouble() }.toList()
@@ -101,7 +101,7 @@ class ViewpointsTest {
         val bytes = ByteArrayOutputStream().also { WpmlWriter.write(v, FlightParams(shotMode = ShotMode.OVERHEAD), it, nowMs = 0) }.toByteArray()
         val wpml = ZipInputStream(bytes.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name.endsWith("wpml") }.let { z.readBytes().decodeToString() } }
         assertEquals(2, Regex("<Placemark>").findAll(wpml).count())
-        assertEquals(1, Regex("takePhoto").findAll(wpml).count())
+        assertEquals(2, Regex("takePhoto").findAll(wpml).count())
     }
 
     @Test

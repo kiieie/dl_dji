@@ -16,7 +16,8 @@ import java.util.zip.ZipOutputStream
  * 형식은 현장에서 M3E로 실제 비행한 KMZ(대평선 M1~M6)를 따른다.
  *
  * - 모든 촬영 지점에서 멈춘 뒤 돈다(`toPointAndStopWithDiscontinuityCurvature`). 사진이 흔들리지 않고, 현장 업로드 오류 1546(시작·끝 회전)도 생기지 않는다.
- * - 지점마다 도착하면 짐벌 피치를 맞추고 [FlightParams.lenses](기본 광각+망원, 2026-10-30 사용자 결정)로 한 번 찍는다(렌즈마다 파일 1개). 파일 이름 끝(`fileSuffix`)에 전주번호와 지점 번호를 붙여 SD 사진과 전주를 잇는다.
+ * - 지점마다 도착하면 짐벌 피치를 맞추고 [FlightParams.lenses](기본 광각+망원, 2026-10-30 사용자 결정)로 찍는다. 렌즈마다 촬영 동작을 따로 둔다([photoActions], 2026-11-04).
+ *   파일 이름 끝(`fileSuffix`)에 전주번호와 지점 번호를 붙여 SD 사진과 전주를 잇는다.
  * - 고도는 지형 추적이면 지면 기준, 아니면 이륙 지점 기준이다([heightMode]). 다른 전주로 가는 구간·이륙 뒤 첫 구간·복귀 구간이 [FlightParams.transitLegThresholdM]보다 길면
  *   이동 고도로 올라갔다 내려온다(5.6). 그 밖의 구간은 촬영 고도로 곧게 난다.
  */
@@ -33,6 +34,19 @@ object WpmlWriter {
         val shot: Int?,
         val poi: Pole?,
     )
+
+    /** 지점의 촬영 동작 하나: [lenses]는 이 동작의 `payloadLensIndex`(렌즈마다 파일 1장을 기대), [equipment]는 설비 조준 사진(5.6). */
+    data class PhotoAction(val lenses: List<Lens>, val equipment: Boolean)
+
+    /**
+     * 촬영 지점 [v]의 촬영 동작(KMZ 순서). 렌즈마다 따로면([perLens], 기본 [Tuning.Photo.ACTION_PER_LENS]) 광각 → 망원,
+     * 아니면 한 동작에 모든 렌즈. 설치기기 전주는 짐벌을 내린 뒤 같은 동작을 한 번 더(5.6). 어댑터가 사진 파일을 동작 순서로 가를 때도 쓴다(6.4).
+     */
+    fun photoActions(v: Viewpoint, p: FlightParams, perLens: Boolean = Tuning.Photo.ACTION_PER_LENS): List<PhotoAction> {
+        val lenses = p.lenses.distinct().ifEmpty { listOf(Lens.WIDE) }
+        val groups = if (perLens) lenses.map { listOf(it) } else listOf(lenses)
+        return listOfNotNull(false, v.equipmentPitchDeg?.let { true }).flatMap { e -> groups.map { PhotoAction(it, e) } }
+    }
 
     /** M3E 기체·카메라 값(현장 KMZ와 같음). M3T는 기체 77/1, 카메라 67. */
     private const val DRONE_ENUM = 77
@@ -146,10 +160,10 @@ object WpmlWriter {
         "<wpml:waypointTurnParam><wpml:waypointTurnMode>toPointAndStopWithDiscontinuityCurvature</wpml:waypointTurnMode><wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist></wpml:waypointTurnParam>"
 
     /** 촬영 지점에만 동작을 넣는다(이동 고도·마무리 지점은 동작 없음). */
-    private fun shotActions(i: Int, v: Waypoint, shots: List<Viewpoint>, p: FlightParams) = v.shot?.let { actions(i, shots[it], v.poi, lensIndex(p)) } ?: ""
+    private fun shotActions(i: Int, v: Waypoint, shots: List<Viewpoint>, p: FlightParams) = v.shot?.let { actions(i, shots[it], v.poi, photoActions(shots[it], p)) } ?: ""
 
     /** WPML `payloadLensIndex`: 렌즈를 쉼표로(예: `wide,zoom`). 망원 배율은 어댑터가 미션 전에 [FlightParams.zoomRatio]로 맞춘다. */
-    fun lensIndex(p: FlightParams) = p.lenses.distinct().joinToString(",") {
+    fun lensIndex(lenses: List<Lens>) = lenses.distinct().joinToString(",") {
         when (it) {
             Lens.WIDE -> "wide"
             Lens.ZOOM -> "zoom"
@@ -207,19 +221,19 @@ ${shotActions(i, v, shots, p)}
     }
 
     /**
-     * 도착하면 차례로: (사선) 기수를 이 지점의 전주로 → 짐벌 피치 맞추기 → [lenses] 렌즈로 촬영
+     * 도착하면 차례로: (사선) 기수를 이 지점의 전주로 → 짐벌 피치 맞추기 → [photos] 차례로 촬영(광각 → 망원)
      * → (설치기기 전주) 짐벌만 설비 쪽으로 내려 한 번 더 촬영(파일 이름 끝 `_E`, 5.6).
      * 사선은 구간 관심점이 다음 전주라 도착 뒤 기수가 그쪽으로 돌 수 있어, 찍기 전에 이 전주로 되돌린다(가까운 쪽으로).
      */
-    private fun actions(i: Int, v: Viewpoint, poi: Pole?, lenses: String): String {
+    private fun actions(i: Int, v: Viewpoint, poi: Pole?, photos: List<PhotoAction>): String {
         var id = 0
         val body = buildString {
             if (poi != null) append(rotateYaw(id++, v, poi))
             append(gimbal(id++, v.gimbalPitchDeg))
-            append(photo(id++, fileSuffix(v), lenses))
+            photos.filter { !it.equipment }.forEach { append(photo(id++, fileSuffix(v), lensIndex(it.lenses))) }
             v.equipmentPitchDeg?.let {
                 append(gimbal(id++, it))
-                append(photo(id++, "${fileSuffix(v)}_E", lenses))
+                photos.filter { a -> a.equipment }.forEach { a -> append(photo(id++, "${fileSuffix(v)}_E", lensIndex(a.lenses))) }
             }
         }
         return """        <wpml:actionGroup><wpml:actionGroupId>$i</wpml:actionGroupId><wpml:actionGroupStartIndex>$i</wpml:actionGroupStartIndex><wpml:actionGroupEndIndex>$i</wpml:actionGroupEndIndex><wpml:actionGroupMode>sequence</wpml:actionGroupMode><wpml:actionTrigger><wpml:actionTriggerType>reachPoint</wpml:actionTriggerType></wpml:actionTrigger>

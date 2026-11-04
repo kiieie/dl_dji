@@ -24,6 +24,12 @@ object AppConfig {
         /** 미션 완료·멈춤 뒤 늦게 온 사진도 지점 사진으로 받는 유예. */
         const val PHOTO_GRACE_MS = 5_000L
 
+        /**
+         * 카메라 명령(렌즈·줌·사진/영상·녹화·촬영) 하나의 응답 기다림. 넘으면 실패로 보고 화면 값을 되돌린다
+         * (2026-11-03 현장: 콜백이 안 오면 뒤 명령이 모두 멈췄음).
+         */
+        const val CAMERA_CMD_MS = 5_000L
+
         /** 화면 수동 촬영 뒤 새 사진 알림 기다림. */
         const val NEW_PHOTO_MS = 5_000L
 
@@ -70,6 +76,9 @@ object AppConfig {
 
         /** 미리보기 사진 JPEG 품질. */
         const val PREVIEW_JPEG_QUALITY = 90
+
+        /** 장애물이 가까울 때(`Tuning.Obstacle.LOG_M`) 운용 로그를 남기는 최소 간격(4.4). */
+        const val OBSTACLE_LOG_MS = 1_000L
 
         /** RC 스틱 로그: 가운데에서 이만큼 벗어나야 움직임으로 본다. */
         const val STICK_DEADBAND = 30

@@ -47,8 +47,8 @@ object DjiPoc {
 
     private fun log(text: String) = text.also { Log.i("DjiPoc", it) }
 
-    private suspend fun done(call: (CommonCallbacks.CompletionCallback) -> Unit) = djiDone(call)
-    private suspend fun <T> value(call: (CommonCallbacks.CompletionCallbackWithParam<T>) -> Unit) = djiValue(call)
+    private suspend fun done(call: (CommonCallbacks.CompletionCallback) -> Unit) = djiDone(call = call)
+    private suspend fun <T> value(call: (CommonCallbacks.CompletionCallbackWithParam<T>) -> Unit) = djiValue(call = call)
 
     private inline fun <T> step(name: String, call: () -> T): T =
         try { call() } catch (e: DjiException) { throw Exception("$name: ${e.message}") }

@@ -66,8 +66,17 @@ interface DroneGateway {
     /** 짐벌 중앙 ↔ 아래 전환(Pilot 2 짐벌 모드, RC C2). */
     suspend fun toggleGimbal(): Result<Unit> = Result.failure(UnsupportedOperationException("짐벌 전환 미지원"))
 
-    /** 망원 렌즈 줌 배율(10.4.3 줌 +/−). */
+    /** 망원 렌즈 줌 배율(10.4.3 줌 +/−). 기체가 받는 범위([zoomRange]) 밖이면 범위 안으로 맞춘다. */
     suspend fun setZoom(ratio: Double): Result<Unit> = Result.failure(UnsupportedOperationException("줌 미지원"))
+
+    /** 망원 렌즈가 받는 줌 배율 범위. 모르면 null(그때는 [ZOOM_STEPS] 그대로). */
+    suspend fun zoomRange(): ClosedFloatingPointRange<Double>? = null
+
+    /** 기체가 알려 주는 지금 줌 배율(명령 뒤 다시 읽어 화면에 실제 값을 보인다). 모르면 null. */
+    suspend fun zoomRatio(): Double? = null
+
+    /** 기체가 알려 주는 지금 FPV 렌즈(렌즈 전환 확인). 모르면 null. */
+    suspend fun videoLens(): Lens? = null
 
     /** 카메라 사진 ↔ 영상 모드(10.4.3 사진/영상). */
     suspend fun setVideoMode(on: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException("영상 모드 미지원"))
@@ -82,10 +91,13 @@ class MissionStartRejected(message: String, cause: Throwable? = null) : Exceptio
 /** 줌 단계(10.4.3). */
 val ZOOM_STEPS = listOf(1.0, 2.0, 4.0, 7.0, 14.0, 28.0)
 
+/** 기체 줌 범위 안의 단계: 범위 밖 단계는 범위 끝으로 모은다. */
+fun zoomSteps(range: ClosedFloatingPointRange<Double>?): List<Double> = if (range == null) ZOOM_STEPS else ZOOM_STEPS.map { it.coerceIn(range) }.distinct()
+
 /** [current]에서 한 단계 위([up]) 또는 아래. 단계 사이 값이면 가장 가까운 다음 단계로 간다. */
-fun nextZoom(current: Double, up: Boolean): Double =
-    if (up) ZOOM_STEPS.firstOrNull { it > current + 1e-6 } ?: ZOOM_STEPS.last()
-    else ZOOM_STEPS.lastOrNull { it < current - 1e-6 } ?: ZOOM_STEPS.first()
+fun nextZoom(current: Double, up: Boolean, steps: List<Double> = ZOOM_STEPS): Double =
+    if (up) steps.firstOrNull { it > current + 1e-6 } ?: steps.last()
+    else steps.lastOrNull { it < current - 1e-6 } ?: steps.first()
 
 /** 구간 미션: 현재 위치에서 이동 고도로 목표 상공까지 간 뒤 점검 고도로 내려간다(6.2). */
 data class LegMission(
@@ -119,9 +131,6 @@ sealed interface DroneEvent {
 
     /** 방식 A: [index]번 지점에서 미션 동작으로 사진이 찍힘. */
     data class PhotoTaken(val index: Int, val capture: CaptureInfo) : DroneEvent
-
-    /** RC 셔터 버튼으로 기체가 찍은 사진(6.4 RC 셔터). [capture]의 위치·자세는 파일이 생긴 때의 텔레메트리, 지점 번호는 없다. */
-    data class ShutterPhoto(val capture: CaptureInfo) : DroneEvent
 
     /** 방식 A: 마지막 지점을 지나 미션이 끝남(완료 동작 RTH가 이어짐). */
     data object MissionFinished : DroneEvent

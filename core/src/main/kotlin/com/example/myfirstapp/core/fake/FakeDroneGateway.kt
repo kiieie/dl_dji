@@ -257,13 +257,6 @@ class FakeDroneGateway(
         _events.tryEmit(DroneEvent.PausedByRc)
     }
 
-    /** RC 셔터 버튼: 기체가 직접 찍고 어댑터가 셔터 사진으로 알린다(실제 기체는 `MediaClassifier`가 가름). 찍은 사진을 돌려준다. */
-    fun pressRcShutter(): CaptureInfo {
-        val t = _telemetry.value
-        return CaptureInfo("FAKE_${++mediaSeq}", Lens.WIDE, t.position, t.altitudeM, t.gimbalPitchDeg, t.headingDeg, System.currentTimeMillis())
-            .also { sdCard += it; _events.tryEmit(DroneEvent.ShutterPhoto(it)) }
-    }
-
     fun pressRcResume() {
         _events.tryEmit(DroneEvent.ResumeByRc)
     }

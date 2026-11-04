@@ -24,6 +24,8 @@ data class Telemetry(
     val verticalSpeedMps: Double = 0.0,
     /** 조종기 GPS 위치(지도의 파란 점, 10.5.4). 모르면 null. */
     val rcPosition: GeoPoint? = null,
+    /** 모터가 도는 중(땅에서 시동 포함). 충돌 경고 신호음은 모터가 돌거나 떠 있을 때만 낸다(10.5.3). */
+    val motorsOn: Boolean = false,
 ) {
     val isFlying: Boolean get() = flightMode != FlightMode.ON_GROUND && flightMode != FlightMode.UNKNOWN
 
