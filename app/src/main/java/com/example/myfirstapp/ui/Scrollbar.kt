@@ -34,9 +34,10 @@ fun Modifier.scrollbar(state: LazyListState): Modifier = drawWithContent {
     drawRoundRect(Thumb, Offset(x, top), Size(w, len), r)
 }
 
-/** 격자 목록용(라이브러리 카드 2열, 10.5.8): 보이는 칸 수 비율로 막대 길이를 잡는다. */
+/** 격자 목록용(라이브러리 카드 2열, 10.5.8): 보이는 칸 수 비율로 막대 길이를 잡는다. 한 화면에 다 들어가면 그리지 않는다(Pilot 2 라이브러리). */
 fun Modifier.scrollbar(state: androidx.compose.foundation.lazy.grid.LazyGridState): Modifier = drawWithContent {
     drawContent()
+    if (!state.canScrollForward && !state.canScrollBackward) return@drawWithContent
     val w = 4.dp.toPx()
     val inset = 4.dp.toPx()
     val track = size.height - 2 * inset

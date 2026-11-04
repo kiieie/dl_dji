@@ -73,12 +73,15 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.drone.AircraftStatus
 import com.example.myfirstapp.drone.djiAircraftStatus
 import com.example.myfirstapp.ui.FullscreenAlertDialog
+import com.example.myfirstapp.ui.album.Photo
+import androidx.compose.ui.graphics.Brush
 import com.example.myfirstapp.ui.flight.PoleDone
 import com.example.myfirstapp.ui.flight.PoleFailed
 import com.example.myfirstapp.ui.flight.PolePending
 import com.example.myfirstapp.ui.mission.STATUS_TITLE
 import com.example.myfirstapp.ui.mission.statusColor
 import com.example.myfirstapp.ui.theme.DarkButton
+import com.example.myfirstapp.ui.theme.HomeTileFallback
 import com.example.myfirstapp.ui.theme.Warning
 import androidx.compose.ui.draw.alpha
 import com.example.myfirstapp.ui.theme.numberStyle
@@ -151,8 +154,13 @@ fun HomeScreen(
             }
             MissionCard(latest, Modifier.weight(1f).fillMaxWidth(), onRoutes, onFlight, onNewPlan)
             Row(Modifier.padding(top = 8.dp).height(104.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HomeTile(R.drawable.ic_route, "비행 경로", "라이브러리 · 전주 파일 · 계획", Modifier.weight(1f), onClick = onRoutes)
-                HomeTile(R.drawable.ic_album, "앨범", "사진 모아 보기", Modifier.weight(1f)) { onAlbum(latest?.projectId ?: 0, latest?.missionId ?: 0) }
+                // Pilot 2 타일(p2s_1): 바탕 그림 위 흰 제목. 비행 경로는 최근 경로 그림, 앨범은 최근 사진
+                HomeTile("비행 경로", Modifier.weight(1f), onClick = onRoutes) {
+                    latest?.takeIf { it.route.isNotEmpty() }?.let { RoutePreview(it.route, it.home, Modifier.fillMaxSize(), labels = false) }
+                }
+                HomeTile("앨범", Modifier.weight(1f), onClick = { onAlbum(latest?.projectId ?: 0, latest?.missionId ?: 0) }) {
+                    s.latestPhoto?.let { Photo(it, Modifier.fillMaxSize(), sample = 8) }
+                }
             }
         }
         AircraftPanel(s.aircraft, Modifier.weight(1f).fillMaxHeight(), onHms = onAircraftCheck, onDetail = { sheet = HomeSheet.AIRCRAFT }, onCamera = onCamera)
@@ -246,9 +254,10 @@ private fun AircraftPanel(a: AircraftStatus, modifier: Modifier, onHms: () -> Un
         Column(Modifier.weight(1f).fillMaxWidth().clickable(onClickLabel = "기체 세부", onClick = onDetail), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             // 기체 그림(Pilot 2 홈): DJI 그림 대신 간단한 쿼드콥터 선 그림. 연결 안 되면 흐리게
             AircraftDrawing(Modifier.size(200.dp, 110.dp).alpha(if (a.connected) 1f else 0.45f))
+            // Pilot 2: 이름은 가운데(18sp), ⇋는 오른쪽. TooltipBox에는 align이 먹지 않아(⇋가 왼쪽에 붙음, 11-04 3차) 끝 정렬 Row에 둔다
             Box(Modifier.fillMaxWidth().padding(top = 10.dp)) {
-                Text(a.model?.uppercase() ?: "기체 연결 안 됨", Modifier.align(Alignment.Center), fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                AircraftSwitch(Modifier.align(Alignment.CenterEnd))
+                Text(a.model?.uppercase() ?: "기체 연결 안 됨", Modifier.align(Alignment.Center), fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Row(Modifier.matchParentSize(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) { AircraftSwitch(Modifier) }
             }
             if (a.simulator) Text("시뮬레이터", fontSize = FontSize.Caption, color = Warning)
             Row(Modifier.padding(top = 18.dp).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
@@ -311,7 +320,8 @@ private fun MissionCard(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.Bottom) {
                         Figure("전주", "${m.done}", "/${m.total}")
-                        Figure("소티", "${m.sorties}")
+                        // 소티 지금/전체(10.5.11, 라이브러리·상단 바와 같은 정의)
+                        Figure("소티", "${m.sortieNow}", "/${m.sorties}")
                         Figure("사진", "${m.photosTaken}", "/${m.photos}")
                         Text(if (m.shotMode == ShotMode.DIAGONAL4) "4방향 사선" else "전주 위", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -360,28 +370,17 @@ private fun Figure(label: String, value: String, suffix: String = "") {
     )
 }
 
-/** 오른쪽 타일(Pilot 2 홈 타일): 위 아이콘, 아래 이름과 한 줄 설명. */
+/**
+ * 타일(Pilot 2 홈 p2s_1): [background] 그림(최근 경로·최근 사진, 없으면 회색)을 꽉 채우고 왼쪽 위에 흰 제목.
+ * 밝은 그림 위에서도 읽히게 위쪽에 어두운 그러데이션을 깐다.
+ */
 @Composable
-private fun HomeTile(
-    icon: Int,
-    title: String,
-    subtitle: String,
-    modifier: Modifier,
-    enabled: Boolean = true,
-    iconTint: Color = MaterialTheme.colorScheme.onSurface,
-    onClick: () -> Unit,
-) {
-    val dim = MaterialTheme.colorScheme.outline
-    Surface(
-        onClick = onClick, enabled = enabled, modifier = modifier.fillMaxHeight(), shape = RoundedCornerShape(6.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Icon(painterResource(icon), contentDescription = null, tint = if (enabled) iconTint else dim, modifier = Modifier.size(26.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = if (enabled) MaterialTheme.colorScheme.onSurface else dim)
-                Text(subtitle, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+private fun HomeTile(title: String, modifier: Modifier, onClick: () -> Unit, background: @Composable () -> Unit) {
+    Surface(onClick = onClick, modifier = modifier.fillMaxHeight(), shape = RoundedCornerShape(6.dp), color = HomeTileFallback) {
+        Box {
+            background()
+            Box(Modifier.fillMaxWidth().height(40.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))))
+            Text(title, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = Color.White)
         }
     }
 }

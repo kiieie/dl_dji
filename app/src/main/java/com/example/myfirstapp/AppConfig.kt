@@ -64,6 +64,9 @@ object AppConfig {
         /** 떠 있는 동안 비행 궤적 기록 간격(4.4). */
         const val TRACK_MS = 1_000L
 
+        /** FPV 영상 프레임 크기 다시 읽기 간격(사진·영상 모드를 바꾸면 비율이 바뀜, 10.5.2 격자 자리). */
+        const val FPV_SIZE_MS = 1_000L
+
         /** 계획 입력이 바뀐 뒤 경로를 다시 계산하기 전 기다림. */
         const val REPLAN_DEBOUNCE_MS = 300L
 
@@ -118,10 +121,10 @@ object AppConfig {
         const val SINGLE_POINT_ZOOM = 17.0
 
         /**
-         * 큰 지도에서 웨이포인트 번호·고도 라벨을 보이는 최소 확대(10.5.4). Pilot 2는 3km 경로 전체가 보이는 확대(약 15~16)에서도 보인다(p2s_2).
-         * 겹치는 라벨은 소티 순서로 앞의 것만 남긴다(FlightMap).
+         * 큰 지도에서 웨이포인트 번호·고도 라벨을 보이는 최소 확대(10.5.4). Pilot 2는 경로 전체가 보이는 확대에서도 보인다(p2s_2·p2s_7).
+         * 11-04 3차: 15면 미션 전체 보기(약 13~14)에서 하나도 안 보여 낮춤. 어지러움은 겹침 숨김(소티 순서로 앞의 것만, FlightMap)이 막는다.
          */
-        const val WAYPOINT_MIN_ZOOM = 15
+        const val WAYPOINT_MIN_ZOOM = 11
 
         /** 지도 비행 궤적(10.5.4 주황 선): 앞 점에서 이만큼(m) 움직여야 점을 더한다. */
         const val TRACK_MIN_STEP_M = 2.0

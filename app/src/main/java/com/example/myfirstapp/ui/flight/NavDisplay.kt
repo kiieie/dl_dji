@@ -1,6 +1,9 @@
 package com.example.myfirstapp.ui.flight
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,11 +61,12 @@ data class NextWaypoint(val number: Int, val distanceM: Double, val at: GeoPoint
 
 /**
  * 내비게이션 디스플레이(10.5.3, Pilot 2 카메라 뷰 아래 가운데) 300×120. 원판은 채운 어두운 원이고 **기수가 위**, 30° 눈금과 N·E·S·W·숫자 방위가 돈다(위에 기수 방위 숫자).
- * 가운데 기체, 노란 H(홈 방향), 파란 점(조종기, 5m 넘을 때), 둘 다 [Tuning.Display.NAV_RIM_M] 넘으면 가장자리. 다음 웨이포인트는 테두리에 파란 ▽.
+ * 방위 글자는 눈금 안쪽 띠, 그 안에 얇은 원. 가운데 기체, 노란 H(홈 방향), 파란 점(조종기, 5m 넘을 때), 둘 다 [Tuning.Display.NAV_RIM_M] 넘으면 가장자리.
+ * 다음 웨이포인트는 테두리 눈금 띠에 파란 ▽(글자를 가리지 않음).
  * 장애물: 앞·오른쪽·뒤·왼쪽 부채꼴(감지 범위 안 초록, 경고 주황, 제동 빨강), 오른쪽 세로 막대 위·아래, 감지 꺼짐 "OFF"·값 없음 "NA".
- * 원판 왼쪽 세로 막대는 짐벌 피치(파란 표지, 위 +35° ~ 아래 -90°, 흰 눈금 0°).
+ * 원판 왼쪽 세로 막대는 짐벌 피치(파란 표지, 위 +35° ~ 아래 -90°, 30°마다 눈금, 긴 흰 눈금 0°).
  * 왼쪽 열: WS 풍속·풍향 화살표, 짐벌 각(0°면 노랑), 작은 "SPD m/s"와 속도. 오른쪽 열: VS, 고도와 작은 "ALT m", ASL(모르면 "--").
- * 아래: 홈까지 거리. 왼쪽 위: 다음 웨이포인트 거리(위)와 번호▽(아래).
+ * 아래: 홈까지 거리와 오른쪽 위 작은 노란 H. 왼쪽 위: 다음 웨이포인트 거리(위)와 번호▽(아래).
  */
 @Composable
 fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = ObstacleWarning(), next: NextWaypoint? = null, modifier: Modifier = Modifier) {
@@ -92,15 +96,17 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = Obsta
                     drawArc(color, deg - 90f - 35f, 70f, useCenter = false, topLeft = c - Offset(r - w / 2, r - w / 2), size = Size(2 * r - w, 2 * r - w), style = Stroke(w))
                 }
             }
-            // 30° 눈금과 방위 글자(N·E·S·W, 나머지는 방위/10)
+            // 30° 눈금(테두리)과 방위 글자(N·E·S·W, 나머지는 방위/10). 글자는 눈금 안쪽 띠: 테두리의 다음 웨이포인트 ▽가 글자를 가리지 않게(11-04 3차)
             for (b in 0 until 360 step 30) {
                 val a = navAngle(b.toDouble(), t.headingDeg)
                 drawLine(Color.White, at(a, r), at(a, r - 4.dp.toPx()), 1.dp.toPx())
                 val label = when (b) { 0 -> "N"; 90 -> "E"; 180 -> "S"; 270 -> "W"; else -> "${b / 10}" }
                 val m = measurer.measure(label, if (b % 90 == 0) small.copy(fontWeight = FontWeight.Bold) else small.copy(color = TextSoft))
-                val p = at(a, r - 11.dp.toPx())
+                val p = at(a, r - 15.dp.toPx())
                 drawText(m, topLeft = Offset(p.x - m.size.width / 2f, p.y - m.size.height / 2f))
             }
+            // 안쪽 얇은 원(Pilot 2)
+            drawCircle(Color.White.copy(alpha = 0.3f), r - 23.dp.toPx(), c, style = Stroke(1.dp.toPx()))
             // 기수 표시(위 가운데 초록 눈금)
             drawLine(Tertiary, Offset(c.x, c.y - r - 3.dp.toPx()), Offset(c.x, c.y - r + 5.dp.toPx()), 2.dp.toPx())
             homeAt?.let { (x, y) ->
@@ -110,10 +116,10 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = Obsta
                 drawText(h, topLeft = Offset(p.x - h.size.width / 2f, p.y - h.size.height / 2f))
             }
             rcAt?.let { (x, y) -> drawCircle(Accent, 3.5.dp.toPx(), Offset(c.x + (x * r).toFloat(), c.y + (y * r).toFloat())) }
-            // 다음 웨이포인트: 테두리 안쪽에 파란 ▽(Pilot 2), 거리와 관계없이 방향만
+            // 다음 웨이포인트: 테두리 눈금 띠에 파란 ▽(Pilot 2), 거리와 관계없이 방향만. 방위 글자는 그 안쪽이라 겹치지 않는다
             nextAt?.let { (x, y) ->
                 val n = hypot(x, y).takeIf { it > 0 } ?: return@let
-                val rr = r - 9.dp.toPx()
+                val rr = r - 4.dp.toPx()
                 val p = Offset(c.x + (x / n * rr).toFloat(), c.y + (y / n * rr).toFloat())
                 val a = 4.dp.toPx()
                 drawPath(Path().apply { moveTo(p.x - a, p.y - a * 0.7f); lineTo(p.x + a, p.y - a * 0.7f); lineTo(p.x, p.y + a); close() }, Accent, style = Stroke(1.5.dp.toPx()))
@@ -143,6 +149,12 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = Obsta
             val up = Tuning.Display.GIMBAL_BAR_UP_DEG
             val span = up - Tuning.Display.GIMBAL_BAR_DOWN_DEG
             drawRect(Color.White.copy(alpha = 0.45f), Offset(gx + bw / 2 - u / 2, barTop), Size(u, 2 * half))
+            // 30°마다 짧은 눈금(Pilot 2), 0°는 긴 흰 눈금
+            var deg = 30.0
+            while (deg >= Tuning.Display.GIMBAL_BAR_DOWN_DEG) {
+                if (deg != 0.0) drawRect(Color.White.copy(alpha = 0.7f), Offset(gx, barTop + 2 * half * ((up - deg) / span).toFloat() - u / 2), Size(bw, u))
+                deg -= 30.0
+            }
             drawRect(Color.White, Offset(gx - u, barTop + 2 * half * (up / span).toFloat()), Size(bw + 2 * u, u))
             val f = ((up - t.gimbalPitchDeg) / span).toFloat().coerceIn(0f, 1f)
             drawRoundRect(Accent, Offset(gx - u, barTop + 2 * half * f - 2.5f * u), Size(bw + 2 * u, 5 * u), CornerRadius(u))
@@ -196,6 +208,11 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = Obsta
             homeDist?.let { "%.0fm".format(it) } ?: "--", Modifier.align(Alignment.BottomCenter).semantics { contentDescription = "홈까지 거리" },
             style = numberStyle(FontSize.Micro), color = Color.White,
         )
+        // 홈 거리 표지: 원판 오른쪽 아래 작은 노란 H(Pilot 2 p2_mission2)
+        Box(
+            Modifier.align(Alignment.BottomCenter).offset(x = 24.dp, y = (-8).dp).size(11.dp).clip(CircleShape).background(Caution),
+            contentAlignment = Alignment.Center,
+        ) { Text("H", style = numberStyle(8.sp, FontWeight.Bold), color = Color.Black, maxLines = 1) }
     }
 }
 

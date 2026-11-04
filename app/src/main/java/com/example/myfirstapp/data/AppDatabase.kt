@@ -570,6 +570,10 @@ interface ProjectDao {
     @Query("SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId")
     suspend fun missionCaptureCount(missionId: Long): Int
 
+    /** 가장 최근에 받은 사진 파일(홈 앨범 타일 바탕, 10.5.5). 없으면 null. */
+    @Query("SELECT filePath FROM capture WHERE filePath IS NOT NULL ORDER BY id DESC LIMIT 1")
+    suspend fun latestPhotoPath(): String?
+
     /** 앨범(10.4.3 ⑦) 왼쪽 목록: 모든 미션, 최신순, 사진 수. */
     @Query(
         "SELECT m.id AS missionId, m.projectId, p.name AS projectName, m.createdAt, " +

@@ -196,7 +196,10 @@ internal fun CheckLine(c: PreflightCheck, modifier: Modifier = Modifier) {
     }
 }
 
-/** 설정 한 줄(Pilot 2: 이름 · (범위) · 오른쪽 조작). 아래 구분선(Pilot 2 줄 사이 선). */
+/**
+ * 설정 한 줄(Pilot 2: 이름 · (범위) · 오른쪽 조작). 아래 구분선(Pilot 2 줄 사이 선, 두 열 안에서는 [TwoColumns]가 긋는다).
+ * 이름이 길면 잘리지 않고 두 줄로 넘어간다("(20~1500 m)"가 잘리던 것, 11-04 3차).
+ */
 @Composable
 internal fun SettingLine(label: String, hint: String? = null, modifier: Modifier = Modifier, divider: Boolean = true, content: @Composable RowScope.() -> Unit) {
     Column(modifier) {
@@ -204,9 +207,9 @@ internal fun SettingLine(label: String, hint: String? = null, modifier: Modifier
             Text(
                 buildAnnotatedString {
                     append(label)
-                    hint?.let { withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = FontSize.Caption)) { append("  $it") } }
+                    hint?.let { withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = FontSize.Caption)) { append(" $it") } }
                 },
-                Modifier.weight(1f), fontSize = FontSize.Label, maxLines = 1,
+                Modifier.weight(1f), fontSize = FontSize.Label, maxLines = 2,
             )
             content()
         }
@@ -218,13 +221,21 @@ internal fun SettingLine(label: String, hint: String? = null, modifier: Modifier
 @Composable
 internal fun CenterDivider() = Box(Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant))
 
-/** 두 열 Row(Pilot 2 설정 두 열): 왼쪽 · 가운데 선 · 오른쪽. 줄 높이가 같게 [SettingLine]을 같은 수로 둔다. */
+/**
+ * 두 열 한 줄(Pilot 2 설정 두 열): 왼쪽 · 가운데 선 · 오른쪽을 같은 높이로 두고, 아래에 양쪽 줄 선을 같은 높이에 긋는다
+ * (두 열을 따로 쌓으면 한쪽 줄이 높을 때 선이 어긋났다, 11-04 3차). [left]·[right]는 [SettingLine]`(divider = false)` 한 줄씩.
+ */
 @Composable
 internal fun TwoColumns(left: @Composable () -> Unit, right: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-        Column(Modifier.weight(1f).padding(end = 12.dp)) { left() }
+        Box(Modifier.weight(1f).fillMaxHeight().padding(end = 12.dp), contentAlignment = Alignment.CenterStart) { left() }
         CenterDivider()
-        Column(Modifier.weight(1f).padding(start = 12.dp)) { right() }
+        Box(Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp), contentAlignment = Alignment.CenterStart) { right() }
+    }
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+        HorizontalDivider(Modifier.weight(1f).padding(end = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        CenterDivider()
+        HorizontalDivider(Modifier.weight(1f).padding(start = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -236,7 +247,7 @@ internal fun StepperCells(value: Int?, step: Int, big: Int?, range: IntRange, en
     val on = value != null && enabled
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         StepGroup(listOfNotNull(big?.let { -it }, -step), on) { d -> value?.let { onSet((it + d).coerceIn(range)) } }
-        ValueBox(value?.toString() ?: "--", 56.dp)
+        ValueBox(value?.toString() ?: "--", 48.dp)
         StepGroup(listOfNotNull(step, big), on) { d -> value?.let { onSet((it + d).coerceIn(range)) } }
     }
 }
@@ -249,7 +260,8 @@ private fun StepGroup(deltas: List<Int>, enabled: Boolean, onStep: (Int) -> Unit
             if (i > 0) Box(Modifier.width(1.dp).fillMaxHeight())
             val text = if (d > 0) "+$d" else "$d"
             Box(
-                Modifier.width(44.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                // Pilot 2 칸 폭(0242 약 38dp): 넓으면 이름 "(20~1500 m)"가 들어갈 자리가 없다
+                Modifier.width(38.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .clickable(enabled = enabled, onClickLabel = text) { onStep(d) },
                 contentAlignment = Alignment.Center,
             ) { Text(text, style = numberStyle(FontSize.Label), color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline) }

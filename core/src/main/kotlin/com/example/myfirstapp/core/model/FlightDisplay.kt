@@ -70,6 +70,30 @@ fun remainingFlightSec(t: Telemetry, needPct: Int): Int? =
  */
 fun zoomFrameFraction(ratio: Double): Double = (1.0 / (ratio * Tuning.Display.ZOOM_RATIO_PER_WIDE)).coerceIn(0.0, 1.0)
 
+/** 화면 안 영상 자리(픽셀 등 화면 단위): 왼쪽 위 [left]·[top], 폭 [width]·높이 [height]. */
+data class ContentRect(val left: Double, val top: Double, val width: Double, val height: Double)
+
+/**
+ * FPV 영상이 화면([viewW]×[viewH])에 실제로 그려지는 자리(10.5.2): 영상은 비율을 지켜 가운데 맞춘다(CENTER_INSIDE).
+ * 4:3 사진 모드 영상이면 16:9 화면 양옆에 검은 띠가 생긴다(Pilot 2). 격자·줌 영역 사각형·탭 초점은 이 안에서 쓴다.
+ * 영상 크기를 모르면(모의 기체·스트림 전) [Tuning.Display.VIDEO_ASPECT_DEFAULT](4:3)로 본다.
+ */
+fun videoContentRect(viewW: Double, viewH: Double, streamW: Int?, streamH: Int?): ContentRect {
+    val aspect = if (streamW != null && streamH != null && streamW > 0 && streamH > 0) streamW.toDouble() / streamH else Tuning.Display.VIDEO_ASPECT_DEFAULT
+    if (viewW <= 0 || viewH <= 0) return ContentRect(0.0, 0.0, 0.0, 0.0)
+    val w = minOf(viewW, viewH * aspect)
+    val h = w / aspect
+    return ContentRect((viewW - w) / 2, (viewH - h) / 2, w, h)
+}
+
+/**
+ * 소티 번호(10.5.11, 홈·라이브러리·상단 바 같은 정의): "소티 지금/전체". 지금 = 남은(대기·진행 중) 전주가 있는 첫 소티(1부터),
+ * 모두 끝났으면 전체 수. [remaining]은 소티 순서대로 남은 전주 수.
+ */
+fun currentSortie(remaining: List<Int>): Int = remaining.indexOfFirst { it > 0 }.let { if (it < 0) remaining.size else it + 1 }
+
+fun sortieLabel(current: Int, total: Int) = "소티 $current/$total"
+
 /**
  * 내비 원판(10.5.3): 기수가 위인 원판에서 [to]가 놓이는 자리. (x 오른쪽, y 아래) 단위 원 좌표이고
  * 중심에서의 거리는 [Tuning.Display.NAV_RIM_M] 넘으면 가장자리(1). 위치를 모르거나 같은 자리(0.5m 안)면 null.
