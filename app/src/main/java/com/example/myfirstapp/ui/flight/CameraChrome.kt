@@ -31,6 +31,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -323,16 +326,27 @@ internal fun RthButton(onLongPress: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
-/** 왼쪽 아래 지도 미리보기 132×92(매뉴얼 54쪽 15번). 누르면 큰 화면과 자리를 바꾼다. */
+/**
+ * 왼쪽 아래 미리보기 132×92(매뉴얼 54쪽 15번): 카메라 뷰에서는 지도, 큰 지도에서는 카메라. 누르면 큰 화면과 자리를 바꾼다.
+ * 오른쪽 위 꺾쇠로 크게([Dimens.MiniMapLarge])/작게(10.5.4).
+ */
 @Composable
 internal fun MiniMap(mapMain: Boolean, onSwap: () -> Unit, modifier: Modifier, content: @Composable (Modifier) -> Unit) {
+    var large by rememberSaveable { mutableStateOf(false) }
     Surface(
-        modifier = modifier.padding(8.dp).size(Dimens.MiniMap), shape = RoundedCornerShape(4.dp),
+        modifier = modifier.padding(8.dp).size(if (large) Dimens.MiniMapLarge else Dimens.MiniMap), shape = RoundedCornerShape(4.dp),
         color = Color.Black, border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
     ) {
         content(Modifier.fillMaxSize())
         // 지도 뷰가 터치를 먹으므로 위에 투명한 누름 영역을 둔다
         Box(Modifier.fillMaxSize().clickable(onClickLabel = if (mapMain) "영상 크게" else "지도 크게", onClick = onSwap))
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+            Canvas(Modifier.size(Dimens.TouchSmall).clickable(onClickLabel = if (large) "미리보기 작게" else "미리보기 크게") { large = !large }.padding(8.dp)) {
+                val w = 2.dp.toPx()
+                drawLine(Color.White, Offset(0f, w / 2), Offset(size.width - w / 2, w / 2), w)
+                drawLine(Color.White, Offset(size.width - w / 2, 0f), Offset(size.width - w / 2, size.height), w)
+            }
+        }
     }
 }
 

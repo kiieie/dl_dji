@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onOpenMission = { m -> openFlight(m.projectId, m.missionId) },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
+                    onLibrary = { nav.navigate("projects") { popUpTo("home") } },
                 )
             }
             // 비행경로(마스터-디테일). pid가 있으면 그 프로젝트를 고른 채 연다
@@ -194,6 +195,8 @@ class MainActivity : ComponentActivity() {
                     onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}") { inclusive = true } } },
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
+                    // 지도 [라이브러리]: 비행 화면을 닫고 그 프로젝트의 비행경로로(떠 있을 때는 버튼이 꺼짐)
+                    onLibrary = { nav.navigate("projects?pid=$pid") { popUpTo("home"); launchSingleTop = true } },
                 )
             }
             composable("result/{pid}/{mid}", ids) { e ->

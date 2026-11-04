@@ -48,7 +48,11 @@ import com.example.myfirstapp.ui.theme.FontSize
  * 오른쪽 한 열(렌즈·셔터 언제든), 왼쪽 짐벌, [RTH 길게], 착륙 확인. 왼쪽 위 [미션 이어서 비행]을 누르면 최근 미션 비행 화면으로 간다.
  */
 @Composable
-fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -> Unit, onOpenMission: (LatestMission) -> Unit, onAlbum: () -> Unit = {}) {
+fun ManualFlightScreen(
+    dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -> Unit, onOpenMission: (LatestMission) -> Unit, onAlbum: () -> Unit = {},
+    /** 큰 지도 [라이브러리](10.5.4): 비행경로 화면. 떠 있으면 끈다. */
+    onLibrary: () -> Unit = {},
+) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
     val vm: ManualFlightViewModel = viewModel(factory = ManualFlightViewModel.factory(dao, context.getExternalFilesDir(null), app.rcButtons, app.settings))
@@ -69,13 +73,13 @@ fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -
                 Text("기체 연결을 기다립니다", color = Color.White.copy(alpha = 0.5f), fontSize = FontSize.Body)
             }
         }
-        if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize()) else fpv(Modifier.fillMaxSize())
+        if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack) else fpv(Modifier.fillMaxSize())
         MiniMap(mapMain, onSwap = { mapMain = !mapMain }, Modifier.align(Alignment.BottomStart)) { m ->
             if (mapMain) fpv(m) else FlightMap(f, interactive = false, pad = List(4) { 8.dp }, m)
         }
 
         TopBar(f, onExit, onOpenSettings, label = "수동 비행", canExit = true)
-        ZoomBox(f.lens, f.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
+        if (!mapMain) ZoomBox(f.lens, f.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
 
         Column(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             // 떠 있는 동안 비행 화면으로 바꾸면 이 화면의 RTH·착륙 확인을 잃으므로 착륙한 뒤에만 보인다
@@ -89,7 +93,7 @@ fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -
         }
         Box(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 150.dp)) { OverlayIconButton(R.drawable.ic_gimbal_center, "짐벌 중앙/아래", vm::toggleGimbal) }
 
-        CameraColumn(
+        if (!mapMain) CameraColumn(
             s = f, onLens = vm::setLens,
             shutterEnabled = s.connected && !s.shooting, onShutter = vm::shutter,
             cameraEnabled = s.connected, onVideoMode = vm::setVideoMode, onZoom = vm::zoom,
@@ -102,7 +106,10 @@ fun ManualFlightScreen(dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -
             if (t?.landingConfirmNeeded == true) LandingConfirmButton(vm::confirmLanding)
             t?.let { NavDisplay(it, f.home, f.obstacles) }
         }
-        if (t != null && t.isFlying) RthButton(vm::returnHome, Modifier.align(Alignment.BottomEnd).padding(8.dp))
+        Column(Modifier.align(Alignment.BottomEnd).padding(8.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (mapMain) LibraryButton(enabled = t?.isFlying != true, onLibrary)
+            if (t != null && t.isFlying) RthButton(vm::returnHome)
+        }
     }
 }
 

@@ -30,6 +30,8 @@ import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.SortieDraft
 import com.example.myfirstapp.data.listMbtiles
 import com.example.myfirstapp.data.MapBackground
+import com.example.myfirstapp.data.MapSource
+import com.example.myfirstapp.data.pickMapSource
 import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.data.toJson
 import kotlinx.coroutines.Dispatchers
@@ -216,6 +218,15 @@ class PlanViewModel(
     }
 
     fun selectPole(id: String?) = _state.update { it.copy(selected = id) }
+
+    /** 지도 검색·과녁(10.5.7): 그 점 둘레로 지도를 옮긴다. [poleId]가 있으면(검색) 그 전주를 고른다. */
+    fun focusOn(p: GeoPoint, poleId: String? = null) = _state.update {
+        val d = AppConfig.Map.FOCUS_PAD_DEG
+        it.copy(focus = listOf(GeoPoint(p.lat - d, p.lon - d), GeoPoint(p.lat + d, p.lon + d)), selected = poleId ?: it.selected)
+    }
+
+    /** 지도 레이어(10.5.7): 배경을 바꾸고 설정에도 남긴다(계획을 저장하면 고른 배경으로 미리 받음). */
+    fun setMapSource(source: MapSource) { viewModelScope.launch { settings.pickMapSource(source).let { bg -> _state.update { it.copy(background = bg) } } } }
 
     /** 지도 탭. 도구에 따라 꼭짓점을 더하거나 이륙 지점을 정한다. 계획 대상이 바뀌면 이전 경로는 버린다. */
     fun onMapTap(p: GeoPoint) = _state.update {

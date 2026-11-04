@@ -227,14 +227,19 @@ fun MapScreen(
                     RouteInfoBand(s, inArea.size)
                     HintChip(s, inArea.size, vm)
                 }
+                // 오른쪽 지도 도구(10.5.4): 검색 · 전체 보기 · 레이어(배경 지도 고르기, 배경 끄기) · 지우기(영역) · 과녁(기체·조종기 위치로)
                 Column(Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val searchable = remember(s.poles) { s.poles.orEmpty().map { it.toPole() } }
+                    MapSearchButton(searchable, Dimens.TouchMedium) { vm.focusOn(it.position, it.poleId) }
                     MapTool("전체 보기", onClick = { fitRequest++ }) { tint -> Icon(painterResource(R.drawable.ic_fit), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp)) }
-                    MapTool(if (showBackground) "배경 끄기" else "배경 켜기", active = !showBackground, onClick = { showBackground = !showBackground }) { tint ->
-                        Icon(painterResource(R.drawable.ic_layers), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-                    }
+                    MapLayerButton(s.background.source, Dimens.TouchMedium, vm::setMapSource, background = showBackground, onToggleBackground = { showBackground = !showBackground })
                     MapTool("지우기", enabled = s.vertices.isNotEmpty(), onClick = vm::clearArea) { tint ->
                         Icon(painterResource(R.drawable.ic_erase), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
                     }
+                    MapTargetButton(
+                        Dimens.TouchMedium, aircraftKnown = s.aircraft != null, rcKnown = s.rc != null,
+                        onAircraft = { s.aircraft?.let { vm.focusOn(it) } }, onRc = { s.rc?.let { vm.focusOn(it) } },
+                    )
                 }
             }
             SidePanel(s, inArea, vm)
@@ -257,18 +262,6 @@ private fun PlanHeader(s: PlanUiState, replanFrom: Long?, onBack: () -> Unit) {
             Box(Modifier.size(6.dp).clip(CircleShape).background(c))
             Text(if (saved == null) "저장 전" else "저장됨 · 미션 #$saved", fontSize = FontSize.Caption, color = c, maxLines = 1)
         }
-    }
-}
-
-/** 흰 지도 도구 36dp(10.4.3). 쓰는 중인 도구는 파랑 테두리와 파랑 아이콘. */
-@Composable
-private fun MapTool(label: String, active: Boolean = false, enabled: Boolean = true, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
-    Surface(
-        onClick = onClick, enabled = enabled, color = Color.White, shape = RoundedCornerShape(4.dp),
-        border = if (active) BorderStroke(2.dp, Accent) else null,
-        modifier = Modifier.size(Dimens.TouchMedium).semantics { contentDescription = label },
-    ) {
-        Box(contentAlignment = Alignment.Center) { icon(if (!enabled) Color(0xFFB0B0B0) else if (active) Accent else Color.Black) }
     }
 }
 

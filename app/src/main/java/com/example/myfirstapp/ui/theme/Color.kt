@@ -58,8 +58,10 @@ val DetectedText = Color(0xFFFF6B61)
 const val MAP_AREA = "#1864AB"
 /** 이륙 지점 H([Caution]과 같은 값). */
 const val MAP_HOME = "#FFC400"
-/** 미니맵 경로 선. */
-const val MAP_ROUTE = "#E9ECEF"
+/** 비행 지도 계획 경로 선과 RTH 중 기체 → H 선(Pilot 2 녹색, 10.5.4). */
+const val MAP_ROUTE = "#19D46E"
+/** 비행 지도 실제 비행 궤적(Pilot 2 주황, 10.5.4). */
+const val MAP_TRACK = "#FF9F0A"
 /** 이륙 지점 점의 어두운 테두리. */
 const val MAP_STROKE_DARK = "#212529"
 /** 기체 화살표(Pilot 2 기체 표지, 홈 노랑과 구별되는 파랑). */

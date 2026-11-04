@@ -24,6 +24,8 @@ import com.example.myfirstapp.ui.home.LatestMission
 import com.example.myfirstapp.ui.home.loadLatestMission
 import com.example.myfirstapp.data.listMbtiles
 import com.example.myfirstapp.data.MapBackground
+import com.example.myfirstapp.data.MapSource
+import com.example.myfirstapp.data.pickMapSource
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.drone.DjiDroneGateway
@@ -76,7 +78,7 @@ class ManualFlightViewModel(
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))
         _state.update { it.copy(connected = drone != null, message = if (drone == null) "기체가 연결되지 않았습니다" else null) }
-        drone?.let { d -> viewModelScope.launch { d.telemetry.collect { t -> _state.update { it.copy(flight = it.flight.copy(telemetry = t, home = t.home)) } } } }
+        drone?.let { d -> viewModelScope.launch { d.telemetry.collect { t -> _state.update { it.copy(flight = it.flight.copy(telemetry = t, home = t.home).withTrack(t)) } } } }
         // 수동 비행 궤적은 운용 로그에(떠 있는 동안 1초마다, 4.4)
         drone?.let { d -> viewModelScope.launch { while (true) { delay(AppConfig.Polling.TRACK_MS); d.telemetry.value.takeIf { it.isFlying }?.let { logTelemetry("manual", it) } } } }
         drone?.let { d -> viewModelScope.watchObstacles(d, tone) { w -> _state.update { it.copy(flight = it.flight.copy(obstacles = w)) } } }
@@ -148,6 +150,15 @@ class ManualFlightViewModel(
         return file.name
     }
 
+
+    /** 지도 지우개(10.5.4): 비행 궤적을 지운다. */
+    fun clearTrack() = _state.update { it.copy(flight = it.flight.copy(track = emptyList())) }
+
+    /** 지도 레이어(10.5.7): 배경을 바꾸고 설정에도 남긴다. */
+    fun setMapSource(source: MapSource) {
+        val st = settings ?: return
+        viewModelScope.launch { st.pickMapSource(source).let { bg -> _state.update { it.copy(flight = it.flight.copy(background = bg)) } } }
+    }
 
     fun setLens(lens: Lens) = camera.setLens(lens)
     fun zoom(up: Boolean) = camera.zoom(up)

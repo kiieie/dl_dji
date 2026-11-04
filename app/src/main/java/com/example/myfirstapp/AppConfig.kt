@@ -117,6 +117,21 @@ object AppConfig {
 
         /** 내비 원판 가장자리 거리(m). 홈 표시를 이 거리에 맞춰 놓는다. */
         const val NAV_RANGE_M = 200.0
+
+        /** 큰 지도에서 웨이포인트 번호·고도 라벨을 보이는 최소 확대(10.5.4). 전주 라벨과 겹치지 않게 더 크게 확대해야 보인다. */
+        const val WAYPOINT_MIN_ZOOM = 18
+
+        /** 지도 비행 궤적(10.5.4 주황 선): 앞 점에서 이만큼(m) 움직여야 점을 더한다. */
+        const val TRACK_MIN_STEP_M = 2.0
+
+        /** 지도 비행 궤적 점 상한. 넘으면 오래된 점부터 버린다(2m 간격이면 약 6km). */
+        const val TRACK_MAX_POINTS = 3_000
+
+        /** 지도 검색(10.5.7) 결과 목록 개수. */
+        const val SEARCH_LIMIT = 8
+
+        /** 계획 지도 검색·과녁으로 옮길 때 그 점 둘레 여유(도, 약 50m). */
+        const val FOCUS_PAD_DEG = 0.0005
     }
 
     object Storage {
