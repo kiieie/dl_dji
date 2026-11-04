@@ -46,12 +46,17 @@ fun batteryLevel(pct: Double, lowPct: Int, criticalPct: Int): BatteryLevel = whe
 /** 배터리 띠 한 칸: 띠 폭에 대한 비율 [from]~[to](0~1)과 색 등급. */
 data class BandSegment(val from: Float, val to: Float, val level: BatteryLevel)
 
-/** 배터리 띠(Pilot 2): 0~심각 빨강, 심각~낮음 주황, 낮음 위 초록. 남은 양([pct])까지만 채운다. */
-fun batteryBand(pct: Double, lowPct: Int, criticalPct: Int): List<BandSegment> {
+/**
+ * 배터리 띠(Pilot 2, 11-04 녹화 대조): 땅에서는 남은 양([pct])까지 초록 한 칸. 떠 있고 RTH 필요량([rthPct])을 알면
+ * 빨강 0~착륙 필요량([landPct], 모르면 심각 문턱 [criticalPct], RTH 필요량을 넘지 않음) · 주황 ~RTH 필요량(노란 H 자리) · 초록 ~남은 양.
+ * 칸은 남은 양에서 자른다. 낮음·심각 문턱은 칸이 아니라 화면의 흰 점이다.
+ */
+fun batteryBand(pct: Double, flying: Boolean, rthPct: Int?, landPct: Int?, criticalPct: Int): List<BandSegment> {
     val p = (pct / 100).coerceIn(0.0, 1.0)
-    val c = criticalPct / 100.0
-    val l = maxOf(lowPct / 100.0, c)
-    return listOf(Triple(0.0, c, BatteryLevel.CRITICAL), Triple(c, l, BatteryLevel.LOW), Triple(l, 1.0, BatteryLevel.OK))
+    val rth = rthPct?.takeIf { flying && it > 0 }?.let { it / 100.0 }
+        ?: return listOfNotNull(BandSegment(0f, p.toFloat(), BatteryLevel.OK).takeIf { p > 0 })
+    val land = minOf((landPct ?: criticalPct) / 100.0, rth)
+    return listOf(Triple(0.0, land, BatteryLevel.CRITICAL), Triple(land, rth, BatteryLevel.LOW), Triple(rth, 1.0, BatteryLevel.OK))
         .mapNotNull { (a, b, lv) -> minOf(b, p).takeIf { it > a }?.let { BandSegment(a.toFloat(), it.toFloat(), lv) } }
 }
 

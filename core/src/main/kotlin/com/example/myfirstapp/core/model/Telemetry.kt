@@ -36,6 +36,8 @@ data class Telemetry(
     val criticalBatteryPct: Int? = null,
     /** 기체가 계산한 RTH에 필요한 배터리(%)와 남은 비행 시간(초)(배터리 띠 H·시간 라벨). 모르면 null(앱 추정). */
     val rthBatteryPct: Int? = null,
+    /** 기체가 계산한 지금 높이에서 착륙에 필요한 배터리(%)(배터리 띠 빨강 끝). 모르면 null(심각 문턱). */
+    val landBatteryPct: Int? = null,
     val remainingFlightSec: Int? = null,
     /** 풍속(m/s)·풍향(정북 0°, 시계 방향)(내비 WS). 모르면 null. */
     val windSpeedMps: Double? = null,

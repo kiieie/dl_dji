@@ -89,6 +89,7 @@ import com.example.myfirstapp.ui.theme.Error
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.Inactive
 import com.example.myfirstapp.ui.theme.Muted
+import com.example.myfirstapp.ui.theme.OverlayPlate
 import com.example.myfirstapp.ui.theme.SurfaceContainerHigh
 import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 import com.example.myfirstapp.ui.theme.Tertiary
@@ -146,8 +147,9 @@ internal fun TopBar(
             Modifier.fillMaxWidth().height(Dimens.HeaderCamera).background(Color.Black).padding(end = 4.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Pilot 2처럼 비행 중에도 흰색(누르면 아무 일 없음, 떠나면 실행기가 멈추므로 막는 동작은 그대로)
             IconButton(onClick = onExit, enabled = canExit, modifier = Modifier.size(Dimens.TouchSmall)) {
-                Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(14.dp), tint = if (canExit) Color.White else Inactive)
+                Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(14.dp), tint = Color.White)
             }
             com.example.myfirstapp.ui.AppBadge()
             StatusBox(warnings, alarm, connected = t != null)
@@ -277,6 +279,9 @@ private fun AircraftBattery(t: Telemetry?, returnNeedPct: Int) {
 
 internal fun mmss(sec: Int) = "%02d:%02d".format(sec / 60, sec % 60)
 
+/** 누를 수 없는 영상 위 흰 조작(셔터·줌·사진/영상)의 흐림. Pilot 2처럼 흰색을 유지한다. */
+private const val DISABLED_ALPHA = 0.45f
+
 /** 신호 막대 3개(Pilot 2 6번): 강함 흰 3개, 중간 노랑 2개, 약함 빨강 1개, 끊김 회색. 품질값이 없으면 연결 여부만. */
 @Composable
 private fun SignalBars(q: Int?, connected: Boolean) {
@@ -309,32 +314,36 @@ private fun BatteryIcon(pct: Double?, fill: Color) {
 }
 
 /**
- * 배터리 띠 3dp(Pilot 2): 0~심각 빨강, 심각~낮음 주황, 그 위 초록으로 남은 양까지([batteryBand]). 노란 H는 RTH에 필요한 양
- * (기체 값, 없으면 앱 추정 [returnNeedPct]), 초록 끝에 남은 비행 시간(mm:ss).
+ * 배터리 띠 3dp(Pilot 2, 11-04 녹화 대조): 땅에서는 남은 양까지 초록과 끝에 "--:--". 떠 있으면 빨강(착륙 필요량)·주황(RTH 필요량, 끝에 노란 H)·초록(남은 양)과
+ * 초록 끝 남은 비행 mm:ss([batteryBand]). RTH 필요량은 기체 값, 없으면 앱 추정([returnNeedPct]). 낮음·심각 문턱은 흰 점.
  */
 @Composable
 private fun BatteryBand(t: Telemetry?, returnNeedPct: Int) {
     BoxWithConstraints(Modifier.fillMaxWidth().height(3.dp).background(SurfaceContainerHigh)) {
         if (t == null || !t.connected) return@BoxWithConstraints
-        batteryBand(t.batteryPct, t.lowPct, t.criticalPct).forEach { seg ->
+        val flying = t.isFlying
+        val need = (t.rthBatteryPct ?: returnNeedPct).takeIf { flying && it > 0 }
+        batteryBand(t.batteryPct, flying, need, t.landBatteryPct, t.criticalPct).forEach { seg ->
             val c = when (seg.level) { BatteryLevel.CRITICAL -> Error; BatteryLevel.LOW -> Warning; BatteryLevel.OK -> Tertiary }
             Box(Modifier.offset(x = maxWidth * seg.from).width(maxWidth * (seg.to - seg.from)).fillMaxHeight().background(c))
         }
-        val need = t.rthBatteryPct ?: returnNeedPct
-        if (need > 0) {
+        listOf(t.criticalPct, t.lowPct).forEach { p ->
+            Box(Modifier.offset(x = maxWidth * (p / 100f).coerceIn(0f, 1f) - 2.5.dp, y = (-1).dp).size(5.dp).clip(CircleShape).background(Color.White))
+        }
+        need?.let {
             Box(
-                Modifier.offset(x = maxWidth * (need / 100f).coerceIn(0f, 1f) - 5.dp, y = (-4).dp).size(10.dp).clip(CircleShape).background(Caution)
-                    .semantics { contentDescription = "RTH 필요 $need%" },
+                Modifier.offset(x = maxWidth * (it / 100f).coerceIn(0f, 1f) - 5.dp, y = (-4).dp).size(10.dp).clip(CircleShape).background(Caution)
+                    .semantics { contentDescription = "RTH 필요 $it%" },
                 contentAlignment = Alignment.Center,
             ) { Text("H", style = numberStyle(FontSize.Micro, FontWeight.Bold), color = Color.Black) }
         }
-        remainingFlightSec(t, need)?.let { sec ->
-            Text(
-                mmss(sec), Modifier.offset(x = maxWidth * (t.batteryPct / 100).toFloat().coerceIn(0f, 0.94f), y = (-5).dp)
-                    .background(Tertiary, RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),
-                style = numberStyle(FontSize.Micro), color = Color.Black,
-            )
-        }
+        val left = if (flying) remainingFlightSec(t, need ?: 0)?.let(::mmss) else null
+        Text(
+            left ?: "--:--", Modifier.offset(x = maxWidth * (t.batteryPct / 100).toFloat().coerceIn(0f, 0.94f), y = (-5).dp)
+                .background(Color.Black, RoundedCornerShape(2.dp)).border(1.dp, Tertiary, RoundedCornerShape(2.dp)).padding(horizontal = 3.dp)
+                .semantics { contentDescription = "남은 비행 시간" },
+            style = numberStyle(FontSize.Micro), color = Tertiary,
+        )
     }
 }
 
@@ -411,7 +420,7 @@ private fun DrawScope.brackets(topLeft: Offset, sz: Size, c: Color, len: Float, 
 @Composable
 internal fun ExposureStrip(c: CameraStatus, videoMode: Boolean, focusEnabled: Boolean, onFocusMode: () -> Unit, modifier: Modifier) {
     Row(
-        modifier.height(36.dp).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp)).padding(horizontal = 8.dp),
+        modifier.height(36.dp).background(OverlayPlate, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         ExposureValue("ISO", c.iso)
@@ -427,6 +436,20 @@ internal fun ExposureStrip(c: CameraStatus, videoMode: Boolean, focusEnabled: Bo
             style = numberStyle(FontSize.Title, FontWeight.Bold), color = if (focusEnabled) Color.White else TextSoft,
         )
         ExposureValue("Storage", if (videoMode) c.recordSecLeft?.let(::mmss) else c.photosLeft?.toString())
+        AutoIcon()
+    }
+}
+
+/** 노출 띠 끝 카메라 "AUTO" 아이콘(Pilot 2 자동 노출 표시): 흰 카메라 몸통에 검은 AUTO. 누르는 기능은 없다. */
+@Composable
+private fun AutoIcon() {
+    Box(Modifier.size(28.dp, 19.dp).semantics { contentDescription = "자동 노출" }, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.matchParentSize()) {
+            val u = 1.dp.toPx()
+            drawRect(Color.White, Offset(4 * u, 0f), Size(7 * u, 3 * u))
+            drawRoundRect(Color.White, Offset(0f, 2.5f * u), Size(size.width, size.height - 2.5f * u), androidx.compose.ui.geometry.CornerRadius(2.5f * u))
+        }
+        Text("AUTO", Modifier.offset(y = 1.dp), style = numberStyle(FontSize.Micro, FontWeight.Bold), color = Color.Black, maxLines = 1)
     }
 }
 
@@ -516,23 +539,23 @@ internal fun CameraColumn(
                 Modifier.size(Dimens.TouchSmall, 28.dp).clickable(enabled = modeEnabled, onClickLabel = if (s.videoMode) "사진 모드로" else "영상 모드로") { onVideoMode(!s.videoMode) }
                     .padding(horizontal = 3.dp, vertical = 4.dp).semantics { contentDescription = if (s.videoMode) "영상 모드" else "사진 모드" },
             ) {
-                val c = if (modeEnabled) Color.White else Inactive
+                val c = Color.White.copy(alpha = if (modeEnabled) 1f else DISABLED_ALPHA)
                 val w = 2.dp.toPx()
                 drawRect(c, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), style = Stroke(w))
                 if (s.videoMode) drawCircle(Error, size.height / 4, center)
                 else drawRect(c, Offset(size.width * 0.18f, size.height * 0.25f), Size(size.width * 0.64f, size.height * 0.5f))
             }
             val since = s.recordingSinceMs
-            val ring = if (shutterEnabled) Color.White else Inactive
+            // Pilot 2 흰 셔터: 흰 고리 + 흰 원. 누를 수 없을 때는 흐리게(회색 아님)
             Box(
-                Modifier.size(44.dp).clip(CircleShape).border(2.dp, ring, CircleShape)
+                Modifier.size(44.dp).alpha(if (shutterEnabled) 1f else DISABLED_ALPHA).clip(CircleShape).border(2.dp, Color.White, CircleShape)
                     .clickable(enabled = shutterEnabled, onClickLabel = if (!s.videoMode) "촬영" else if (since == null) "녹화 시작" else "녹화 정지", onClick = onShutter),
                 contentAlignment = Alignment.Center,
             ) {
                 when {
                     since != null -> Box(Modifier.size(16.dp).clip(RoundedCornerShape(2.dp)).background(Error))
-                    s.videoMode -> Box(Modifier.size(34.dp).clip(CircleShape).background(if (shutterEnabled) Error else Inactive))
-                    else -> Box(Modifier.size(34.dp).clip(CircleShape).background(ring))
+                    s.videoMode -> Box(Modifier.size(34.dp).clip(CircleShape).background(Error))
+                    else -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color.White))
                 }
             }
             if (since != null) {
@@ -563,37 +586,42 @@ internal fun CameraColumn(
 private fun ZoomControl(ratio: Double, enabled: Boolean, onZoom: (Boolean) -> Unit, modifier: Modifier) {
     val zoom by rememberUpdatedState(onZoom)
     val stepPx = with(LocalDensity.current) { Dimens.ZoomDragStep.toPx() }
-    val c = if (enabled) Color.White else Inactive
-    Column(modifier.width(40.dp).background(ControlBg, RoundedCornerShape(4.dp)).padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        listOf(true, false).forEach { up ->
-            if (!up) {
-                Column(
-                    Modifier.pointerInput(enabled, stepPx) {
-                        if (!enabled) return@pointerInput
-                        var acc = 0f
-                        detectVerticalDragGestures(onDragStart = { acc = 0f }) { change, dy ->
-                            change.consume()
-                            acc += dy
-                            while (acc <= -stepPx) { acc += stepPx; zoom(true) }
-                            while (acc >= stepPx) { acc -= stepPx; zoom(false) }
-                        }
-                    }.semantics { contentDescription = "줌 %.1f배, 위아래로 끌어 바꾸기".format(ratio) },
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Ticks(c)
-                    Text(
-                        "Zoom\n%.1fX".format(ratio), Modifier.background(Color.White, RoundedCornerShape(3.dp)).padding(horizontal = 3.dp, vertical = 1.dp),
-                        style = numberStyle(FontSize.Micro), color = Color.Black, textAlign = TextAlign.Center,
-                    )
-                    Ticks(c)
+    val c = Color.White.copy(alpha = if (enabled) 1f else DISABLED_ALPHA)
+    // Pilot 2: 흰 + · 눈금과 흰 "Zoom 7.0X" · 흰 − 를 따로 떨어진 어두운 칸 셋으로
+    Column(modifier.width(40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        ZoomKey(true, enabled, c, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)) { onZoom(true) }
+        Column(
+            Modifier.fillMaxWidth().background(ControlBg).padding(vertical = 3.dp).pointerInput(enabled, stepPx) {
+                if (!enabled) return@pointerInput
+                var acc = 0f
+                detectVerticalDragGestures(onDragStart = { acc = 0f }) { change, dy ->
+                    change.consume()
+                    acc += dy
+                    while (acc <= -stepPx) { acc += stepPx; zoom(true) }
+                    while (acc >= stepPx) { acc -= stepPx; zoom(false) }
                 }
-            }
-            Box(
-                Modifier.fillMaxWidth().height(Dimens.TouchSmall).clickable(enabled = enabled, onClickLabel = if (up) "줌 확대" else "줌 축소") { onZoom(up) },
-                contentAlignment = Alignment.Center,
-            ) { Text(if (up) "+" else "−", fontSize = FontSize.Number, fontWeight = FontWeight.Bold, color = c) }
+            }.semantics { contentDescription = "줌 %.1f배, 위아래로 끌어 바꾸기".format(ratio) },
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Ticks(c)
+            Text(
+                "Zoom\n%.1fX".format(ratio), Modifier.background(Color.White, RoundedCornerShape(3.dp)).padding(horizontal = 3.dp, vertical = 1.dp),
+                style = numberStyle(FontSize.Micro), color = Color.Black, textAlign = TextAlign.Center,
+            )
+            Ticks(c)
         }
+        ZoomKey(false, enabled, c, RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)) { onZoom(false) }
     }
+}
+
+/** 세로 줌 + / − 칸. */
+@Composable
+private fun ZoomKey(up: Boolean, enabled: Boolean, c: Color, shape: RoundedCornerShape, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().height(Dimens.TouchSmall).clip(shape).background(ControlBg)
+            .clickable(enabled = enabled, onClickLabel = if (up) "줌 확대" else "줌 축소", onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(if (up) "+" else "−", fontSize = FontSize.Number, fontWeight = FontWeight.Bold, color = c) }
 }
 
 @Composable
@@ -610,7 +638,7 @@ private fun Ticks(c: Color) {
 
 /**
  * 왼쪽 아래 미리보기 132×92(매뉴얼 54쪽 15번): 카메라 뷰에서는 지도, 큰 지도에서는 카메라. 누르면 큰 화면과 자리를 바꾼다(RC C2와 같음).
- * 오른쪽 위 꺾쇠로 크게([Dimens.MiniMapLarge])/작게(10.5.4).
+ * 왼쪽 아래 L 꺾쇠로 크게([Dimens.MiniMapLarge])/작게(10.5.4). 카메라 칸이면 오른쪽 위에 기체 이름 "M3E"(Pilot 2).
  */
 @Composable
 internal fun MiniMap(mapMain: Boolean, onSwap: () -> Unit, modifier: Modifier, content: @Composable (Modifier) -> Unit) {
@@ -622,11 +650,19 @@ internal fun MiniMap(mapMain: Boolean, onSwap: () -> Unit, modifier: Modifier, c
         content(Modifier.fillMaxSize())
         // 지도 뷰가 터치를 먹으므로 위에 투명한 누름 영역을 둔다
         Box(Modifier.fillMaxSize().clickable(onClickLabel = if (mapMain) "영상 크게" else "지도 크게", onClick = onSwap))
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
-            Canvas(Modifier.size(Dimens.TouchSmall).clickable(onClickLabel = if (large) "미리보기 작게" else "미리보기 크게") { large = !large }.padding(8.dp)) {
+        // 큰 화면이 지도면 이 칸은 카메라(Pilot 2 "M3E")
+        if (mapMain) Box(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp), contentAlignment = Alignment.TopEnd) {
+            Text("M3E", fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+        // 왼쪽 아래 L 꺾쇠(Pilot 2): 크게/작게
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomStart) {
+            Canvas(
+                Modifier.size(Dimens.TouchSmall).clickable(onClickLabel = if (large) "미리보기 작게" else "미리보기 크게") { large = !large }.padding(9.dp)
+                    .semantics { contentDescription = if (large) "미리보기 작게" else "미리보기 크게" },
+            ) {
                 val w = 2.dp.toPx()
-                drawLine(Color.White, Offset(0f, w / 2), Offset(size.width - w / 2, w / 2), w)
-                drawLine(Color.White, Offset(size.width - w / 2, 0f), Offset(size.width - w / 2, size.height), w)
+                drawLine(Color.White, Offset(w / 2, 0f), Offset(w / 2, size.height - w / 2), w)
+                drawLine(Color.White, Offset(0f, size.height - w / 2), Offset(size.width, size.height - w / 2), w)
             }
         }
     }

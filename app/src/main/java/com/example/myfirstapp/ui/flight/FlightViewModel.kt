@@ -123,10 +123,24 @@ data class FlightUiState(
     val nextWaypoint: NextWaypoint? = null,
     /** 기체·홈·조종기 위치를 모를 때(실내 수동 비행) 지도를 맞출 곳: 지난 비행 마지막 위치 또는 최근 미션 이륙 지점. */
     val mapFallback: GeoPoint? = null,
+    /**
+     * 미션 칸 수(10.5.2, 홈·라이브러리와 같은 정의): 미션의 모든 방문 전주 수, 이 화면을 열 때 이미 끝난(완료·건너뜀·실패) 전주 수,
+     * 이미 찍은 사진 수(CAPTURE 행), 예상 사진 수(전주마다 [FlightParams.photosPerPole] 합). 실행기는 남은 전주만 가지므로 여기에 더해 보인다.
+     */
+    val missionPoles: Int = 0,
+    val finishedBefore: Int = 0,
+    val photosBefore: Int = 0,
+    val expectedPhotos: Int = 0,
 ) {
     /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
     val sortieCount get() = (exec.visits.maxOfOrNull { it.sortieIndex } ?: 0) + 1
+
+    /** 줌·사진/영상·초점을 바꿔도 되는 때: 일시정지 중, 또는 자동 비행 구간이 아닐 때(땅·RTH, Pilot 2처럼 언제든). 지점 사진 중에는 막는다. */
+    val cameraFree get() = exec.state == ExecState.Paused || !exec.state.airborne
+
+    /** 화면 셔터를 누를 수 있는 때: 일시정지 중, 녹화 중(멈추기), 또는 실행기는 쉬는데 기체가 떠 있을 때(RC 셔터와 같은 경로). */
+    val shutterFree get() = exec.state == ExecState.Paused || recordingSinceMs != null || (!exec.state.airborne && telemetry?.isFlying == true)
 }
 
 /**
@@ -210,7 +224,8 @@ class FlightViewModel(
         // SD 대조는 기체가 붙어 있을 때만(없으면 진행 중 전주는 그대로 두고 남은 전주로 다시 감)
         if (open != null && drone.telemetry.value.connected) recoverTarget(open.id, drone)
 
-        val rows = dao.missionVisits(missionId).filter { it.status == "PENDING" || it.status == "IN_PROGRESS" }
+        val all = dao.missionVisits(missionId)
+        val rows = all.filter { it.status == "PENDING" || it.status == "IN_PROGRESS" }
         if (rows.isEmpty() && open == null) return _state.update { it.copy(loading = false, error = "남은 전주가 없습니다(미션 완료)") }
         val bySortie = rows.groupBy { it.sortieId }
         // 복구할 소티는 남은 전주가 없어도 넣는다(착륙·소티 종료를 그 소티에 기록해야 한다)
@@ -275,6 +290,8 @@ class FlightViewModel(
             it.copy(
                 loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = params.zoomRatio,
                 simulated = drone is FakeDroneGateway,
+                missionPoles = all.size, finishedBefore = all.size - rows.size, photosBefore = dao.missionCaptures(missionId).size,
+                expectedPhotos = params.expectedPhotos(all.map { r -> r.toPole() }),
             )
         }
         combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->
@@ -395,8 +412,15 @@ class FlightViewModel(
     fun pause() = send(Command.Pause)
     fun manualCapture() = send(Command.ManualCapture)
 
-    /** 화면 셔터: 영상 모드면 녹화 시작·정지, 사진이면 수동 촬영(일시정지 중). */
-    fun shutter() { if (_state.value.videoMode) toggleRecording() else manualCapture() }
+    /** 화면 셔터: 영상 모드면 녹화 시작·정지, 사진이면 수동 촬영(일시정지 중), 실행기가 쉬고 기체가 떠 있으면 RC 셔터와 같은 촬영. */
+    fun shutter() {
+        val st = _state.value
+        when {
+            st.videoMode -> toggleRecording()
+            paused -> manualCapture()
+            else -> send(Command.RcShutter(st.lens))
+        }
+    }
     fun skip() = send(Command.Skip())
     /** 지형 추적 시작 거절 창(5.6): [이륙 기준으로 시작] / [취소]. */
     fun flyTakeoffHeight() = send(Command.FlyTakeoffHeight)
@@ -432,10 +456,10 @@ class FlightViewModel(
     /** 비행 화면이 맨 위에 보이는 동안만 참(화면이 [androidx.lifecycle.compose.LifecycleResumeEffect]로 바꾼다). */
     var active = false
 
-    /** 줌 +/−·사진/영상·녹화는 일시정지 중에만(10.4.3). 지점 사진(광각)은 건드리지 않는다. */
-    fun zoom(up: Boolean) { if (paused) camera.zoom(up) }
-    fun setVideoMode(on: Boolean) { if (paused) camera.setVideoMode(on) }
-    fun toggleRecording() { if (paused || _state.value.recordingSinceMs != null) camera.toggleRecording() }
+    /** 줌 +/−·사진/영상·녹화는 자동 비행 구간이 아닐 때만([FlightUiState.cameraFree], 10.4.3). 지점 사진(광각)은 건드리지 않는다. */
+    fun zoom(up: Boolean) { if (_state.value.cameraFree) camera.zoom(up) }
+    fun setVideoMode(on: Boolean) { if (_state.value.cameraFree) camera.setVideoMode(on) }
+    fun toggleRecording() { if (_state.value.cameraFree || _state.value.recordingSinceMs != null) camera.toggleRecording() }
 
     /** 짐벌 메뉴(10.5.7): 짐벌 중앙 / 아래(-90°). */
     fun setGimbal(down: Boolean) {
@@ -449,9 +473,9 @@ class FlightViewModel(
     /** RC C2·미니맵 누름(10.5.4): 큰 화면 지도 ↔ 카메라. */
     fun swapView() = _state.update { it.copy(mapMain = !it.mapMain) }
 
-    /** 노출 띠 AFS·탭 초점(10.5.2): 일시정지 중에만(지점 사진 초점을 건드리지 않게). */
-    fun cycleFocus() { if (paused) camera.cycleFocus(_state.value.camera.focus) }
-    fun focusAt(x: Double, y: Double) { if (paused) camera.focusAt(x, y) }
+    /** 노출 띠 AFS·탭 초점(10.5.2): 자동 비행 구간이 아닐 때만(지점 사진 초점을 건드리지 않게). */
+    fun cycleFocus() { if (_state.value.cameraFree) camera.cycleFocus(_state.value.camera.focus) }
+    fun focusAt(x: Double, y: Double) { if (_state.value.cameraFree) camera.focusAt(x, y) }
 
     /** 소티마다 펼친 촬영 지점 번호(전주 id → 그 전주 첫 지점 번호, 지도 웨이포인트 번호와 같음). */
     private val waypointNumbers = mutableMapOf<Int, Map<String, Int>>()
@@ -469,7 +493,7 @@ class FlightViewModel(
             val poles = ui.visits.filter { it.sortieIndex == ui.sortieIndex }.sortedBy { it.order }.map { it.pole }
             Viewpoints.expand(poles, p, home).withIndex().groupBy({ it.value.pole.poleId }, { it.index + 1 }).mapValues { it.value.first() }
         }
-        return numbers[target.pole.poleId]?.let { NextWaypoint(it, LocalProjection.distanceM(pos, target.pole.position)) }
+        return numbers[target.pole.poleId]?.let { NextWaypoint(it, LocalProjection.distanceM(pos, target.pole.position), target.pole.position) }
     }
 
     /** 착륙 보호 확인(기체가 지면 가까이에서 기다릴 때). 실행기 상태와 무관한 기체 명령이다. */
