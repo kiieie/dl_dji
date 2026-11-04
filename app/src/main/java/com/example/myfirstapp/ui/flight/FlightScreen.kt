@@ -133,7 +133,7 @@ fun FlightScreen(
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
     val vm: FlightViewModel = viewModel(factory = FlightViewModel.factory(
-            dao, projectId, missionId, context.getExternalFilesDir(null), app.settings, app.rcButtons, app.djiReady, app.djiInitialized, app.precise,
+            dao, projectId, missionId, context.getExternalFilesDir(null), app.settings, app.rcButtons, app.djiReady, app.djiInitialized, app.precise, app.appScope,
         ))
     val s by vm.state.collectAsStateWithLifecycle()
     var preOpened by rememberSaveable { mutableStateOf(false) }
@@ -245,7 +245,7 @@ private fun FlightContent(
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (s.telemetry?.landingConfirmNeeded == true) LandingConfirmButton(vm::confirmLanding)
             // Pilot 2 지도 뷰에는 내비 원판이 없다(10.5.4)
-            if (!mapMain) s.telemetry?.let { NavDisplay(it, s.home, s.obstacles, s.nextWaypoint) }
+            if (!mapMain) s.telemetry?.let { NavDisplay(it, it.home ?: s.home, s.obstacles, s.nextWaypoint) }
         }
         if (mapMain) Box(Modifier.align(LibraryButtonAlignment).padding(8.dp)) { LibraryButton { library = !library } }
         // 떠 있으면 미리보기만(열기·편집·삭제는 막음)

@@ -45,7 +45,7 @@ internal fun ArOverlay(s: FlightUiState, stream: IntSize?, modifier: Modifier) {
     val t = s.telemetry ?: return
     val ns by annotationViewModel().state.collectAsStateWithLifecycle()
     val targets = remember(s.home, t.home, s.nextWaypoint?.ar, ns.items, ns.selected) {
-        arTargets(s.home ?: t.home, s.nextWaypoint?.ar.orEmpty(), ns.pins, ns.selected)
+        arTargets(t.home ?: s.home,s.nextWaypoint?.ar.orEmpty(), ns.pins, ns.selected)
     }
     val measurer = rememberTextMeasurer()
     Canvas(modifier) {

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.model.SdPhoto
 import com.example.myfirstapp.core.model.sdDays
+import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.drone.DjiSdAlbum
 import com.example.myfirstapp.drone.SdStorage
 import kotlinx.coroutines.Dispatchers
@@ -50,7 +51,7 @@ data class SdAlbumUiState(
  * 앨범 기체 앨범 탭(10.4.9, Pilot 2 [기체 앨범]): 기체 SD 사진을 날짜로 묶어 보이고, 고른 사진(또는 하루치)을 앱으로 받는다.
  * 받은 사진은 전주에 붙지 않은 사진처럼 `manual/<촬영 날짜>/<SD 파일 이름>`에 둔다(다운로드 완료 탭 맨 아래 "기타"). 떠 있으면 열지 않는다.
  */
-class SdAlbumViewModel(private val appFilesDir: File?) : ViewModel() {
+class SdAlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?) : ViewModel() {
     private val _state = MutableStateFlow(SdAlbumUiState())
     val state: StateFlow<SdAlbumUiState> = _state.asStateFlow()
     private var noticeJob: Job? = null
@@ -96,9 +97,13 @@ class SdAlbumViewModel(private val appFilesDir: File?) : ViewModel() {
         }
     }
 
-    /** SD에서 지우기(뷰어가 확인을 물은 뒤). 앱에 받은 사본은 그대로 둔다. */
+    /**
+     * SD에서 지우기(뷰어가 확인을 물은 뒤). 앱에 받은 사본은 그대로 둔다. 소티가 열려 있거나 미션 사진을 받는 중이면
+     * 아직 받지 않은 지점 사진일 수 있어 지우지 않는다.
+     */
     fun delete(p: SdPhoto) {
         viewModelScope.launch {
+            if (DjiSdAlbum.missionPhotosPending || dao.openSortieMission() != null) return@launch notice("미션 사진 받는 중. 기체 SD에서 지울 수 없습니다.")
             DjiSdAlbum.delete(p).fold(
                 { _state.update { s -> s.copy(photos = s.photos - p, viewing = s.viewing?.takeIf { it != p }) }; notice("기체 SD에서 지웠습니다: ${p.name}") },
                 { e -> notice("지우지 못했습니다: ${e.message}") },
@@ -116,6 +121,6 @@ class SdAlbumViewModel(private val appFilesDir: File?) : ViewModel() {
     }
 
     companion object {
-        fun factory(appFilesDir: File?) = viewModelFactory { initializer { SdAlbumViewModel(appFilesDir) } }
+        fun factory(dao: ProjectDao, appFilesDir: File?) = viewModelFactory { initializer { SdAlbumViewModel(dao, appFilesDir) } }
     }
 }

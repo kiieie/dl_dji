@@ -68,6 +68,8 @@ class ManualFlightViewModel(
     private val settings: SettingsStore? = null,
     /** 착륙 뒤 정밀 탐지(9.6): 떠 있는 동안 쉬게 알린다. */
     private val precise: PreciseDetection? = null,
+    /** 앱 수명 작업(타이머 사진 저장). 없으면 [viewModelScope]. */
+    appScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ManualFlightUiState())
     val state: StateFlow<ManualFlightUiState> = _state.asStateFlow()
@@ -75,6 +77,7 @@ class ManualFlightViewModel(
     private val camera = CameraControl(
         viewModelScope, { drone }, { _state.value.flight }, { f -> _state.update { it.copy(flight = f(it.flight)) } }, "manual",
         onTimerPhoto = { info -> drone?.let { d -> saved(info, photos.keep(d, info, _state.value.flight.lens)) } },
+        saveScope = appScope ?: viewModelScope,
     )
     private val tone = ToneNotifier()
     /** 셔터 사진의 마지막 사진 썸네일(9.6). 모델 설정이 없으면(시험) 만들지 않는다. */
@@ -277,7 +280,7 @@ class ManualFlightViewModel(
     }
 
     companion object {
-        fun factory(dao: ProjectDao, appFilesDir: File?, rcButtons: Flow<RcButton>, settings: SettingsStore, precise: PreciseDetection) =
-            viewModelFactory { initializer { ManualFlightViewModel(dao, appFilesDir, rcButtons, settings, precise) } }
+        fun factory(dao: ProjectDao, appFilesDir: File?, rcButtons: Flow<RcButton>, settings: SettingsStore, precise: PreciseDetection, appScope: CoroutineScope) =
+            viewModelFactory { initializer { ManualFlightViewModel(dao, appFilesDir, rcButtons, settings, precise, appScope) } }
     }
 }

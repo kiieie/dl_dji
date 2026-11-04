@@ -374,6 +374,22 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `비행 중 H 지정으로 홈이 멀어지면 복귀 권고는 새 홈 거리로 판단한다`() = runTest {
+        // 이륙 지점에서 1500m 떨어진 A에서 홈을 바꾸고, 옛 홈 근처 B로 돌아오는 구간
+        val far = pole("A", 1500.0, 0.0)
+        val h = harness(sorties = listOf(listOf(far, pole("B", 100.0, 0.0))))
+        h.send(Command.Start)
+        h.awaitState(ExecState.Waiting)
+        assertTrue(h.drone.setHome(toRc = false).isSuccess)
+        h.awaitState(ExecState.FlyingLeg)
+        h.awaitUntil { LocalProjection.distanceM(h.drone.telemetry.value.position!!, home) < 400 }
+        // 옛 홈(400m 안)이면 넉넉하고 새 홈(1100m 넘게)이면 모자란 배터리
+        h.drone.setBattery(Tuning.Safety.MIN_RESERVE_PCT + EnergyModel(EnergyParams(), FlightParams(shotMode = ShotMode.OVERHEAD)).returnPct(800.0))
+        h.awaitUntil(maxSec = 5) { h.executor.uiState.value.rthCountdownSec != null }
+        assertEquals(ExecState.FlyingLeg, h.state)
+    }
+
+    @Test
     fun `RTH 권고 중 일시정지하면 권고가 취소된다`() = runTest {
         val h = harness()
         h.send(Command.Start)

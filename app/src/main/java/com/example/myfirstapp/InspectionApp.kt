@@ -71,8 +71,8 @@ class InspectionApp : Application() {
     lateinit var rcBattery: StateFlow<RcBattery?>
         private set
 
-    /** 앱 전체 수명의 작업(운용 로그용 RC 버튼 감시, 정밀 탐지, 모델 속도 측정). */
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /** 앱 전체 수명의 작업(운용 로그용 RC 버튼 감시, 정밀 탐지, 모델 속도 측정, 화면을 나가도 끝까지 할 타이머 사진 저장). */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /** 착륙 뒤 정밀 탐지 일꾼(9.6). 앱이 켜져 있는 동안 남은 사진을 처리한다. */
     lateinit var precise: PreciseDetection
