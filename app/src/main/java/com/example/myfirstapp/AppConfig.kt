@@ -206,6 +206,39 @@ object AppConfig {
 
         /** model.json에 없을 때 쓰는 NMS IoU 기준(9.1). */
         const val IOU = 0.5
+
+        /**
+         * 비행 중 최근 1장 탐지(9.6)는 사진 가운데 이 비율만 잘라 비행 중 모델(640)에 넣는다. 같은 픽셀 밀도라 작은 설비도 잡힌다
+         * (11-03 사진 80장 PC 대조: 640+가운데 0.5 재현율 0.88, 640 전체 0.05). 1이면 자르지 않는다.
+         */
+        const val LIVE_CROP_FRACTION = 0.5f
+    }
+
+    /** 착륙 뒤 정밀 탐지(9.6, `PreciseDetection`). */
+    object Precise {
+        /** 이 일수 안에 계획한 미션의 사진만 처리한다(오래된 미션까지 돌리지 않게). */
+        const val RECENT_DAYS = 7
+
+        /** 조종기 배터리가 이보다 낮으면 쉰다(%). */
+        const val MIN_RC_BATTERY_PCT = 20
+
+        /** 발열 상태(`PowerManager.THERMAL_STATUS_*`)가 이 값 이상이면 쉰다. 3 = SEVERE. */
+        const val THERMAL_PAUSE_STATUS = 3
+    }
+
+    /** 모델 속도 측정(9.6, 검증 화면·adb `--es bench all`). */
+    object Bench {
+        /** 재기 전에 버리는 실행 수(GPU 셰이더 준비 등). */
+        const val WARMUP = 2
+
+        /** 모델·delegate·자르기마다 재는 실행 수. */
+        const val RUNS = 10
+
+        /** 비행 중 모델 연속 실행 수(발열 확인). */
+        const val SUSTAINED_RUNS = 30
+
+        /** 연속 실행 중 발열 상태를 남기는 간격(회). */
+        const val THERMAL_EVERY = 5
     }
 
     object Rth {

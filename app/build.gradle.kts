@@ -100,6 +100,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.maplibre.android)
     testImplementation(libs.junit)
+    testImplementation(libs.org.json)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -113,6 +114,7 @@ dependencies {
     implementation(libs.tensorflow.lite.gpu) {
         exclude(group = "org.tensorflow")
     }
+    implementation(libs.litert.gpu.api) // GPU delegate 옵션 클래스(9.6)
     implementation(libs.tensorflow.lite.support) {
         exclude(group = "org.tensorflow")
     }

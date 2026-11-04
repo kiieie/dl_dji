@@ -76,7 +76,7 @@ data class ExecutorUiState(
     /** 운용자에게 보여 줄 마지막 안내·경고. */
     val message: String? = null,
     val preflightFailures: List<String> = emptyList(),
-    /** 방식 A: 다운로드·탐지를 기다리는 사진 수. */
+    /** 방식 A: 받기·저장을 기다리는 사진 수. */
     val photosInProgress: Int = 0,
     /** 지형 추적 미션 시작이 거절되어 이륙 기준으로 바꿀지 묻는 중(5.6, 2026-10-30 사용자 결정). */
     val terrainFallbackAsk: Boolean = false,

@@ -15,6 +15,22 @@ data class Letterbox(val imageW: Int, val imageH: Int, val size: Int) {
 }
 
 /**
+ * JPEG 축소 디코딩 배율(`inSampleSize`, 2의 거듭제곱, 9.3 1단계): 원본 긴 변 [longSide] 중 가운데 [crop] 비율을 쓸 때
+ * 그 영역의 긴 변이 모델 입력 [input] 이상으로 남는 가장 큰 배율. 20MP 원본을 다 풀지 않으려고 쓴다.
+ */
+fun sampleSize(longSide: Int, crop: Float, input: Int): Int {
+    var s = 1
+    while (longSide * crop / (s * 2) >= input) s *= 2
+    return s
+}
+
+/** 가운데 [fraction] 영역(가로·세로 같은 비율)에서 찾은 상자를 원본 대비 0~1 비율로 옮긴다(9.6 실시간 가운데 자르기). */
+fun Detection.fromCenterCrop(fraction: Float): Detection {
+    val o = (1 - fraction) / 2
+    return copy(x = o + x * fraction, y = o + y * fraction, w = w * fraction, h = h * fraction)
+}
+
+/**
  * YOLO(v8/11) 출력 `1×(4+C)×N`을 탐지 목록으로 바꾼다(9.3 4단계).
  * 상자는 `cx, cy, w, h`(입력 대비 0~1, [pixelBoxes]면 입력 픽셀)이고, 결과는 원본 대비 0~1 비율이다.
  */

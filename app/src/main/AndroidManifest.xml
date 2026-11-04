@@ -19,6 +19,7 @@
         tools:replace="android:allowBackup,android:supportsRtl,android:dataExtractionRules,android:fullBackupContent">
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTop"
             android:screenOrientation="sensorLandscape"
             android:exported="true"
             android:label="@string/launcher_label"

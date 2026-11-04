@@ -525,8 +525,8 @@ class InspectionExecutorTest {
         assertTrue(h.drone.calls.none { it.startsWith("capture") }) // 미션 동작이 찍는다
         assertEquals(6, h.recorder.captures.size) // 지점마다 광각+망원 2개
         assertEquals(listOf(2, 2, 2), h.executor.uiState.value.visits.map { it.captureCount })
-        h.awaitUntil { h.recorder.images.size == 6 } // 다운로드·탐지는 비행과 병렬, 착륙 뒤에도 끝까지
-        assertEquals(6, h.recorder.detections.size)
+        h.awaitUntil { h.recorder.images.size == 6 } // 다운로드는 비행과 병렬, 착륙 뒤에도 끝까지
+        assertEquals(0, h.recorder.detections.size) // 탐지는 실행기 밖(9.6)
         assertEquals(3, h.sounds.count { it == Sound.ARRIVED })
         assertTrue("returnHome" !in h.drone.calls) // 완료 동작 RTH는 기체가 한다
     }
@@ -666,11 +666,12 @@ class InspectionExecutorTest {
     }
 
     @Test
-    fun `방식 A - 탐지는 뒤에서 저장만 하고 비행 중 경고음은 내지 않는다`() = runTest {
+    fun `방식 A - 실행기는 사진을 받아 저장만 하고 탐지·경고음은 하지 않는다(9_6 두 단계 탐지는 앱이)`() = runTest {
         val h = harness(config = sortieMode, params = wideOnly, detector = FixedDetector(listOf(Detection("nest", 0.9f, 0.1f, 0.1f, 0.2f, 0.2f, alert = true))))
         h.send(Command.Start)
         h.awaitState(ExecState.MissionDone)
-        h.awaitUntil { h.recorder.detections.size == 3 }
+        h.awaitUntil { h.recorder.images.size == 3 }
+        assertTrue(h.recorder.detections.isEmpty())
         assertEquals(0, h.sounds.count { it == Sound.ANOMALY })
     }
 

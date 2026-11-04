@@ -17,6 +17,9 @@ maplibre = "13.6.1"
 datastore = "1.1.7"
 tflite = "2.17.0"
 tfliteSupport = "0.4.4"
+# tensorflow-lite(-gpu) 2.17.0은 LiteRT 1.0.1로 옮겨졌는데 litert-gpu에 GpuDelegateFactory(gpu-api)가 빠져 있어 따로 넣는다
+litert = "1.0.1"
+orgJson = "20240303"
 djiSdk = "5.18.0"
 
 [libraries]
@@ -49,6 +52,9 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tflite" }
 tensorflow-lite-gpu = { group = "org.tensorflow", name = "tensorflow-lite-gpu", version.ref = "tflite" }
 tensorflow-lite-support = { group = "org.tensorflow", name = "tensorflow-lite-support", version.ref = "tfliteSupport" }
+litert-gpu-api = { group = "com.google.ai.edge.litert", name = "litert-gpu-api", version.ref = "litert" }
+# 로컬 단위 테스트에서 model.json 읽기(안드로이드 org.json은 테스트에서 빈 껍데기)
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 dji-sdk-aircraft = { group = "com.dji", name = "dji-sdk-v5-aircraft", version.ref = "djiSdk" }
 dji-sdk-aircraft-provided = { group = "com.dji", name = "dji-sdk-v5-aircraft-provided", version.ref = "djiSdk" }
 

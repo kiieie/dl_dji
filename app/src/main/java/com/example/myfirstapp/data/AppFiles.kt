@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import com.example.myfirstapp.core.detect.ModelChoice
 import com.example.myfirstapp.detect.TfliteYoloDetector
 import org.json.JSONObject
 import java.io.File
@@ -31,15 +32,17 @@ fun copyMbtiles(resolver: ContentResolver, uri: Uri, mapsDir: File): String {
     return target.name
 }
 
-/** 모델 폴더 한 개의 검사 결과. [error]가 있으면 규격 검사에 실패한 것이다. */
-data class ModelInfo(val dir: String, val version: String?, val labels: Int, val error: String?)
+/** 모델 폴더 한 개의 검사 결과. [error]가 있으면 규격 검사에 실패한 것이다. [role]·[inputSize]는 두 칸 고르기(9.6)에 쓴다. */
+data class ModelInfo(val dir: String, val version: String?, val labels: Int, val error: String?, val role: String? = null, val inputSize: Int = 0) {
+    fun choice() = ModelChoice(dir, role, inputSize)
+}
 
-/** `models/` 아래 폴더를 이름 역순(사용 우선순위, 9.1)으로 검사한다. 인터프리터를 열어 보므로 IO 스레드에서 부른다. */
+/** `models/` 아래 폴더를 이름 역순으로 검사한다. 인터프리터를 CPU로 열어 보므로 IO 스레드에서 부른다. */
 fun inspectModels(root: File): List<ModelInfo> =
     root.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }.orEmpty().sortedByDescending { it.name }.map { dir ->
         val labels = File(dir, "labels.txt").takeIf { it.exists() }?.readLines()?.count { it.isNotBlank() } ?: 0
-        runCatching { TfliteYoloDetector.load(dir).use { it.modelVersion } }
-            .fold({ ModelInfo(dir.name, it, labels, null) }, { ModelInfo(dir.name, null, labels, it.message ?: it::class.simpleName) })
+        runCatching { TfliteYoloDetector.load(dir).use { it.spec } }
+            .fold({ ModelInfo(dir.name, it.version, labels, null, it.role, it.inputSize) }, { ModelInfo(dir.name, null, labels, it.message ?: it::class.simpleName) })
     }
 
 private val MODEL_FILES = listOf("model.tflite", "labels.txt", "model.json")

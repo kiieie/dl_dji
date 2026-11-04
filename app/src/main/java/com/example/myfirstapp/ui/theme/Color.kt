@@ -52,6 +52,10 @@ val Inactive = Color(0xFF555555)
 val Muted = Color(0xFF8A8A8A)
 /** 탐지 있음 글자(판독·앨범 필터, 탐지 이름). */
 val DetectedText = Color(0xFFFF6B61)
+/** 사진 위 설비 상자(경고 라벨이 아닌 탐지, 9.6): 표시만 하는 회색. */
+val FacilityBox = Color(0xFFB4B4B4)
+/** 사진 위 검출 대상 상자(경고 라벨). */
+val DetectedBox = Color(0xFFFF5449)
 
 // 지도(MapLibre) 색: 스타일 식에 문자열로 넘긴다.
 /** 점검 영역 면·선·꼭짓점 테두리. */

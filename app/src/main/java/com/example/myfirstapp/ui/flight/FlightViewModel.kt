@@ -27,7 +27,6 @@ import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.executor.ExecutorUiState
 import com.example.myfirstapp.core.executor.InspectionExecutor
 import com.example.myfirstapp.core.executor.recoveredCaptures
-import com.example.myfirstapp.core.fake.FakeDetector
 import com.example.myfirstapp.core.fake.FakeDroneGateway
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.GeoPoint
@@ -53,10 +52,12 @@ import com.example.myfirstapp.data.pickMapSource
 import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.data.toEntity
 import com.example.myfirstapp.data.flightParamsFromJson
-import com.example.myfirstapp.detect.TfliteYoloDetector
+import com.example.myfirstapp.detect.LastPhoto
+import com.example.myfirstapp.detect.LiveDetection
+import com.example.myfirstapp.detect.PreciseDetection
+import com.example.myfirstapp.core.port.InspectionRecorder
 import com.example.myfirstapp.sound.ToneNotifier
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,7 +68,6 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 
 /** 모의 기체의 시간 배속. 시연과 스모크 시험이 몇 분 안에 끝나게 한다. 실제 기체에는 해당 없음. */
@@ -88,7 +88,8 @@ data class FlightUiState(
     val background: MapBackground = MapBackground.NONE,
     /** 모의 기체면 true: 모의 RC 조작 줄을 보여 준다. */
     val simulated: Boolean = false,
-    val modelVersion: String? = null,
+    /** 왼쪽 아래 "마지막 사진"(9.6 실시간 1단계): 가장 최근에 저장한 사진과 설비 상자. 아직 없으면 null. */
+    val lastPhoto: LastPhoto? = null,
     /** FPV 렌즈(Pilot 2 카메라 뷰 전환). */
     val lens: Lens = Lens.WIDE,
     /** 망원 줌 배율(10.4.3 줌 +/−). 광각이면 1.0X로 보인다. */
@@ -126,13 +127,16 @@ class FlightViewModel(
     private val droneFactory: suspend (CoroutineScope, GeoPoint, File?, GeoPoint?) -> DroneGateway = { s, h, d, a -> fakeDrone(s, h, d, a) },
     /** RC 하드웨어 버튼 누름. 화면 버튼과 같은 동작에 매핑한다(10장). */
     private val rcButtons: Flow<RcButton> = emptyFlow(),
+    /** 착륙 뒤 정밀 탐지(9.6): 떠 있는 동안 쉬게 알리고, 사진을 저장하면 깨운다. */
+    private val precise: PreciseDetection? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(FlightUiState())
     val state: StateFlow<FlightUiState> = _state.asStateFlow()
     private val camera = CameraControl(viewModelScope, { drone }, { _state.value }, { f -> _state.update(f) }, "flight")
 
     private val notifier = ToneNotifier()
-    private var model: TfliteYoloDetector? = null
+    /** 비행 중 최근 1장 탐지(9.6). 실행기는 사진을 저장만 하고, 저장한 사진을 여기에 넘긴다. */
+    private val live = LiveDetection(viewModelScope, File(appFilesDir, "models"), settings) { p -> _state.update { it.copy(lastPhoto = p) } }
     private var executor: InspectionExecutor? = null
     private var drone: DroneGateway? = null
     private var energy: EnergyModel? = null
@@ -201,19 +205,24 @@ class FlightViewModel(
             SortiePlan(poles, dist, energy.sortieCost(dist, poles.size, jumps, extra), energy.sortieDurationSec(dist, poles.size, jumps, extra))
         }
         plans = sorties
-        val recorder = RoomRecorder(
+        val room = RoomRecorder(
             dao, missionId,
             groups.map { (id, g) -> RecorderSortie(id, g.map { it.visitId to it.poleId }) },
             File(appFilesDir, "projects/$projectId/missions/$missionId/images"),
             params.downloadMode,
         )
+        // 저장한 사진은 비행 중 최근 1장 탐지와 착륙 뒤 정밀 탐지로 넘긴다(9.6). 실행기를 기다리게 하지 않는다
+        val recorder = object : InspectionRecorder by room {
+            override suspend fun saveImage(captureId: Long, bytes: ByteArray) {
+                room.saveImage(captureId, bytes)
+                viewModelScope.launch { live.offer(bytes, dao.capture(captureId)?.filePath) }
+                precise?.kick()
+            }
+        }
         val storage = StorageMonitor { (appFilesDir?.usableSpace ?: 0L) >= AppConfig.Storage.MIN_FREE_BYTES }
-        // 앱 폴더 models/에 규격에 맞는 모델이 있으면 TFLite 탐지기(⑥ 설정에서 고른 모델 우선), 없으면 모의 탐지기(9.1)
-        val preferred = settings.modelDir.first()
-        model = withContext(Dispatchers.IO) { TfliteYoloDetector.loadPreferred(File(appFilesDir, "models"), preferred) }
-        val detector = model ?: FakeDetector()
+        // 탐지는 실행기 밖에서 한다(9.6 두 단계 탐지): 실행기는 사진을 받아 저장만 한다
         val executor = InspectionExecutor(
-            viewModelScope, drone, recorder, notifier, storage, energy, detector, sorties,
+            viewModelScope, drone, recorder, notifier, storage, energy, null, sorties,
             // 6.1 방식 A: 소티 미션 하나로 계속 비행(모의 기체도 같은 흐름)
             config = ExecutorConfig(sortieMission = true),
             recoverSortie = open?.let { o -> groups.indexOfFirst { it.first == o.id } },
@@ -239,12 +248,13 @@ class FlightViewModel(
         _state.update {
             it.copy(
                 loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = params.zoomRatio,
-                simulated = drone is FakeDroneGateway, modelVersion = detector.modelVersion,
+                simulated = drone is FakeDroneGateway,
             )
         }
         combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->
             val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
             val wasPaused = paused
+            precise?.setFlying("auto", ui.state.airborne || t.isFlying)
             _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need).withTrack(t) }
             // RC 재개 등으로 일시정지를 벗어나면 녹화를 멈추고 사진 모드로(10.4.3)
             if (wasPaused && ui.state != ExecState.Paused) camera.backToPhoto()
@@ -387,19 +397,20 @@ class FlightViewModel(
     override fun onCleared() {
         (drone as? DjiDroneGateway)?.close()
         notifier.release()
-        model?.close()
+        live.close()
+        precise?.setFlying("auto", false)
     }
 
     companion object {
         /** 기체가 연결돼 있으면 실제 기체([DjiDroneGateway]), 아니면 모의 기체. 올린 KMZ는 미션 폴더 `kmz/`에 남는다(4.3). */
         fun factory(
             dao: ProjectDao, projectId: Long, missionId: Long, appFilesDir: File?, settings: SettingsStore, rcButtons: Flow<RcButton>,
-            sdkReady: StateFlow<Boolean>, sdkInitialized: StateFlow<Boolean>,
+            sdkReady: StateFlow<Boolean>, sdkInitialized: StateFlow<Boolean>, precise: PreciseDetection,
         ) =
             viewModelFactory {
                 initializer {
                     FlightViewModel(
-                        dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons,
+                        dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons, precise = precise,
                         droneFactory = { scope, home, dir, airborneAt ->
                             // 앱 재시작 복구(열린 소티, [airborneAt] 있음): 앱이 막 켜져 SDK 등록·기체 연결 전일 수 있으니 기다린다(6.4).
                             // 실제 RC(SDK 초기화됨, 등록 실패여도)에서는 연결이 안 돼도 모의 기체로 가지 않는다 — 실행기가 연결 끊김으로 두고 붙으면 맞춘다

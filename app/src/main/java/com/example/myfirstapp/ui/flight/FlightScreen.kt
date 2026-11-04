@@ -104,7 +104,7 @@ fun FlightScreen(
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
     val vm: FlightViewModel = viewModel(factory = FlightViewModel.factory(
-            dao, projectId, missionId, context.getExternalFilesDir(null), app.settings, app.rcButtons, app.djiReady, app.djiInitialized,
+            dao, projectId, missionId, context.getExternalFilesDir(null), app.settings, app.rcButtons, app.djiReady, app.djiInitialized, app.precise,
         ))
     val s by vm.state.collectAsStateWithLifecycle()
     // 비행 중에는 뒤로 가기로 화면을 떠나지 못하게 한다(떠나면 실행기가 멈춘다).
@@ -150,8 +150,12 @@ private fun FlightContent(
         val fpv: @Composable (Modifier) -> Unit = { m -> FpvView(s.simulated, m) }
         if (mapMain) FlightMap(s, interactive = true, pad = listOf(220.dp, 90.dp, 60.dp, 120.dp), Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack)
         else fpv(Modifier.fillMaxSize())
-        MiniMap(mapMain, onSwap = { mapMain = !mapMain }, Modifier.align(Alignment.BottomStart)) { m ->
-            if (mapMain) fpv(m) else FlightMap(s, interactive = false, pad = List(4) { 8.dp }, m)
+        Column(Modifier.align(Alignment.BottomStart)) {
+            // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
+            s.lastPhoto?.let { LastPhotoThumb(it, Modifier) }
+            MiniMap(mapMain, onSwap = { mapMain = !mapMain }, Modifier) { m ->
+                if (mapMain) fpv(m) else FlightMap(s, interactive = false, pad = List(4) { 8.dp }, m)
+            }
         }
 
         TopBar(s, onExit, onOpenSettings)

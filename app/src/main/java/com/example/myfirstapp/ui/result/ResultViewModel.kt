@@ -18,6 +18,8 @@ import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.ResultRow
 import com.example.myfirstapp.data.ReviewEntity
 import com.example.myfirstapp.data.exportMission
+import com.example.myfirstapp.detect.PreciseDetection
+import com.example.myfirstapp.detect.labelNames
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -25,6 +27,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -56,8 +62,17 @@ data class ResultUiState(
     val draft: ReviewDraft = ReviewDraft(),
     val tagOptions: List<String> = TargetLabels.names.keys.toList(),
     val message: String? = null,
+    /** 라벨 → 화면 이름(model.json `displayNames`, 9.6). 없는 라벨은 검출 대상 이름 또는 라벨 그대로. */
+    val labelNames: Map<String, String> = emptyMap(),
+    /** 착륙 뒤 정밀 탐지 진행("정밀 탐지 37/120"). 남은 사진이 없으면 null. */
+    val precise: String? = null,
 ) {
     val statusCounts: Map<String, Int> = rows.groupingBy { STATUS_TITLE[it.status] ?: it.status }.eachCount()
+
+    /** 설비(경고 라벨이 아닌 탐지) 수. 표시만 하고 검출로 세지 않는다(9.6). */
+    val facilityCount: Int = rows.sumOf { it.facilityCount }
+
+    fun labelTitle(label: String) = labelNames[label] ?: TargetLabels.title(label)
 
     fun count(f: ResultFilter) = rows.count { matches(it, f) }
 
@@ -93,6 +108,10 @@ class ResultViewModel(
     private val now: () -> Long = System::currentTimeMillis,
     /** RC Pro 5D 버튼(10장): 위·아래 전주, 왼쪽·오른쪽 판정, 가운데 저장 후 다음. */
     private val rcButtons: Flow<RcButton> = emptyFlow(),
+    /** 앱 폴더 `models/`(상자 이름). */
+    private val modelsDir: File? = null,
+    /** 착륙 뒤 정밀 탐지(9.6): 진행을 보이고, 사진이 끝날 때마다 결과를 다시 읽는다. */
+    private val precise: PreciseDetection? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ResultUiState(missionId = missionId))
     val state: StateFlow<ResultUiState> = _state.asStateFlow()
@@ -106,17 +125,38 @@ class ResultViewModel(
     init {
         viewModelScope.launch { rcButtons.collect(::on5d) }
         viewModelScope.launch {
-            val mission = dao.mission(missionId) ?: return@launch _state.update { it.copy(loading = false, message = "미션을 찾을 수 없습니다") }
-            captures = dao.missionCaptures(missionId).groupBy { it.visitId }
-            detections = dao.missionDetections(missionId).groupBy { it.captureId }
-            val found = detections.values.flatten().filter { it.alert }.map { it.label }
-            _state.update {
-                it.copy(
-                    loading = false, modelVersion = mission.modelVersion, rows = dao.resultRows(missionId),
-                    reviews = dao.latestReviews(missionId).associateBy { r -> r.visitId },
-                    tagOptions = (TargetLabels.names.keys + found).distinct(),
-                )
+            val names = modelsDir?.let { withContext(Dispatchers.IO) { labelNames(it) } }.orEmpty()
+            _state.update { it.copy(labelNames = names) }
+            load()
+        }
+        precise?.let { p ->
+            viewModelScope.launch {
+                combine(p.progress, p.pauseReason) { g, why ->
+                    if (g.remaining <= 0) null else "정밀 탐지 ${g.done}/${g.total}" + if (why != null && !g.running) " · 쉼($why)" else ""
+                }.collect { text -> _state.update { it.copy(precise = text) } }
             }
+            // 정밀 탐지가 사진 하나를 끝낼 때마다(또는 다 끝나면) 상자를 다시 읽는다
+            viewModelScope.launch { p.progress.map { it.done }.distinctUntilChanged().drop(1).collect { load() } }
+        }
+    }
+
+    /** 결과·사진·탐지·판독을 읽는다. 고른 전주가 있으면 그 사진도 새로 고친다. */
+    private suspend fun load() {
+        val mission = dao.mission(missionId) ?: return _state.update { it.copy(loading = false, message = "미션을 찾을 수 없습니다") }
+        captures = dao.missionCaptures(missionId).groupBy { it.visitId }
+        detections = dao.missionDetections(missionId).groupBy { it.captureId }
+        val found = detections.values.flatten().filter { it.alert }.map { it.label }
+        _state.update {
+            it.copy(
+                loading = false, modelVersion = mission.modelVersion, rows = dao.resultRows(missionId),
+                reviews = dao.latestReviews(missionId).associateBy { r -> r.visitId },
+                tagOptions = (TargetLabels.names.keys + found).distinct(),
+            )
+        }
+        _state.value.selected?.let { sel ->
+            val index = _state.value.photoIndex
+            select(sel.visitId, keepDraft = true)
+            showPhoto(index)
         }
     }
 
@@ -131,11 +171,12 @@ class ResultViewModel(
         }
     }
 
-    fun select(visitId: Long) = _state.update { s ->
+    /** 전주를 고른다. [keepDraft]면(정밀 탐지 뒤 다시 읽기) 고치던 판정을 그대로 둔다. */
+    fun select(visitId: Long, keepDraft: Boolean = false) = _state.update { s ->
         val row = s.rows.firstOrNull { it.visitId == visitId } ?: return@update s
         val photos = captures[visitId].orEmpty().map { c -> PhotoUi(c, detections[c.id].orEmpty()) }
         // 판독한 적이 있으면 그 판정을, 없으면 AI가 검출한 대상을 미리 켠다
-        val draft = s.reviews[visitId]?.let { r ->
+        val draft = if (keepDraft) s.draft else s.reviews[visitId]?.let { r ->
             ReviewDraft(ReviewVerdict.valueOf(r.verdict), r.tags.split(';').filter { it.isNotEmpty() }.toSet(), r.memo.orEmpty())
         } ?: ReviewDraft(tags = photos.flatMap { p -> p.boxes.filter { it.alert }.map { it.label } }.toSet())
         s.copy(selected = row, photos = photos, photoIndex = 0, draft = draft)
@@ -245,7 +286,9 @@ class ResultViewModel(
     companion object {
         fun factory(
             dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File,
-            rcButtons: Flow<RcButton>, openOutput: (Uri) -> OutputStream?,
-        ) = viewModelFactory { initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput, rcButtons = rcButtons) } }
+            rcButtons: Flow<RcButton>, precise: PreciseDetection, openOutput: (Uri) -> OutputStream?,
+        ) = viewModelFactory {
+            initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput, rcButtons = rcButtons, modelsDir = File(exportDir, "models"), precise = precise) }
+        }
     }
 }

@@ -20,8 +20,11 @@ class SettingsStore(context: Context) {
         p[FLIGHT]?.let { runCatching { flightParamsFromJson(it, legacyTerrainFollow = true) }.getOrNull() } ?: FlightParams()
     }
 
-    /** 고른 모델 폴더 이름(`models/<이름>/`). null이면 이름이 가장 뒤인 모델을 쓴다(9.1). */
-    val modelDir: Flow<String?> = store.data.map { it[MODEL] }
+    /** 비행 중(live) 모델로 고른 폴더(`models/<이름>/`). null이면 `role`로 자동으로 고른다(9.6 `ModelPick`). 옛 "고른 모델" 값을 그대로 이어 쓴다. */
+    val liveModelDir: Flow<String?> = store.data.map { it[MODEL] }
+
+    /** 정밀(full, 착륙 뒤) 모델로 고른 폴더. null이면 `role`로 자동으로 고른다. */
+    val fullModelDir: Flow<String?> = store.data.map { it[FULL_MODEL] }
 
     /** 배경 지도(7.4): Bing 위성(기본) / VWorld 위성 / VWorld 일반지도. 다음에 지도 화면을 열 때 적용된다. */
     val mapSource: Flow<MapSource> = store.data.map { p -> MapSource.entries.firstOrNull { it.name == p[MAP_SOURCE] } ?: MapSource.BING }
@@ -41,13 +44,18 @@ class SettingsStore(context: Context) {
         store.edit { it[FLIGHT] = p.toJson() }
     }
 
-    suspend fun setModelDir(name: String?) {
+    suspend fun setLiveModelDir(name: String?) {
         store.edit { if (name == null) it.remove(MODEL) else it[MODEL] = name }
+    }
+
+    suspend fun setFullModelDir(name: String?) {
+        store.edit { if (name == null) it.remove(FULL_MODEL) else it[FULL_MODEL] = name }
     }
 
     private companion object {
         val FLIGHT = stringPreferencesKey("flight_defaults")
         val MODEL = stringPreferencesKey("model_dir")
+        val FULL_MODEL = stringPreferencesKey("full_model_dir")
         val MAP_SOURCE = stringPreferencesKey("map_source")
         val VWORLD_LABELS = booleanPreferencesKey("vworld_labels")
     }

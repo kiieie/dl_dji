@@ -123,13 +123,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
+import com.example.myfirstapp.ui.theme.DetectedBox
 import com.example.myfirstapp.ui.theme.DetectedText
+import com.example.myfirstapp.ui.theme.FacilityBox
 import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 
-/** 사진 위 데이터 표시 색(10.1 예외): 검출 대상은 빨강, 그 밖의 탐지는 노랑. */
-private val DetectedBox = Color(0xFFFF5449)
+/** 판정 색(10.1 예외): 재촬영(보류)은 노랑. 사진 위 상자는 검출 대상 빨강([DetectedBox]), 설비 회색([FacilityBox], 9.6). */
 private val OtherBox = Color(0xFFFFC53D)
 private val VerdictNone = Color(0xFF4CD08A)
 
@@ -145,6 +146,7 @@ fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, onBack: () -
     val vm: ResultViewModel = viewModel(
         factory = ResultViewModel.factory(
             dao, projectId, missionId, context.getExternalFilesDir(null)!!, (context.applicationContext as InspectionApp).rcButtons,
+            (context.applicationContext as InspectionApp).precise,
         ) {
             context.contentResolver.openOutputStream(it)
         },
@@ -176,9 +178,13 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
                     Text(
                         "미션 #${s.missionId} · 판독 ${s.reviews.size}/${s.statusCounts["완료"] ?: 0}", fontSize = FontSize.Body, color = TextSoft, maxLines = 1,
                     )
+                    // 착륙 뒤 정밀 탐지 진행(9.6). 끝나면 사라진다
+                    s.precise?.let { Text(it, fontSize = FontSize.Caption, color = Accent, maxLines = 1) }
                 }
                 Text("판독", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
-                Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // 설비(9.6): 표시만 하는 탐지 수. "탐지"(검출 대상)에는 세지 않는다
+                    if (s.facilityCount > 0) Text("설비 ${s.facilityCount}", Modifier.padding(horizontal = 6.dp), fontSize = FontSize.Caption, color = FacilityBox)
                     ResultFilter.entries.forEach { f -> FilterButton(f, s.filter == f, s.count(f)) { vm.setFilter(f) } }
                     Box(
                         Modifier.size(Dimens.ButtonChip).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
@@ -195,7 +201,7 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
                     val row = s.selected
                     Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
                         if (row == null) Text("왼쪽에서 전주를 고르세요.", Modifier.align(Alignment.Center), fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        else PhotoViewer(row, s.photos, s.photoIndex, vm::showPhoto, Modifier.fillMaxSize())
+                        else PhotoViewer(row, s.photos, s.photoIndex, vm::showPhoto, s::labelTitle, Modifier.fillMaxSize())
                     }
                     VerdictRow(s, vm, onMemo = { memoOpen = true })
                 }
@@ -295,13 +301,13 @@ private fun PoleList(s: ResultUiState, vm: ResultViewModel, modifier: Modifier) 
  * 사진 칸: 사진(확대·이동·상자 고르기), 왼쪽 위 전주·지점 정보와 렌즈, 오른쪽 위 검출 객체 칩, 아래 44dp 썸네일 줄(지점별 사진).
  */
 @Composable
-private fun PhotoViewer(r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto: (Int) -> Unit, modifier: Modifier) {
+private fun PhotoViewer(r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto: (Int) -> Unit, title: (String) -> String, modifier: Modifier) {
     val p = photos.getOrNull(index)
     // 고른 검출 객체(상자를 누르거나 칩을 누름). 사진이 바뀌면 지운다
     var selected by remember(p?.capture?.id) { mutableStateOf<Int?>(null) }
     Box(modifier) {
         if (p == null) Text("사진이 없습니다.", Modifier.align(Alignment.Center), fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        else Photo(p, selected, { selected = it }, onTapEmpty = {}, Modifier.fillMaxSize())
+        else Photo(p, selected, { selected = it }, onTapEmpty = {}, title, Modifier.fillMaxSize())
         Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             val point = p?.capture?.viewpoint?.let { LineNumbers.SIDE_NAMES.getOrNull(it) }
@@ -322,8 +328,8 @@ private fun PhotoViewer(r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 boxes.forEachIndexed { i, d ->
                     Text(
-                        "${TargetLabels.title(d.label)} ${(d.score * 100).toInt()}%",
-                        Modifier.clip(RoundedCornerShape(3.dp)).background(if (selected == i) (if (d.alert) DetectedBox else OtherBox) else Color.Black.copy(alpha = 0.65f))
+                        "${title(d.label)} ${(d.score * 100).toInt()}%",
+                        Modifier.clip(RoundedCornerShape(3.dp)).background(if (selected == i) (if (d.alert) DetectedBox else FacilityBox) else Color.Black.copy(alpha = 0.65f))
                             .clickable { selected = if (selected == i) null else i }.padding(horizontal = 6.dp, vertical = 2.dp),
                         fontSize = FontSize.Caption, color = if (selected == i) Color.Black else if (d.alert) DetectedText else Color.White,
                     )
@@ -433,7 +439,7 @@ private fun decodeForReview(path: String): android.graphics.Bitmap? {
  * 상자를 누르면 그 객체를 고르고 그 상자로 확대한다. 고른 상자를 다시 누르면 풀고 전체 보기로. 상자 밖을 한 번 누르면 [onTapEmpty](패널 숨기기).
  */
 @Composable
-private fun Photo(p: PhotoUi, selected: Int?, onSelect: (Int?) -> Unit, onTapEmpty: () -> Unit, modifier: Modifier) {
+private fun Photo(p: PhotoUi, selected: Int?, onSelect: (Int?) -> Unit, onTapEmpty: () -> Unit, title: (String) -> String, modifier: Modifier) {
     val bitmap by produceState<ImageBitmap?>(null, p.capture.filePath) {
         value = withContext(Dispatchers.IO) { p.capture.filePath?.let(::decodeForReview)?.asImageBitmap() }
     }
@@ -496,12 +502,12 @@ private fun Photo(p: PhotoUi, selected: Int?, onSelect: (Int?) -> Unit, onTapEmp
             else Text("사진 파일 없음", modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Canvas(Modifier.fillMaxSize()) {
                 p.boxes.forEachIndexed { i, d ->
-                    val color = if (d.alert) DetectedBox else OtherBox
+                    val color = if (d.alert) DetectedBox else FacilityBox
                     val r = boxRect(d)
                     // 확대해도 선·글자 굵기는 화면에서 같게
                     val stroke = (if (i == selected) 5.dp else 3.dp).toPx() / scale
                     drawRect(if (selected == null || i == selected) color else color.copy(alpha = 0.45f), r.topLeft, r.size, style = Stroke(stroke))
-                    val text = measurer.measure("${TargetLabels.title(d.label)} ${(d.score * 100).toInt()}%", labelStyle)
+                    val text = measurer.measure("${title(d.label)} ${(d.score * 100).toInt()}%", labelStyle)
                     val k = 1f / scale
                     val pad = 4.dp.toPx() * k
                     val lw = text.size.width * k + pad * 2
