@@ -58,7 +58,21 @@ import com.example.myfirstapp.core.csv.CsvImportResult
 import com.example.myfirstapp.core.csv.PoleCsvParser
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.ProjectSummary
-import com.example.myfirstapp.ui.mission.MissionListScreen
+import com.example.myfirstapp.InspectionApp
+import com.example.myfirstapp.data.copyZipsToTree
+import com.example.myfirstapp.ui.mission.FiveDHints
+import com.example.myfirstapp.ui.mission.LibraryDialogs
+import com.example.myfirstapp.ui.mission.LibraryFilters
+import com.example.myfirstapp.ui.mission.MissionGrid
+import com.example.myfirstapp.ui.mission.MissionListViewModel
+import com.example.myfirstapp.ui.mission.MissionNav
+import com.example.myfirstapp.ui.mission.SelectionBar
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import java.io.File
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.TextSoft
 import com.example.myfirstapp.ui.theme.numberStyle
@@ -66,159 +80,181 @@ import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 
 /**
- * 비행경로(10.4.3 시안): 머리글 아래 왼쪽 프로젝트 목록(216dp, 최신순 한 줄), 오른쪽 고른 프로젝트의 미션 표.
- * 전주 파일 가져오기는 자주 쓰지 않으므로 [전주 파일] 대화상자로 둔다. 속성 갱신·삭제는 줄의 ⋯ 메뉴(삭제는 길게 누르기도).
+ * 라이브러리(10.5.8, Pilot 2 비행 경로 라이브러리 p2s_lib·0164): 머리글(`<` 표지 · 라이브러리 · + 🔍 ☑), 필터 줄(프로젝트(선로) · 상태 · 정렬),
+ * 경로 카드 2열(경로 그림·이름·기체·시간, 우리 배지와 주 버튼, ⋯ 결과·다시 날기·즐겨찾기·삭제). ☑ 다중 선택: 전체 선택, 즐겨찾기·삭제·내보내기.
+ * `+`: 새 계획 · 전주 파일 가져오기, 프로젝트를 거르고 있으면 그 프로젝트의 속성 갱신 · 삭제.
  */
 @Composable
 fun ProjectScreen(
     dao: ProjectDao,
-    /** 처음 고를 프로젝트(홈·복구에서 미션 비행으로 갈 때). null이면 맨 위. */
+    /** 처음 거를 프로젝트(홈·복구·비행 화면 [라이브러리]에서 올 때). null이면 모두. */
     initialProjectId: Long? = null,
     onBack: () -> Unit,
     onNewPlan: (projectId: Long) -> Unit,
     onFlight: (projectId: Long, missionId: Long) -> Unit,
     onReplan: (projectId: Long, missionId: Long) -> Unit,
     onResult: (projectId: Long, missionId: Long) -> Unit,
+    /** [다시 날기]: 같은 경로로 계획 화면. */
+    onCopy: (projectId: Long, missionId: Long) -> Unit = { _, _ -> },
 ) {
-    val resolver = LocalContext.current.contentResolver
-    val vm: ProjectViewModel = viewModel(factory = ProjectViewModel.factory(dao, resolver))
+    val context = LocalContext.current
+    val resolver = context.contentResolver
+    val pvm: ProjectViewModel = viewModel(factory = ProjectViewModel.factory(dao, resolver))
+    val ps by pvm.state.collectAsStateWithLifecycle()
+    val files = context.getExternalFilesDir(null)
+    val vm: MissionListViewModel = viewModel(
+        factory = MissionListViewModel.factory(
+            dao, initialProjectId, missionDir = { pid, mid -> files?.let { File(it, "projects/$pid/missions/$mid") } },
+            copyToFolder = { tree, list -> copyZipsToTree(resolver, tree, list) },
+        ),
+    )
     val s by vm.state.collectAsStateWithLifecycle()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::onCsvPicked) }
-    val attrPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::onAttrFilePicked) }
-    var selectedId by rememberSaveable { mutableStateOf(initialProjectId) }
-    // 새로 가져온 프로젝트(전에 없던 id가 맨 위)면 그것을 고른다. 처음 읽을 때, 다른 화면에서 돌아올 때, 맨 위를 지울 때는 고른 것을 둔다
-    var knownIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
-    LaunchedEffect(s.projects) {
-        val ids = s.projects.map { it.id }.ifEmpty { return@LaunchedEffect }.toLongArray()
-        if (knownIds?.contains(ids[0]) == false) selectedId = ids[0]
-        knownIds = ids
-    }
-    val selected = s.projects.firstOrNull { it.id == selectedId } ?: s.projects.firstOrNull()
-
-    Column(Modifier.fillMaxSize()) {
-        // 머리글 40dp(10.4.2): 뒤로 · 가운데 제목 · [전주 파일] [새 계획]
-        Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp, end = 10.dp)) {
-            IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall).align(Alignment.CenterStart)) {
-                Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
-            }
-            Text("비행경로", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
-            Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                HeaderButton(R.drawable.ic_import, "전주 파일", onClick = vm::openImport)
-                HeaderButton(R.drawable.ic_add, "새 계획", enabled = selected != null) { selected?.let { onNewPlan(it.id) } }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(pvm::onCsvPicked) }
+    val attrPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(pvm::onAttrFilePicked) }
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> vm.onExportFolder(uri) }
+    LaunchedEffect(s.exported) { if (s.exported.isNotEmpty()) folderPicker.launch(null) }
+    LaunchedEffect(vm) {
+        vm.nav.collect { n ->
+            val m = n.mission
+            when (n) {
+                is MissionNav.Flight -> onFlight(m.projectId, m.id)
+                is MissionNav.Replan -> onReplan(m.projectId, m.id)
+                is MissionNav.Result -> onResult(m.projectId, m.id)
+                is MissionNav.Copy -> onCopy(m.projectId, m.id)
             }
         }
-        Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Surface(Modifier.width(216.dp).fillMaxHeight(), shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Column {
-                    Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(start = 12.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("프로젝트 · 최신순", Modifier.weight(1f), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("전주", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    // 새로 가져온 프로젝트(전에 없던 id가 맨 위)면 그것으로 거른다. 거르던 프로젝트를 지우면 모두로
+    var knownIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
+    LaunchedEffect(ps.projects) {
+        val ids = ps.projects.map { it.id }.toLongArray()
+        if (ids.isNotEmpty() && knownIds?.contains(ids[0]) == false) vm.setProject(ids[0])
+        val f = s.projectFilter
+        if (ids.isNotEmpty() && f != null && f !in ids) vm.setProject(null)
+        knownIds = ids
+    }
+    val filtered = ps.projects.firstOrNull { it.id == s.projectFilter }
+    // `+` 메뉴와 [새 계획] 프로젝트 고르기(화면 배치 상태)
+    var addMenu by remember { mutableStateOf(false) }
+    var choosePlan by remember { mutableStateOf(false) }
+    // RC 5D(10.4.4): 대화상자·메뉴가 없을 때만 카드 고르기
+    val rc = (context.applicationContext as InspectionApp).rcButtons
+    val enabled5d = !ps.overlayOpen && !addMenu && !choosePlan
+    LaunchedEffect(vm, enabled5d) { if (enabled5d) rc.collect(vm::on5d) }
+
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp, end = 8.dp)) {
+            if (s.selecting) {
+                IconButton(onClick = { vm.setSelecting(false) }, modifier = Modifier.size(Dimens.TouchSmall).align(Alignment.CenterStart).semantics { contentDescription = "선택 끝내기" }) {
+                    Text("✕", fontSize = FontSize.Number)
+                }
+                Text("비행 경로 라이브러리(${s.checked.size})", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
+                TextButton(onClick = vm::checkAll, modifier = Modifier.align(Alignment.CenterEnd)) { Text("전체 선택") }
+            } else {
+                Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall)) {
+                        Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    if (s.projects.isEmpty()) Text(
-                        "프로젝트가 없습니다. [전주 파일]로 배전 설비 엑셀·CSV를 가져오세요.", fontSize = FontSize.Body,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(12.dp),
-                    )
-                    val listState = rememberLazyListState()
-                    LaunchedEffect(s.projects.firstOrNull()?.id) { listState.scrollToItem(0) }
-                    LazyColumn(
-                        Modifier.fillMaxSize().scrollbar(listState), state = listState,
-                        contentPadding = PaddingValues(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        items(s.projects, key = { it.id }) { p ->
-                            ProjectRow(
-                                p, p.id == selected?.id, menuOpen = s.menuFor == p.id, onClick = { selectedId = p.id },
-                                onMenu = { vm.openMenu(if (it) p.id else null) }, onAttrUpdate = { vm.openAttrUpdate(p) }, onDelete = { vm.askDelete(p) },
+                    AppBadge()
+                }
+                val q = s.query
+                if (q == null) Text("라이브러리", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
+                else SearchField(q, vm::setQuery, Modifier.align(Alignment.Center))
+                Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        HeaderIcon(R.drawable.ic_add, "추가") { addMenu = true }
+                        DropdownMenu(addMenu, onDismissRequest = { addMenu = false }, properties = MENU_PROPERTIES) {
+                            DropdownMenuItem(
+                                text = { Text(filtered?.let { "새 계획 · ${it.name}" } ?: "새 계획") },
+                                enabled = ps.projects.isNotEmpty(),
+                                onClick = { addMenu = false; filtered?.let { onNewPlan(it.id) } ?: run { choosePlan = true } },
                             )
+                            DropdownMenuItem(text = { Text("전주 파일 가져오기(엑셀·CSV)") }, onClick = { addMenu = false; pvm.openImport() })
+                            filtered?.let { p ->
+                                HorizontalDivider()
+                                DropdownMenuItem(text = { Text("${p.name} 속성 갱신") }, onClick = { addMenu = false; pvm.openAttrUpdate(p) })
+                                DropdownMenuItem(text = { Text("${p.name} 삭제", color = MaterialTheme.colorScheme.error) }, onClick = { addMenu = false; pvm.askDelete(p) })
+                            }
+                        }
+                    }
+                    HeaderIcon(R.drawable.ic_search, "검색") { vm.setQuery(if (s.query == null) "" else null) }
+                    IconButton(onClick = { vm.setSelecting(true) }, modifier = Modifier.size(Dimens.TouchMedium).semantics { contentDescription = "여러 개 선택" }) {
+                        Text("☑", fontSize = FontSize.Number)
+                    }
+                }
+            }
+        }
+        LibraryFilters(s, ps.projects, vm)
+        MissionGrid(s, vm, Modifier.weight(1f).fillMaxWidth())
+        if (s.selecting) SelectionBar(s, vm)
+        else FiveDHints(Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 14.dp), listOf("5D ↕→" to "고르기", "5D ●" to "실행", "5D ←" to "뒤로"))
+    }
+
+    LibraryDialogs(s, vm)
+    if (choosePlan) {
+        FullscreenAlertDialog(
+            onDismissRequest = { choosePlan = false },
+            title = { Text("새 계획: 프로젝트 고르기") },
+            text = {
+                LazyColumn(Modifier.height(240.dp)) {
+                    items(ps.projects, key = { it.id }) { p ->
+                        Row(
+                            Modifier.fillMaxWidth().height(Dimens.RowList).clickable { choosePlan = false; onNewPlan(p.id) }.padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("전주 ${p.poleCount}", style = numberStyle(FontSize.Label, FontWeight.Medium), color = TextSoft)
                         }
                     }
                 }
-            }
-            Surface(Modifier.weight(1f).fillMaxHeight(), shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                if (selected != null) {
-                    MissionListScreen(
-                        selected.id, dao,
-                        onFlight = { onFlight(selected.id, it) },
-                        onReplan = { onReplan(selected.id, it) },
-                        onResult = { onResult(selected.id, it) },
-                        enabled5d = !s.overlayOpen,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-        }
+            },
+            confirmButton = { TextButton(onClick = { choosePlan = false }) { Text("닫기") } },
+        )
     }
-
-    if (s.importing) ImportDialog(s, vm, onPick = { picker.launch(arrayOf("*/*")) }, onClose = vm::cancelImport)
-    s.attrTarget?.let { AttrUpdateDialog(it, s, vm, onPick = { attrPicker.launch(arrayOf("*/*")) }) }
-    s.notice?.let { notice ->
+    if (ps.importing) ImportDialog(ps, pvm, onPick = { picker.launch(arrayOf("*/*")) }, onClose = pvm::cancelImport)
+    ps.attrTarget?.let { AttrUpdateDialog(it, ps, pvm, onPick = { attrPicker.launch(arrayOf("*/*")) }) }
+    ps.notice?.let { notice ->
         FullscreenAlertDialog(
-            onDismissRequest = vm::dismissNotice,
+            onDismissRequest = pvm::dismissNotice,
             title = { Text("전주 파일 가져오기") },
             text = { Text(notice) },
-            confirmButton = { TextButton(onClick = vm::dismissNotice) { Text("확인") } },
+            confirmButton = { TextButton(onClick = pvm::dismissNotice) { Text("확인") } },
         )
     }
-
-    s.deleting?.let { project ->
+    ps.deleting?.let { project ->
         FullscreenAlertDialog(
-            onDismissRequest = vm::dismissDelete,
+            onDismissRequest = pvm::dismissDelete,
             title = { Text("프로젝트 삭제") },
-            text = { Text("${project.name} 프로젝트와 전주 ${project.poleCount}개를 삭제합니다. 되돌릴 수 없습니다.") },
+            text = { Text("${project.name} 프로젝트와 전주 ${project.poleCount}개, 그 미션을 모두 삭제합니다. 되돌릴 수 없습니다.") },
             confirmButton = {
-                TextButton(onClick = vm::confirmDelete, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("삭제") }
+                TextButton(onClick = pvm::confirmDelete, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("삭제") }
             },
-            dismissButton = { TextButton(onClick = vm::dismissDelete) { Text("취소") } },
+            dismissButton = { TextButton(onClick = pvm::dismissDelete) { Text("취소") } },
         )
     }
 }
 
-/** 머리글 보조 버튼(30dp, #1C1C1C). */
+/** 머리글 아이콘 버튼(Pilot 2 + 🔍). */
 @Composable
-private fun HeaderButton(icon: Int, label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    Button(
-        onClick = onClick, enabled = enabled, modifier = Modifier.height(Dimens.ButtonChip), shape = RoundedCornerShape(4.dp),
-        contentPadding = PaddingValues(horizontal = 10.dp),
-        colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
-    ) {
-        Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(12.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = FontSize.Caption)
+private fun HeaderIcon(icon: Int, description: String, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.size(Dimens.TouchMedium).semantics { contentDescription = description }) {
+        Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(18.dp))
     }
 }
 
-/**
- * 프로젝트 한 줄(36dp): 이름, 전주 수, ⋯ 메뉴([전주 파일로 속성 갱신] [삭제]). 고른 줄은 #2A2A2A + 왼쪽 3dp 파랑 막대.
- * 길게 눌러도 삭제를 묻는다. 메뉴 열림은 ViewModel이 들고 있어 열린 동안 5D를 받지 않는다.
- */
+/** 🔍 검색 칸: 프로젝트 이름·미션 번호. */
 @Composable
-private fun ProjectRow(
-    p: ProjectSummary, selected: Boolean, menuOpen: Boolean, onClick: () -> Unit,
-    onMenu: (Boolean) -> Unit, onAttrUpdate: () -> Unit, onDelete: () -> Unit,
-) {
+private fun SearchField(value: String, onChange: (String?) -> Unit, modifier: Modifier) {
     Row(
-        Modifier.fillMaxWidth().height(Dimens.RowList).clip(RoundedCornerShape(4.dp))
-            .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
-            .combinedClickable(onClick = onClick, onLongClick = onDelete),
+        modifier.width(320.dp).height(Dimens.TouchSmall).background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(4.dp)).padding(start = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
-        Text(
-            p.name, Modifier.weight(1f).padding(start = 8.dp), fontSize = FontSize.Body, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Color.White else TextSoft,
+        BasicTextField(
+            value, onValueChange = { onChange(it) }, Modifier.weight(1f), singleLine = true,
+            textStyle = TextStyle(color = Color.White, fontSize = FontSize.Label), cursorBrush = SolidColor(Color.White),
+            decorationBox = { inner -> if (value.isEmpty()) Text("프로젝트 이름·미션 번호", fontSize = FontSize.Label, color = TextSoft); inner() },
         )
-        Text(
-            "${p.poleCount}", Modifier.padding(start = 8.dp), style = numberStyle(FontSize.Label, FontWeight.Medium),
-            color = if (selected) TextSoft else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box {
-            IconButton(onClick = { onMenu(true) }, modifier = Modifier.size(Dimens.TouchMedium).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = FontSize.Number, color = TextSoft) }
-            DropdownMenu(menuOpen, onDismissRequest = { onMenu(false) }, properties = MENU_PROPERTIES) {
-                DropdownMenuItem(text = { Text("전주 파일로 속성 갱신") }, onClick = onAttrUpdate)
-                DropdownMenuItem(text = { Text("삭제", color = MaterialTheme.colorScheme.error) }, onClick = { onMenu(false); onDelete() })
-            }
-        }
+        IconButton(onClick = { onChange(null) }, modifier = Modifier.size(Dimens.TouchSmall).semantics { contentDescription = "검색 닫기" }) { Text("✕", fontSize = FontSize.Body) }
     }
 }
 

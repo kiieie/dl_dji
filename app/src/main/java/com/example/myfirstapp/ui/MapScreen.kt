@@ -166,13 +166,15 @@ fun MapScreen(
     onBack: () -> Unit,
     onStartFlight: (missionId: Long) -> Unit,
     replanFrom: Long? = null,
+    /** 라이브러리 [다시 날기]: 이 미션의 경로로 연다(10.5.8). */
+    copyFrom: Long? = null,
 ) {
     val context = LocalContext.current
     val vm: PlanViewModel = viewModel(
         factory = PlanViewModel.factory(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() },
             (context.applicationContext as InspectionApp).settings, ::djiPositions, { fresh -> deviceLocation(context.applicationContext, fresh) }, ::djiSimulatorOn,
-            { points, name, bg -> context.getExternalFilesDir(null)?.let { prefetchSatellite(it, points, name, bg) } },
+            { points, name, bg -> context.getExternalFilesDir(null)?.let { prefetchSatellite(it, points, name, bg) } }, copyFrom,
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
@@ -196,7 +198,7 @@ fun MapScreen(
     LaunchedEffect(vm) { rc.fiveD().collect(vm::on5d) }
 
     Column(Modifier.fillMaxSize()) {
-        PlanHeader(s, replanFrom, onBack)
+        PlanHeader(s, replanFrom, copyFrom, onBack)
         Row(Modifier.weight(1f)) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 s.poles?.let {
@@ -249,13 +251,13 @@ fun MapScreen(
 
 /** 머리글 32dp(지도·카메라 화면, 10.4.2): 뒤로, 프로젝트 이름, 새 계획/다시 계획, 저장 상태. */
 @Composable
-private fun PlanHeader(s: PlanUiState, replanFrom: Long?, onBack: () -> Unit) {
+private fun PlanHeader(s: PlanUiState, replanFrom: Long?, copyFrom: Long?, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(Dimens.HeaderCamera).background(Color.Black).padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall)) {
             Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(15.dp))
         }
         Text(s.projectName, fontSize = FontSize.Label, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 240.dp))
-        Text(replanFrom?.let { "미션 #$it 남은 전주" } ?: "새 계획", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(replanFrom?.let { "미션 #$it 남은 전주" } ?: copyFrom?.let { "미션 #$it 다시 날기" } ?: "새 계획", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         val saved = s.savedMissionId
         val c = if (saved == null) Warning else MaterialTheme.colorScheme.tertiary
         Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {

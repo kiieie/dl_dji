@@ -40,7 +40,6 @@ import com.example.myfirstapp.ui.flight.ManualFlightScreen
 import com.example.myfirstapp.ui.procedure.PreflightScreen
 import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.album.AlbumScreen
-import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.settings.SettingsHub
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
@@ -186,15 +185,20 @@ class MainActivity : ComponentActivity() {
                     onFlight = { pid, mid -> nav.navigate("flight/$pid/$mid") { launchSingleTop = true } },
                     onReplan = { pid, mid -> nav.navigate("map/$pid?replan=$mid") },
                     onResult = { pid, mid -> nav.navigate("result/$pid/$mid") },
+                    onCopy = { pid, mid -> nav.navigate("map/$pid?copy=$mid") },
                 )
             }
             composable(
-                "map/{pid}?replan={replan}",
-                listOf(navArgument("pid") { type = NavType.LongType }, navArgument("replan") { type = NavType.LongType; defaultValue = -1L }),
+                "map/{pid}?replan={replan}&copy={copy}",
+                listOf(
+                    navArgument("pid") { type = NavType.LongType }, navArgument("replan") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("copy") { type = NavType.LongType; defaultValue = -1L },
+                ),
             ) { e ->
                 val pid = e.arguments!!.getLong("pid")
                 val replan = e.arguments!!.getLong("replan").takeIf { it > 0 }
-                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") { launchSingleTop = true } }, replanFrom = replan)
+                val copy = e.arguments!!.getLong("copy").takeIf { it > 0 }
+                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") { launchSingleTop = true } }, replanFrom = replan, copyFrom = copy)
             }
             composable("flight/{pid}/{mid}", ids) { e ->
                 val pid = e.arguments!!.getLong("pid")

@@ -83,6 +83,8 @@ data class MissionEntity(
     val status: String,
     /** 실제로 날아간 고도 방식(5.6): TERRAIN 지형 추적, TAKEOFF 이륙 지점 기준. 아직 안 날았으면 null. */
     val flownHeightMode: String? = null,
+    /** 라이브러리 즐겨찾기(10.5.8). */
+    val favorite: Boolean = false,
 )
 
 @Entity(
@@ -325,9 +327,11 @@ data class AlbumPhoto(
     val displayName get() = poleDisplayName(poleId, lineName, lineNo)
 }
 
-/** 미션 목록(①-1) 카드 한 장. [lastFlightAt]은 소티 착륙(없으면 이륙) 시각 중 가장 늦은 값이다. */
+/** 라이브러리(10.5.8) 경로 카드 한 장. [lastFlightAt]은 소티 착륙(없으면 이륙) 시각 중 가장 늦은 값이다. */
 data class MissionSummary(
     val id: Long,
+    val projectId: Long,
+    val projectName: String,
     val status: String,
     val createdAt: Long,
     /** 계획 시점 비행 파라미터(JSON), 사진 수 계산용. */
@@ -339,7 +343,16 @@ data class MissionSummary(
     val detectedCount: Int,
     val reviewedCount: Int,
     val lastFlightAt: Long?,
-)
+    val favorite: Boolean = false,
+    val homeLat: Double = 0.0,
+    val homeLon: Double = 0.0,
+) {
+    /** Pilot 2 "업데이트 시간": 마지막 비행, 날지 않았으면 만든 때. */
+    val updatedAt get() = lastFlightAt ?: createdAt
+}
+
+/** 라이브러리 경로 그림의 전주 한 점(미션 · 소티 · 방문 순서). */
+data class LibraryPoint(val missionId: Long, val sortieId: Long, val lat: Double, val lon: Double, val status: String)
 
 /** 앱 재시작 복구(6.4): 시작했지만 끝나지 않은 소티가 속한 미션. */
 data class OpenSortieMission(val projectId: Long, val missionId: Long)
@@ -522,7 +535,7 @@ interface ProjectDao {
     suspend fun insertReview(review: ReviewEntity): Long
 
     @Query(
-        "SELECT m.id, m.status, m.createdAt, m.flightParams, " +
+        "SELECT m.id, m.projectId, p.name AS projectName, m.status, m.createdAt, m.flightParams, m.favorite, m.homeLat, m.homeLon, " +
             "(SELECT COUNT(*) FROM sortie s WHERE s.missionId = m.id) AS sortieCount, " +
             "(SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS poleCount, " +
             "(SELECT COUNT(*) FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id AND v.status = 'DONE') AS doneCount, " +
@@ -533,9 +546,19 @@ interface ProjectDao {
             "(SELECT COUNT(DISTINCT r.visitId) FROM review r JOIN visit v ON v.id = r.visitId JOIN sortie s ON s.id = v.sortieId " +
             "WHERE s.missionId = m.id) AS reviewedCount, " +
             "(SELECT MAX(COALESCE(s.endedAt, s.startedAt)) FROM sortie s WHERE s.missionId = m.id) AS lastFlightAt " +
-            "FROM mission m WHERE m.projectId = :projectId ORDER BY m.id DESC",
+            "FROM mission m JOIN project p ON p.id = m.projectId ORDER BY m.id DESC",
     )
-    fun observeMissions(projectId: Long): Flow<List<MissionSummary>>
+    fun observeLibrary(): Flow<List<MissionSummary>>
+
+    /** 라이브러리 카드의 경로 그림: 모든 미션의 방문 전주(소티·방문 순서). */
+    @Query(
+        "SELECT s.missionId, s.id AS sortieId, p.lat, p.lon, v.status FROM sortie s JOIN visit v ON v.sortieId = s.id " +
+            "JOIN pole p ON p.id = v.poleRowId ORDER BY s.missionId, s.seq, v.`order`",
+    )
+    suspend fun libraryPoints(): List<LibraryPoint>
+
+    @Query("UPDATE mission SET favorite = :favorite WHERE id IN (:ids)")
+    suspend fun setFavorite(ids: List<Long>, favorite: Boolean)
 
     /** 미션의 전주별 현재 판정(가장 최근 판독). */
     @Query(
@@ -583,7 +606,7 @@ interface ProjectDao {
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -591,7 +614,12 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8).build()
+
+        /** 7 → 8(2026-11-04): 라이브러리 즐겨찾기(10.5.8). */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) = db.execSQL("ALTER TABLE `mission` ADD COLUMN `favorite` INTEGER NOT NULL DEFAULT 0")
+        }
 
         /** 6 → 7(2026-10-31): 설비 조준 사진 표시(5.6). */
         val MIGRATION_6_7 = object : Migration(6, 7) {

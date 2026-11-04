@@ -2,6 +2,7 @@ package com.example.myfirstapp.ui
 
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.data.OpLog
+import com.example.myfirstapp.data.flightParamsFromJson
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -102,6 +103,7 @@ data class PlanUiState(
 /**
  * 계획 화면 ③(10장): 영역, 이륙 지점, 파라미터, 전주 제외, 경로 계산과 계획 저장.
  * [replanFrom]이 있으면 그 미션의 남은 전주만 골라 연다(F-20 [남은 전주로 새 계획]). 저장하면 그 미션은 대체됨(REPLACED)으로 닫힌다.
+ * [copyFrom]이 있으면 그 미션의 영역·이륙 지점·전주·파라미터로 연다(라이브러리 [다시 날기], 10.5.8). 저장하면 새 미션이고 옛 미션은 그대로다.
  */
 class PlanViewModel(
     private val dao: ProjectDao,
@@ -117,6 +119,7 @@ class PlanViewModel(
     private val simulatorOn: () -> Boolean = { false },
     /** 계획을 저장하면 미션 영역의 위성 타일을 미리 받는다(7.4, 현장은 인터넷 없음). 점들과 이름을 넘긴다. */
     private val prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit = { _, _, _ -> },
+    private val copyFrom: Long? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlanUiState(mapFiles = listMbtiles(mapsDir)))
     val state: StateFlow<PlanUiState> = _state.asStateFlow()
@@ -131,6 +134,8 @@ class PlanViewModel(
         viewModelScope.launch {
             val sim = simulatorOn()
             settings.flightDefaults.first().let { p -> _state.update { it.copy(params = if (sim) p.copy(terrainFollow = false) else p, simulator = sim) } }
+            // 기본값을 넣은 뒤에 복사한 미션의 파라미터로 덮는다
+            copyFrom?.let { seedCopy(it) }
         }
         viewModelScope.launch {
             dao.observePoles(projectId).collect { list -> _state.update { it.copy(poles = list) } }
@@ -213,6 +218,27 @@ class PlanViewModel(
                 vertices = vertices, focus = vertices,
                 excluded = all.filter { p -> p.lat in s..n && p.lon in w..e && p.poleId !in remaining }.map { p -> p.poleId }.toSet(),
                 message = "미션 #$old 의 남은 전주 ${targets.size}개를 골랐습니다. 이륙 지점을 정하세요.",
+            )
+        }
+    }
+
+    /** [다시 날기]: 미션의 영역·이륙 지점·파라미터 그대로, 영역 안에서 그 미션에 없던 전주는 뺀다(사진 폴더 이름은 새 미션 것으로). */
+    private suspend fun seedCopy(old: Long) {
+        val m = dao.mission(old) ?: return
+        val vertices = runCatching {
+            org.maplibre.geojson.Polygon.fromJson(m.areaGeoJson).coordinates()[0].dropLast(1).map { GeoPoint(it.latitude(), it.longitude()) }
+        }.getOrDefault(emptyList())
+        if (vertices.size < 3) return _state.update { it.copy(message = "미션 #$old 의 영역을 읽지 못했습니다. 영역을 다시 그리세요.") }
+        val mine = dao.missionVisits(old).map { it.poleId }.toSet()
+        val area = Polygon(vertices)
+        val all = dao.observePoles(projectId).first()
+        OpLog.log("plan", "copy", mapOf("from" to old, "poles" to mine.size))
+        _state.update {
+            it.copy(
+                vertices = vertices, focus = vertices, home = GeoPoint(m.homeLat, m.homeLon), homeSource = "copy", homeAuto = false,
+                params = flightParamsFromJson(m.flightParams).copy(photoFolder = null),
+                excluded = all.filter { p -> area.contains(GeoPoint(p.lat, p.lon)) && p.poleId !in mine }.map { p -> p.poleId }.toSet(),
+                message = "미션 #$old 경로를 불러왔습니다. 저장하면 새 미션이 됩니다(옛 미션은 그대로).",
             )
         }
     }
@@ -343,7 +369,7 @@ class PlanViewModel(
         fun factory(
             dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, settings: SettingsStore,
             positions: suspend () -> LivePositions, deviceLocation: suspend (Boolean) -> GeoPoint?, simulatorOn: () -> Boolean,
-            prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit,
-        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, positions, deviceLocation, simulatorOn, prefetchArea) } }
+            prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit, copyFrom: Long? = null,
+        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, positions, deviceLocation, simulatorOn, prefetchArea, copyFrom) } }
     }
 }

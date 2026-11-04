@@ -169,7 +169,7 @@ private fun MissionCard(
 ) {
     Surface(modifier, shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Box {
-            if (m != null) RoutePreview(m, Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(top = 28.dp))
+            if (m != null) RoutePreview(m.route, m.home, Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(top = 28.dp))
             Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("최근 미션", fontSize = FontSize.Caption, color = TextSoft)
@@ -238,74 +238,6 @@ private fun Figure(label: String, value: String, suffix: String = "") {
         maxLines = 1,
     )
 }
-
-/**
- * 경로 미리보기: 소티마다 이륙 지점(H)에서 방문 순서대로 초록 선, 전주 점(끝남 초록, 남음 주황)과 전주번호.
- * 위경도를 위도 cos로 보정한 평면에 그대로 맞춘다(수 km 안의 미리보기라 충분).
- */
-@Composable
-private fun RoutePreview(m: LatestMission, modifier: Modifier) {
-    val measurer = rememberTextMeasurer()
-    val routeColor = MaterialTheme.colorScheme.tertiary
-    val labelStyle = numberStyle(FontSize.Caption, FontWeight.Medium).copy(color = TextSoft)
-    Canvas(modifier) {
-        val pts = m.route.flatten()
-        if (pts.isEmpty()) return@Canvas
-        val lats = pts.map { it.lat } + listOfNotNull(m.home?.lat)
-        val lons = pts.map { it.lon } + listOfNotNull(m.home?.lon)
-        val k = cos(Math.toRadians(lats.average()))
-        val minX = lons.min() * k
-        val maxY = lats.max()
-        val spanX = (lons.max() * k - minX).coerceAtLeast(1e-6)
-        val spanY = (maxY - lats.min()).coerceAtLeast(1e-6)
-        val pad = 20.dp.toPx()
-        val w = size.width - 2 * pad
-        val h = size.height - 2 * pad
-        val scale = min(w / spanX, h / spanY)
-        val ox = pad + (w - spanX * scale) / 2
-        val oy = pad + (h - spanY * scale) / 2
-        fun at(lat: Double, lon: Double) = Offset((ox + (lon * k - minX) * scale).toFloat(), (oy + (maxY - lat) * scale).toFloat())
-
-        val home = m.home?.let { at(it.lat, it.lon) }
-        m.route.forEach { sortie ->
-            val path = Path()
-            val first = home ?: at(sortie[0].lat, sortie[0].lon)
-            path.moveTo(first.x, first.y)
-            sortie.forEach { p -> at(p.lat, p.lon).let { path.lineTo(it.x, it.y) } }
-            drawPath(path, routeColor, style = Stroke(2.5.dp.toPx(), join = StrokeJoin.Round))
-        }
-        val r = (if (pts.size > 60) 2.5 else 4.0).dp.toPx()
-        pts.forEach { p ->
-            val c = at(p.lat, p.lon)
-            drawCircle(Color.Black, r + 1.2.dp.toPx(), c)
-            drawCircle(if (p.done) routeColor else Warning, r, c)
-        }
-        // 전주번호(10.4.3): 점 오른쪽 위, 어두운 바탕. 앞 번호와 겹치면 건너뛴다(방문 순서가 앞인 것이 남음). 많으면 모두 생략
-        if (pts.size <= MAX_LABELS) {
-            val placed = mutableListOf<Rect>()
-            val gap = 2.dp.toPx()
-            pts.forEach { p ->
-                val c = at(p.lat, p.lon)
-                val t = measurer.measure(p.label, labelStyle)
-                val box = Rect(Offset(c.x + r + gap, c.y - r - t.size.height), Size(t.size.width + 2 * gap, t.size.height.toFloat()))
-                if (placed.any { it.overlaps(box) }) return@forEach
-                placed += box
-                drawRoundRect(LabelBg, box.topLeft, box.size, CornerRadius(gap))
-                drawText(t, topLeft = Offset(box.left + gap, box.top))
-            }
-        }
-        if (home != null) {
-            drawCircle(Caution, 8.dp.toPx(), home)
-            val t = measurer.measure("H", TextStyle(fontSize = FontSize.Micro, fontWeight = FontWeight.Bold, color = Color.Black))
-            drawText(t, topLeft = Offset(home.x - t.size.width / 2f, home.y - t.size.height / 2f))
-        }
-    }
-}
-
-/** 미리보기에 전주번호를 쓰는 최대 전주 수. */
-private const val MAX_LABELS = 40
-
-private val LabelBg = Color(0xB3000000)
 
 /** 오른쪽 타일(Pilot 2 홈 타일): 위 아이콘, 아래 이름과 한 줄 설명. */
 @Composable
