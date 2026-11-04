@@ -74,6 +74,7 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression.color
 import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.android.style.expressions.Expression.literal
 import org.maplibre.android.style.expressions.Expression.match
 import org.maplibre.android.style.expressions.Expression.stop
 import org.maplibre.android.style.layers.CircleLayer
@@ -96,6 +97,8 @@ import com.example.myfirstapp.ui.theme.CardBg
 import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.MAP_ROUTE
+import com.example.myfirstapp.ui.theme.MAP_POLE_PENDING
+import com.example.myfirstapp.ui.theme.MAP_POLE_PENDING_STROKE
 import com.example.myfirstapp.ui.theme.MAP_TRACK
 import com.example.myfirstapp.ui.theme.TextSoft
 import java.text.SimpleDateFormat
@@ -209,14 +212,16 @@ internal fun FlightMap(
                     CircleLayer("poles-point", "poles").withProperties(
                         circleColor(
                             match(
-                                get("status"), color(PolePending.toArgb()),
+                                get("status"), color(android.graphics.Color.parseColor(MAP_POLE_PENDING)),
                                 stop(VisitStatus.DONE.name, color(PoleDone.toArgb())),
                                 stop(VisitStatus.SKIPPED.name, color(PoleSkipped.toArgb())),
                                 stop(VisitStatus.FAILED.name, color(PoleFailed.toArgb())),
                                 stop(VisitStatus.IN_PROGRESS.name, color(PoleActive.toArgb())),
                             ),
                         ),
-                        circleRadius(if (interactive) 7f else 4f), circleStrokeColor("#FFFFFF"), circleStrokeWidth(1f),
+                        circleRadius(if (interactive) 7f else 4f),
+                        circleStrokeColor(match(get("status"), literal("#FFFFFF"), stop(VisitStatus.PENDING.name, literal(MAP_POLE_PENDING_STROKE)))),
+                        circleStrokeWidth(if (interactive) 1.5f else 1f),
                     ),
                 )
                 style.addMarkerLayers(scale = if (interactive) 1f else 0.75f)

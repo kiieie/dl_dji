@@ -62,6 +62,10 @@ const val MAP_HOME = "#FFC400"
 const val MAP_ROUTE = "#19D46E"
 /** 비행 지도 실제 비행 궤적(Pilot 2 주황, 10.5.4). */
 const val MAP_TRACK = "#FF9F0A"
+
+/** 비행 지도의 남은(대기) 전주: 날아간 궤적(주황)과 헷갈리지 않게 밝은 회색에 어두운 테두리(2026-11-04 C묶음 대조). */
+const val MAP_POLE_PENDING = "#E6E6E6"
+const val MAP_POLE_PENDING_STROKE = "#212529"
 /** 이륙 지점 점의 어두운 테두리. */
 const val MAP_STROKE_DARK = "#212529"
 /** 기체 화살표(Pilot 2 기체 표지, 홈 노랑과 구별되는 파랑). */
