@@ -1,0 +1,20 @@
+사진 /storage/emulated/0/Android/data/kr.co.dl_dji/files/projects/9/missions/18/images/1566R532_2_1793756424834_FAKE_110_ZOOM.jpg (6820KB), 발열 0
+coco-yolo11n-fp16 CPU4 입력640 자르기1.0 축소1/8 decode 114/113/116 pre 18/18/18 infer 204/202/207 post 5/5/5 total 341/338/344 상자1 발열 0→0
+coco-yolo11n-fp16 GPU 입력640 자르기1.0 축소1/8 decode 115/113/118 pre 18/18/18 infer 43/37/48 post 12/9/15 total 187/183/191 상자0 발열 0→0
+facility-v1-coco-1280-fp16 CPU4 입력1280 자르기1.0 축소1/4 decode 136/136/137 pre 72/71/74 infer 9612/9597/9624 post 1/1/1 total 9821/9807/9832 상자0 발열 0→0
+facility-v1-coco-1280-fp16 GPU 입력1280 자르기1.0 축소1/4 decode 143/141/147 pre 72/71/74 infer 976/971/981 post 3/1/8 total 1194/1190/1198 상자0 발열 0→0
+facility-v1-coco-640-fp16 CPU4 입력640 자르기1.0 축소1/8 decode 113/112/116 pre 18/18/20 infer 2357/2356/2360 post 0/0/0 total 2489/2487/2492 상자0 발열 0→0
+facility-v1-coco-640-fp16 CPU4 입력640 자르기0.5 축소1/4 decode 135/135/136 pre 19/18/21 infer 2357/2353/2359 post 0/0/0 total 2511/2507/2513 상자0 발열 0→0
+facility-v1-coco-640-fp16 GPU 입력640 자르기1.0 축소1/8 decode 121/119/122 pre 18/18/21 infer 268/267/270 post 1/0/5 total 408/406/412 상자0 발열 0→0
+facility-v1-coco-640-fp16 GPU 입력640 자르기0.5 축소1/4 decode 143/141/145 pre 19/18/21 infer 269/265/272 post 1/0/1 total 431/425/435 상자0 발열 0→0
+facility-v1-coco-960-fp16 CPU4 입력960 자르기1.0 축소1/4 decode 135/134/136 pre 41/40/44 infer 5361/5355/5364 post 1/1/1 total 5538/5530/5543 상자0 발열 0→0
+facility-v1-coco-960-fp16 CPU4 입력960 자르기0.5 축소1/2 decode 153/152/155 pre 42/41/45 infer 5364/5358/5369 post 1/1/1 total 5559/5555/5563 상자0 발열 0→0
+facility-v1-coco-960-fp16 GPU 입력960 자르기1.0 축소1/4 decode 143/141/144 pre 41/41/44 infer 494/491/495 post 1/1/2 total 679/676/682 상자0 발열 0→0
+facility-v1-coco-960-fp16 GPU 입력960 자르기0.5 축소1/2 decode 161/159/163 pre 42/41/45 infer 493/491/495 post 1/1/2 total 697/693/701 상자0 발열 0→0
+연속 30회: facility-v1-coco-640-fp16 GPU 자르기0.5, 발열 0
+연속 5: total 431/429/432 발열 0
+연속 10: total 430/428/433 발열 0
+연속 15: total 431/429/433 발열 0
+연속 20: total 430/427/434 발열 0
+연속 25: total 433/432/436 발열 0
+연속 30: total 431/429/433 발열 0
