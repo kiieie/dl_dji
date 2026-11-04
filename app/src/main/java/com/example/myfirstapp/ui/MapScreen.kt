@@ -97,6 +97,7 @@ import com.example.myfirstapp.data.labelCacheFile
 import com.example.myfirstapp.data.prefetchSatellite
 import com.example.myfirstapp.data.resumeSatellitePrefetch
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.Annotation
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.poleDisplayName
 import com.example.myfirstapp.core.route.RoutePlan
@@ -183,6 +184,8 @@ fun MapScreen(
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
+    // 핀포인트·선·영역(10.4.7): 계획 지도는 보기·검색만(Pilot 2 경로 편집 지도에도 주석 도구는 없음)
+    val notes by annotationViewModel().state.collectAsStateWithLifecycle()
     // 지금 위치는 이 화면이 보이는 동안만 읽는다(비행 화면이 덮으면 멈춤)
     LifecycleResumeEffect(vm) {
         vm.setActive(true)
@@ -213,6 +216,7 @@ fun MapScreen(
                         background = s.background,
                         overlay = Overlay(s.vertices, s.plan, s.excludedPoints, s.params, s.poles?.firstOrNull { p -> p.poleId == s.selected }?.let { p -> GeoPoint(p.lat, p.lon) }),
                         markers = MapMarkers(home = s.home, aircraft = s.aircraft, headingDeg = s.aircraftHeadingDeg, rc = s.rc),
+                        annotations = notes.items,
                         focus = s.focus,
                         fitRequest = fitRequest,
                         showBackground = showBackground,
@@ -239,7 +243,7 @@ fun MapScreen(
                 // 오른쪽 지도 도구(10.5.4): 검색 · 전체 보기 · 레이어(배경 지도 고르기, 배경 끄기) · 지우기(영역) · 과녁(기체·조종기 위치로)
                 Column(Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val searchable = remember(s.poles) { s.poles.orEmpty().map { it.toPole() } }
-                    MapSearchButton(searchable, Dimens.TouchMedium) { vm.focusOn(it.position, it.poleId) }
+                    MapSearchButton(searchable, Dimens.TouchMedium, notes = notes.items, onPickNote = { vm.focusOn(it.points[0]) }) { vm.focusOn(it.position, it.poleId) }
                     MapTool("전체 보기", onClick = { fitRequest++ }) { tint -> Icon(painterResource(R.drawable.ic_fit), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp)) }
                     MapLayerButton(s.background.source, Dimens.TouchMedium, vm::setMapSource, background = showBackground, onToggleBackground = { showBackground = !showBackground })
                     MapTool("지우기", enabled = s.vertices.isNotEmpty(), onClick = vm::clearArea) { tint ->
@@ -600,6 +604,8 @@ private fun PoleMap(
     overlay: Overlay,
     /** 이륙 지점 H·기체 화살표·조종기 점(10.5.4). 기체가 움직일 때마다 바뀌어 [overlay]와 따로 둔다. */
     markers: MapMarkers,
+    /** 핀포인트·선·영역(10.4.7, 보기만). */
+    annotations: List<Annotation>,
     focus: List<GeoPoint>,
     /** 바뀔 때마다 영역(없으면 전주 전체)에 맞춰 다시 보여 준다(Pilot 2 중앙 복귀). */
     fitRequest: Int,
@@ -684,7 +690,8 @@ private fun PoleMap(
                         circleColor("#00000000"), circleRadius(14f), circleStrokeColor(MAP_HOME), circleStrokeWidth(4f),
                     ),
                 )
-                // 이륙 지점 H·기체·조종기는 맨 위(Pilot 2 표지)
+                // 주석, 그 위에 이륙 지점 H·기체·조종기(Pilot 2 표지)
+                style.addAnnotationLayers()
                 style.addMarkerLayers()
                 styleGen++
                 if (!fitted && poles.isNotEmpty()) {
@@ -729,6 +736,10 @@ private fun PoleMap(
                 FeatureCollection.fromFeatures(listOfNotNull(overlay.selected?.let { Feature.fromGeometry(it.toPoint()) })),
             )
         }
+    }
+
+    LaunchedEffect(annotations, styleGen) {
+        mapView.getMapAsync { map -> map.style?.takeIf { it.isFullyLoaded }?.setAnnotations(annotations) }
     }
 
     LaunchedEffect(markers, styleGen) {

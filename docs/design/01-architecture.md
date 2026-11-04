@@ -120,7 +120,7 @@ A-1234,37.123456,127.123456,OO선,비고
 
 ### 4.2 엔티티 (Room)
 
-`POLE`의 설비 속성(선로번호, 전주규격, 설치기기, 지선주, 설치년월, 고/저압)은 4.5.4. DB 버전 10(2026-11-04).
+`POLE`의 설비 속성(선로번호, 전주규격, 설치기기, 지선주, 설치년월, 고/저압)은 4.5.4. DB 버전 11(2026-11-04). `ANNOTATION`(DB 11, 10.4.7)은 핀포인트·선·영역 주석 하나: `kind` PIN/LINE/AREA, `color` 5종 이름, `points`는 GeoJSON 좌표 배열 글자 `[[경도,위도],…]`(영역은 닫지 않음), `altitudeM`은 핀포인트 고도(이륙 지점 기준). 다른 표와 이어지지 않고(모든 지도에 보임), 10 → 11은 표만 만든다.
 
 ```mermaid
 erDiagram
@@ -148,6 +148,7 @@ erDiagram
   TELEMETRY_SAMPLE { long id; long sortieId; datetime at; double lat; double lon; double altRel; float speed; float heading; float gimbalPitch; int batteryPct; string flightMode }
   MANUAL_SESSION { long id; datetime startedAt; datetime endedAt; long projectId }
   MANUAL_TRACK { long id; long sessionId; datetime at; double lat; double lon; double altRel; float speed; float heading; float gimbalPitch; int batteryPct; string flightMode }
+  ANNOTATION { long id; string kind; string name; string color; string points; double altitudeM; datetime createdAt }
 ```
 
 - **구현 현황**: `TELEMETRY_SAMPLE`을 뺀 엔티티를 구현했다(`POLE`은 `(projectId, poleId)` 고유, 하위 행은 상위 삭제 시 함께 삭제). `TELEMETRY_SAMPLE`과 `CAPTURE.viewpoint`는 실제 기체 연동 때 추가했다(스키마 버전 2, 2026-10-30). 기기에 현장 시험 데이터가 있어 지우지 않고 1 → 2 마이그레이션을 둔다.
@@ -182,6 +183,7 @@ erDiagram
 | `detections.csv` | 객체 1개 1행: 사진 파일 경로, 전주번호, 대상, 점수, 상자(사진 기준 0~1 비율 x, y, w, h) |
 | `route.geojson` | 전주(Point), 계획 촬영 지점(Point, 전주번호·지점 번호·기수·짐벌), 소티별 계획 경로와 실제 비행 궤적(LineString, `TELEMETRY_SAMPLE`) |
 | `mission.json` | 미션·소티·파라미터(촬영 방식 포함)·모델 버전, 위 내용 전체(기존 구조 유지) |
+| `annotations.geojson` | 미션 전주·이륙 지점 둘레 500m 안의 핀포인트(Point, 고도)·선(LineString, 길이)·영역(Polygon, 넓이). 속성 이름·종류·색·만든 시각(10.4.7) |
 | `kmz/<소티>.kmz` | 기체에 올린 미션 파일 |
 | `images/<전주번호>/` | 받은 사진. 파일명 `<전주번호>_<지점>_<시각>_<렌즈>.jpg` |
 | `logs/` | 그 미션 기간의 운용 로그(4.4) |

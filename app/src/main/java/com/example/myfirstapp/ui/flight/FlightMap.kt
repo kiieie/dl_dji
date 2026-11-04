@@ -58,7 +58,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.data.MapSource
+import com.example.myfirstapp.ui.AnnotationTools
+import com.example.myfirstapp.ui.DraftPanel
+import com.example.myfirstapp.ui.MapCrosshair
 import com.example.myfirstapp.ui.MapLayerButton
+import com.example.myfirstapp.ui.NOTE_LAYERS
+import com.example.myfirstapp.ui.NOTE_VERTEX
+import com.example.myfirstapp.ui.PinCard
+import com.example.myfirstapp.ui.addAnnotationLayers
+import com.example.myfirstapp.ui.annotationViewModel
+import com.example.myfirstapp.ui.setAnnotations
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myfirstapp.ui.MapMarkers
 import com.example.myfirstapp.ui.MapSearchButton
 import com.example.myfirstapp.ui.MapTargetButton
@@ -129,6 +140,8 @@ private enum class MarkerCard { AIRCRAFT, RC }
 internal fun FlightMap(
     s: FlightUiState, interactive: Boolean, pad: List<Dp>, modifier: Modifier,
     onMapSource: (MapSource) -> Unit = {}, onClearTrack: () -> Unit = {},
+    /** 왼쪽 주석 도구(핀포인트·선·영역·⊗, 10.4.7)와 가운데 십자선. 비행 다시 보기는 보기만 해서 끈다. */
+    tools: Boolean = true,
     /** 스타일을 (다시) 읽을 때마다 표지를 더한 뒤 부른다: 다른 화면이 제 레이어를 얹는다(비행 다시 보기, 10.4.6). */
     onStyle: (MapLibreMap, Style) -> Unit = { _, _ -> },
 ) {
@@ -144,6 +157,10 @@ internal fun FlightMap(
     var labels by remember { mutableStateOf<List<Pair<Pole, Offset>>>(emptyList()) }
     var wpLabels by remember { mutableStateOf<List<Pair<Waypoint, Offset>>>(emptyList()) }
     val latest by rememberUpdatedState(s)
+    // 핀포인트·선·영역(10.4.7): 모든 지도에 그리고, 큰 지도(다시 보기 빼고)에서 만들고 고친다
+    val notes = annotationViewModel()
+    val ns by notes.state.collectAsStateWithLifecycle()
+    val annotate = interactive && tools
 
     // 소티마다 실제 촬영 지점(5.6, 4방향이면 전주마다 4점). 방문 상태만 바뀌면 다시 펼치지 않는다
     val visitKey = s.exec.visits.map { Triple(it.sortieIndex, it.order, it.pole) }
@@ -204,11 +221,20 @@ internal fun FlightMap(
                 val p = map.projection.toScreenLocation(ll)
                 val r = 24 * density.density
                 val box = RectF(p.x - r, p.y - r, p.x + r, p.y + r)
+                // 선·영역을 그리는 중이면 꼭짓점을 고르거나 누른 곳에 점을 더한다(10.4.7)
+                if (annotate && notes.state.value.draft != null) {
+                    val v = map.queryRenderedFeatures(box, NOTE_VERTEX).firstOrNull()?.getNumberProperty("i")?.toInt()
+                    if (v != null) notes.selectVertex(v) else notes.addVertex(GeoPoint(ll.latitude, ll.longitude))
+                    return@addOnMapClickListener true
+                }
                 card = when {
                     map.queryRenderedFeatures(box, "marker-aircraft").isNotEmpty() -> MarkerCard.AIRCRAFT
                     map.queryRenderedFeatures(box, "marker-rc").isNotEmpty() -> MarkerCard.RC
                     else -> null
                 }
+                // 핀포인트를 누르면 카드, 선·영역은 편집(10.4.7)
+                val note = if (annotate && card == null) map.queryRenderedFeatures(box, *NOTE_LAYERS).firstOrNull()?.getNumberProperty("id")?.toLong() else null
+                if (note != null) notes.tap(note) else notes.select(null)
                 true
             }
         }
@@ -242,6 +268,7 @@ internal fun FlightMap(
                     ),
                 )
                 style.addLayer(LineLayer("rth-line", "rth").withProperties(lineColor(MAP_ROUTE), lineWidth(3f)))
+                style.addAnnotationLayers(scale = if (interactive) 1f else 0.75f)
                 style.addMarkerLayers(scale = if (interactive) 1f else 0.75f)
                 onStyle(map, style)
                 styleGen++
@@ -288,6 +315,9 @@ internal fun FlightMap(
                 !northUp -> map.moveCamera(CameraUpdateFactory.bearingTo(bearing))
             }
         }
+    }
+    LaunchedEffect(styleGen, ns.items, ns.draft, ns.vertex) {
+        mapView.getMapAsync { map -> map.style?.takeIf { it.isFullyLoaded }?.setAnnotations(ns.items, ns.draft, ns.vertex) }
     }
     // N 잠금으로 돌아오면 손으로 옮긴 뒤라도 북쪽을 위로
     LaunchedEffect(northUp) { if (northUp) mapView.getMapAsync { it.moveCamera(CameraUpdateFactory.bearingTo(0.0)) } }
@@ -355,12 +385,23 @@ internal fun FlightMap(
             }
         }
         if (!interactive) return@Box
+        if (annotate) {
+            MapCrosshair(Modifier.align(Alignment.Center))
+            // 왼쪽 주석 도구(Pilot 2 지도 뷰): 카메라 뷰 왼쪽 열 자리. 핀포인트는 지도 가운데 십자선, 고도는 기체 지금 고도
+            AnnotationTools(
+                ns, notes, t?.position,
+                onPin = {
+                    mapView.getMapAsync { m -> m.cameraPosition.target?.let { c -> notes.pinAt(GeoPoint(c.latitude, c.longitude), t?.takeIf { it.connected }?.altitudeM) } }
+                },
+                Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp),
+            )
+        }
         // 배경 출처: 오른쪽 아래(라이브러리 칸은 폭 70% 자리라 겹치지 않음)
         MapAttribution(s.background.attribution, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 10.dp))
         // 오른쪽 도구(10.5.4, 위에서 아래로): 검색 · N 잠금 · 레이어 · 지우개 · 과녁. 카메라 뷰의 오른쪽 열 자리
         Column(Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 37.dp, end = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val size = Dimens.TouchSmall
-            MapSearchButton(s.poles, size) { jump(it.position) }
+            MapSearchButton(s.poles, size, notes = ns.items, onPickNote = { jump(it.points[0]) }) { jump(it.position) }
             // Pilot 2: 북쪽 고정이면 검은 칸에 N·화살촉·노란 자물쇠, 기수 방향이면 흰 칸에 자물쇠 없이
             MapTool(if (northUp) "북쪽 고정(누르면 기수 방향)" else "기수 방향(누르면 북쪽 고정)", size = size, dark = northUp, onClick = { northUp = !northUp }) { tint ->
                 NorthLockGlyph(locked = northUp, tint)
@@ -374,16 +415,22 @@ internal fun FlightMap(
                 onAircraft = { t?.position?.let { jump(it, follow = true) } }, onRc = { t?.rcPosition?.let { jump(it) } },
             )
         }
-        card?.let { c -> MarkerInfoCard(c, t, onClose = { card = null }, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp)) }
+        card?.let { c ->
+            MarkerInfoCard(c, t, onClose = { card = null }, onPin = { notes.pinAircraft(t); card = null }, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp))
+        }
+        if (annotate) {
+            ns.items.firstOrNull { it.id == ns.selected }?.let { PinCard(it, t?.position, notes, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp)) }
+            ns.draft?.let { DraftPanel(it, notes, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar).fillMaxHeight()) }
+        }
     }
 }
 
 /**
  * 기체·내 조종기 카드(10.5.7, Pilot 2 지도에서 표지를 누름): 시각, 기체는 ALT(이륙 지점 기준), 위도·경도.
- * ASL은 텔레메트리에 없어 빼고, [핀포인트]는 핀포인트 기능(10.5.6) 전까지 꺼 둔다.
+ * ASL은 텔레메트리에 없어 빼고, 기체 카드 [핀포인트]는 지금 기체 위치에 핀포인트를 남긴다(10.4.7, 위성이 모자라면 실패).
  */
 @Composable
-private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, onClose: () -> Unit, modifier: Modifier) {
+private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, onClose: () -> Unit, onPin: () -> Unit, modifier: Modifier) {
     val at = if (c == MarkerCard.AIRCRAFT) t?.position else t?.rcPosition
     Column(modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -402,7 +449,7 @@ private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, onClose: () -> Unit, mo
                 Text(value, style = numberStyle(FontSize.Body), color = Color.White)
             }
         }
-        if (c == MarkerCard.AIRCRAFT) OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.height(Dimens.ButtonChip)) { Text("핀포인트", fontSize = FontSize.Caption) }
+        if (c == MarkerCard.AIRCRAFT) OutlinedButton(onClick = onPin, enabled = t?.position != null, modifier = Modifier.height(Dimens.ButtonChip)) { Text("핀포인트", fontSize = FontSize.Caption) }
     }
 }
 

@@ -15,6 +15,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.myfirstapp.core.csv.diffPoleAttributes
@@ -562,6 +563,22 @@ interface ProjectDao {
     @Query("SELECT * FROM manual_track WHERE sessionId = :sessionId ORDER BY at")
     suspend fun manualTrack(sessionId: Long): List<ManualTrackEntity>
 
+    /** 지도 주석(10.4.7): 만든 순서. */
+    @Query("SELECT * FROM annotation ORDER BY createdAt, id")
+    fun observeAnnotations(): Flow<List<AnnotationEntity>>
+
+    @Query("SELECT * FROM annotation ORDER BY createdAt, id")
+    suspend fun annotations(): List<AnnotationEntity>
+
+    @Upsert
+    suspend fun upsertAnnotation(annotation: AnnotationEntity)
+
+    @Query("DELETE FROM annotation WHERE id = :id")
+    suspend fun deleteAnnotation(id: Long)
+
+    @Query("DELETE FROM annotation")
+    suspend fun clearAnnotations()
+
     /** 비행 기록(10.4.6): 궤적이 있는 자동 비행 소티. */
     @Query(
         "SELECT s.id AS sortieId, NULL AS sessionId, s.missionId, m.projectId, s.seq, p.name AS projectName FROM sortie s JOIN mission m ON m.id = s.missionId " +
@@ -760,9 +777,9 @@ interface ProjectDao {
     entities = [
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
-        ManualSessionEntity::class, ManualTrackEntity::class,
+        ManualSessionEntity::class, ManualTrackEntity::class, AnnotationEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -770,7 +787,15 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11).build()
+
+        /** 10 → 11(2026-11-04): 지도 주석(핀포인트·선·영역, 10.4.7). 새 표만 만든다. */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) = db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `annotation` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `kind` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+                    "`color` TEXT NOT NULL, `points` TEXT NOT NULL, `altitudeM` REAL, `createdAt` INTEGER NOT NULL)",
+            )
+        }
 
         /** 9 → 10(2026-11-04): 수동 비행 궤적(10.4.6 비행 다시 보기). 새 표만 만든다. */
         val MIGRATION_9_10 = object : Migration(9, 10) {

@@ -48,6 +48,12 @@ object Dimens {
     val MiniMapLarge = DpSize(216.dp, 150.dp)
     /** 지도 웨이포인트 번호 원(흰 원 파란 번호, 10.5.4). */
     val MarkerWaypoint = 16.dp
+
+    /** 오른쪽 패널(핀포인트 목록·선/영역 편집, Pilot 2 10.4.7). */
+    val SidePanel = 320.dp
+
+    /** 지도 핀포인트 마름모(10.4.7). */
+    val MarkerPin = 20.dp
     /** 미니맵 위 "마지막 사진" 썸네일(9.6, 사진 4:3). */
     val LastPhoto = DpSize(120.dp, 90.dp)
     /** 계획 화면 파라미터 −/+ 버튼. */
