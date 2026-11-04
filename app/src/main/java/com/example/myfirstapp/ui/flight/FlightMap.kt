@@ -100,6 +100,7 @@ import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -144,6 +145,10 @@ internal fun FlightMap(
     tools: Boolean = true,
     /** 스타일을 (다시) 읽을 때마다 표지를 더한 뒤 부른다: 다른 화면이 제 레이어를 얹는다(비행 다시 보기, 10.4.6). */
     onStyle: (MapLibreMap, Style) -> Unit = { _, _ -> },
+    /** 기체·조종기 카드의 시각(ms): 비행 다시 보기는 재생 위치의 시각, null이면 지금. */
+    clockMs: Long? = null,
+    /** 라이브러리 패널에서 누른 경로(10.5.8): 소티마다 이륙 지점 → 전주 → 이륙 지점. 파란 점선으로 그리고 바뀌면 그 경로에 맞춘다. */
+    preview: List<List<GeoPoint>> = emptyList(),
 ) {
     val mapView = rememberMapView()
     val density = LocalDensity.current
@@ -243,8 +248,9 @@ internal fun FlightMap(
     LaunchedEffect(s.mapFiles, s.background) {
         mapView.getMapAsync { map ->
             map.setStyle(Style.Builder().fromJson(styleJson(s.mapFiles, s.background))) { style ->
-                listOf("route", "track", "rth", "poles").forEach { style.addSource(GeoJsonSource(it)) }
+                listOf("route", "track", "rth", "poles", "preview").forEach { style.addSource(GeoJsonSource(it)) }
                 style.addLayer(LineLayer("route-line", "route").withProperties(lineColor(MAP_ROUTE), lineWidth(2f)))
+                style.addLayer(LineLayer("preview-line", "preview").withProperties(lineColor(Accent.toArgb()), lineWidth(3f), lineDasharray(arrayOf(2f, 1f))))
                 style.addLayer(
                     CircleLayer("poles-point", "poles").withProperties(
                         circleColor(
@@ -318,6 +324,20 @@ internal fun FlightMap(
     }
     LaunchedEffect(styleGen, ns.items, ns.draft, ns.vertex) {
         mapView.getMapAsync { map -> map.style?.takeIf { it.isFullyLoaded }?.setAnnotations(ns.items, ns.draft, ns.vertex) }
+    }
+    // 라이브러리 패널 미리보기(10.5.8): 누른 경로에 맞춘다(오른쪽은 패널 폭만큼 비움). 따라가기는 멈추고 과녁으로 다시 따라간다
+    LaunchedEffect(styleGen, preview) {
+        mapView.getMapAsync { map ->
+            val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
+            val lines = preview.filter { it.size >= 2 }.map { l -> Feature.fromGeometry(LineString.fromLngLats(l.map { it.toPoint() })) }
+            style.getSourceAs<GeoJsonSource>("preview")?.setGeoJson(FeatureCollection.fromFeatures(lines))
+            val pts = preview.flatten().map { LatLng(it.lat, it.lon) }.distinct()
+            if (pts.size < 2) return@getMapAsync
+            panned = true
+            val px = pad.map { with(density) { it.roundToPx() } }
+            val panel = with(density) { Dimens.SidePanel.roundToPx() }
+            map.animateCamera(CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(pts).build(), px[0], px[1], px[2] + panel, px[3]))
+        }
     }
     // N 잠금으로 돌아오면 손으로 옮긴 뒤라도 북쪽을 위로
     LaunchedEffect(northUp) { if (northUp) mapView.getMapAsync { it.moveCamera(CameraUpdateFactory.bearingTo(0.0)) } }
@@ -416,7 +436,7 @@ internal fun FlightMap(
             )
         }
         card?.let { c ->
-            MarkerInfoCard(c, t, onClose = { card = null }, onPin = { notes.pinAircraft(t); card = null }, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp))
+            MarkerInfoCard(c, t, clockMs, onClose = { card = null }, onPin = { notes.pinAircraft(t); card = null }, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp))
         }
         if (annotate) {
             ns.items.firstOrNull { it.id == ns.selected }?.let { PinCard(it, t?.position, notes, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp)) }
@@ -426,11 +446,11 @@ internal fun FlightMap(
 }
 
 /**
- * 기체·내 조종기 카드(10.5.7, Pilot 2 지도에서 표지를 누름): 시각, 기체는 ALT(이륙 지점 기준), 위도·경도.
+ * 기체·내 조종기 카드(10.5.7, Pilot 2 지도에서 표지를 누름): 시각([clockMs], 없으면 지금), 기체는 ALT(이륙 지점 기준), 위도·경도.
  * ASL은 텔레메트리에 없어 빼고, 기체 카드 [핀포인트]는 지금 기체 위치에 핀포인트를 남긴다(10.4.7, 위성이 모자라면 실패).
  */
 @Composable
-private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, onClose: () -> Unit, onPin: () -> Unit, modifier: Modifier) {
+private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, clockMs: Long?, onClose: () -> Unit, onPin: () -> Unit, modifier: Modifier) {
     val at = if (c == MarkerCard.AIRCRAFT) t?.position else t?.rcPosition
     Column(modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -438,7 +458,7 @@ private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, onClose: () -> Unit, on
             Text("✕", Modifier.clickable(onClickLabel = "닫기", onClick = onClose).padding(horizontal = 6.dp), fontSize = FontSize.Body, color = TextSoft)
         }
         val rows = listOfNotNull(
-            "시각" to SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(Date()),
+            "시각" to SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(Date(clockMs ?: System.currentTimeMillis())),
             t?.takeIf { c == MarkerCard.AIRCRAFT }?.let { "ALT" to "%.1f m".format(it.altitudeM) },
             "위도" to (at?.let { "%.6f".format(it.lat) } ?: "위치 모름"),
             "경도" to (at?.let { "%.6f".format(it.lon) } ?: "-"),
@@ -454,12 +474,12 @@ private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, onClose: () -> Unit, on
 }
 
 /**
- * 아래 라이브러리(10.5.4, Pilot 2 경로 라이브러리 바로가기 p2s_7): 검은 칸에 경로 아이콘만. 비행경로 화면으로 간다.
- * 떠 있으면 끈다(화면을 떠나면 비행을 잃음). 자리는 [LibraryButtonAlignment].
+ * 아래 라이브러리(10.5.4, Pilot 2 경로 라이브러리 바로가기 p2s_7): 검은 칸에 경로 아이콘만. 비행 화면 안 라이브러리 패널(10.5.8)을 열고 닫는다.
+ * 떠 있어도 열린다(패널은 미리보기만). 자리는 [LibraryButtonAlignment].
  */
 @Composable
-internal fun LibraryButton(enabled: Boolean, onClick: () -> Unit) {
-    MapTool("라이브러리", enabled = enabled, size = Dimens.TouchMedium, dark = true, onClick = onClick) { tint ->
+internal fun LibraryButton(onClick: () -> Unit) {
+    MapTool("라이브러리", size = Dimens.TouchMedium, dark = true, onClick = onClick) { tint ->
         Icon(painterResource(R.drawable.ic_route), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
     }
 }

@@ -40,6 +40,12 @@ import com.example.myfirstapp.core.model.flightTitle
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.drone.DjiFpvView
 import com.example.myfirstapp.ui.home.LatestMission
+import com.example.myfirstapp.ui.mission.LibraryPanel
+import com.example.myfirstapp.ui.mission.MissionNav
+import com.example.myfirstapp.ui.mission.libraryPanelViewModel
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.CardBg
 import com.example.myfirstapp.ui.theme.Dimens
@@ -54,8 +60,8 @@ import com.example.myfirstapp.ui.theme.TextSoft
 @Composable
 fun ManualFlightScreen(
     dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -> Unit, onOpenMission: (LatestMission) -> Unit, onAlbum: () -> Unit = {},
-    /** 큰 지도 [라이브러리](10.5.4): 비행경로 화면. 떠 있으면 끈다. */
-    onLibrary: () -> Unit = {},
+    /** 큰 지도 라이브러리 패널(10.5.8)의 [열기]·편집: 이 화면을 닫고 그 미션·계획으로(착륙 상태에서만). */
+    onLibraryNav: (MissionNav) -> Unit = {},
     /** 상단 바 비행 상태 글자(10.5.1): 비행 전 점검. */
     onPreflight: () -> Unit = {},
     /** 카메라 설정 아이콘(10.5.2): 기체 점검의 짐벌·카메라 탭. */
@@ -67,6 +73,11 @@ fun ManualFlightScreen(
     val s by vm.state.collectAsStateWithLifecycle()
     val f = s.flight
     val mapMain = f.mapMain
+    // 라이브러리 패널(10.5.8): 큰 지도 오른쪽. 열 때만 ViewModel을 만든다
+    var library by rememberSaveable { mutableStateOf(false) }
+    val lib = if (library && mapMain) libraryPanelViewModel(dao, s.latest?.projectId) else null
+    val ls = lib?.state?.collectAsStateWithLifecycle()?.value
+    LaunchedEffect(lib) { lib?.nav?.collect(onLibraryNav) }
     // 날고 있으면 RC `<`(안드로이드 뒤로)로 카메라 뷰를 떠나지 않는다(10.3). 화면 ‹ 버튼은 그대로
     BackHandler(enabled = f.telemetry?.isFlying == true) {}
     LifecycleResumeEffect(vm) {
@@ -83,10 +94,11 @@ fun ManualFlightScreen(
                 Text("기체 연결을 기다립니다", color = Color.White.copy(alpha = 0.5f), fontSize = FontSize.Body)
             }
         }
-        if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack)
+        if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack, preview = ls?.previewRoute.orEmpty())
         else {
             fpv(Modifier.fillMaxSize())
             CameraOverlay(f.lens, f.zoomRatio, focusEnabled = s.connected, onFocus = vm::focusAt, Modifier.fillMaxSize(), stream, f.camera.ev, vm::setEv)
+            if (f.ar) ArOverlay(f, stream, Modifier.fillMaxSize())
         }
         Column(Modifier.align(Alignment.BottomStart)) {
             // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
@@ -100,7 +112,7 @@ fun ManualFlightScreen(
         if (!mapMain) {
             ZoomBox(f.lens, f.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
             ExposureStrip(f.camera, f.videoMode, focusEnabled = s.connected, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
-            CameraLeftColumn(f.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), f.telemetry)
+            CameraLeftColumn(f.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), f.telemetry, f.ar, vm::toggleAr)
             CameraColumn(
                 s = f, shutterEnabled = s.connected && !s.shooting, onShutter = vm::shutter,
                 cameraEnabled = s.connected, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
@@ -122,7 +134,10 @@ fun ManualFlightScreen(
             // Pilot 2 지도 뷰에는 내비 원판이 없다(10.5.4)
             if (!mapMain) t?.let { NavDisplay(it, f.home, f.obstacles) }
         }
-        if (mapMain) Box(Modifier.align(LibraryButtonAlignment).padding(8.dp)) { LibraryButton(enabled = t?.isFlying != true, onLibrary) }
+        if (mapMain) Box(Modifier.align(LibraryButtonAlignment).padding(8.dp)) { LibraryButton { library = !library } }
+        if (ls != null) LibraryPanel(
+            ls, lib, current = null, canLeave = t?.isFlying != true, onClose = { library = false }, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar).fillMaxHeight(),
+        )
     }
 }
 

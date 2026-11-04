@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.executor.VisitView
 import com.example.myfirstapp.core.input.FiveDGate
+import com.example.myfirstapp.core.input.moveIndex
 import com.example.myfirstapp.core.model.FlightMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Telemetry
@@ -247,7 +248,8 @@ data class FlightRecord(
     val distanceM: Double,
 )
 
-data class FlightRecordsUiState(val loading: Boolean = true, val records: List<FlightRecord> = emptyList())
+/** [selected]는 RC 5D로 고른 줄(-1이면 아직 없음). */
+data class FlightRecordsUiState(val loading: Boolean = true, val records: List<FlightRecord> = emptyList(), val selected: Int = -1)
 
 /**
  * 비행 기록(10.4.6, Pilot 2 프로필 → 비행 기록): 궤적이 있는 자동 비행 소티와 수동 비행을 최신순으로.
@@ -277,6 +279,9 @@ class FlightRecordsViewModel(private val dao: ProjectDao) : ViewModel() {
             _state.update { FlightRecordsUiState(loading = false, records = records.sortedByDescending { it.startAt }) }
         }
     }
+
+    /** RC 5D ↕(10.4.3): 고른 줄을 옮긴다(처음이면 첫 줄). */
+    fun move(delta: Int) = _state.update { it.copy(selected = moveIndex(it.selected, delta, it.records.size)) }
 
     private fun tracks(points: List<TrackPointRow>) = points.groupBy { it.id }.mapValues { (_, pts) ->
         ReplayTrack(pts.map { trackSample(it.at, it.lat, it.lon, 0.0, 0.0, 0.0, 0.0, 0, "") }, AppConfig.Replay.HOLD_GAP_MS)

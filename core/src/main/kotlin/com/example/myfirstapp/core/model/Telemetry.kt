@@ -18,6 +18,8 @@ data class Telemetry(
     /** 기수(정북 0°, 시계 방향)와 짐벌 피치. 내비게이션 표시와 비행 궤적 기록에 쓴다. */
     val headingDeg: Double = 0.0,
     val gimbalPitchDeg: Double = 0.0,
+    /** 짐벌 요(기수 기준, 오른쪽 +). AR 투영(10.5.2)이 기수에 더한다. M3E 짐벌은 거의 돌지 않아 보통 0. */
+    val gimbalYawRelDeg: Double = 0.0,
     /** 착륙 직전(지면 약 0.5~2m) 기체가 조종사 확인을 기다림(착륙 보호). Pilot 2의 [착륙 확인]과 같다. */
     val landingConfirmNeeded: Boolean = false,
     /** Pilot 2 상단 바·내비게이션 표시용: 위성 수, 영상·조종 신호 품질(0~100, 모르면 null), 수직 속도(상승 +). */

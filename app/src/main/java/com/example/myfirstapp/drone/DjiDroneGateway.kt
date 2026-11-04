@@ -213,6 +213,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             if (was && flying == false) _events.tryEmit(DroneEvent.Landed)
         }
         on(GimbalKey.KeyGimbalAttitude) { g -> _telemetry.update { it.copy(gimbalPitchDeg = g?.pitch ?: 0.0) } }
+        // AR 투영(10.5.2)의 카메라 방위 = 기수 + 이 값. ponytail: 기수 기준 키라 절대 요(KeyGimbalAttitude.yaw)보다 안전하다고 봄, 부호·값은 실기 확인
+        on(GimbalKey.KeyYawRelativeToAircraftHeading) { y -> _telemetry.update { it.copy(gimbalYawRelDeg = y ?: 0.0) } }
         // Pilot 2 상단 바·배터리 띠·내비(10.5.1, 10.5.3)
         on(BatteryKey.KeyVoltage) { v -> _telemetry.update { it.copy(batteryVoltageV = v?.div(1000.0)) } }
         on(BatteryKey.KeyBatteryTemperature) { c -> _telemetry.update { it.copy(batteryTempC = c) } }

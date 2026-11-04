@@ -39,6 +39,13 @@ class SettingsStore(context: Context) {
     /** 판독 전주 목록 폭(dp, 10.4.3). 끌어서 바꾼 폭을 다음에도 쓴다. 없으면 null(기본 폭). */
     val resultListWidth: Flow<Float?> = store.data.map { it[RESULT_LIST_WIDTH] }
 
+    /** 카메라 뷰 AR 표시(10.5.2, 왼쪽 열 AR 버튼): 홈·웨이포인트·핀포인트를 영상 위에. 기본 켬(Pilot 2). */
+    val arEnabled: Flow<Boolean> = store.data.map { it[AR] ?: true }
+
+    suspend fun setArEnabled(on: Boolean) {
+        store.edit { it[AR] = on }
+    }
+
     suspend fun setAlbumByLine(on: Boolean) {
         store.edit { it[ALBUM_BY_LINE] = on }
     }
@@ -75,5 +82,6 @@ class SettingsStore(context: Context) {
         val VWORLD_LABELS = booleanPreferencesKey("vworld_labels")
         val ALBUM_BY_LINE = booleanPreferencesKey("album_by_line")
         val RESULT_LIST_WIDTH = floatPreferencesKey("result_list_width")
+        val AR = booleanPreferencesKey("ar_enabled")
     }
 }

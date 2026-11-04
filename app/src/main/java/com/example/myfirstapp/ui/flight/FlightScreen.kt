@@ -20,6 +20,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import com.example.myfirstapp.ui.FullscreenAlertDialog
+import com.example.myfirstapp.ui.mission.LibraryPanel
+import com.example.myfirstapp.ui.mission.MissionNav
+import com.example.myfirstapp.ui.mission.libraryPanelViewModel
+import androidx.compose.foundation.layout.fillMaxHeight
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.Error
 import com.example.myfirstapp.ui.theme.OnTertiaryContainer
@@ -119,8 +123,8 @@ fun FlightScreen(
     onCameraSettings: () -> Unit = {},
     /** 앨범: 비행 화면은 스택에 남아 실행기가 이어진다. */
     onAlbum: () -> Unit = {},
-    /** 큰 지도 [라이브러리](10.5.4): 비행경로 화면. 떠날 수 있을 때만 켠다. */
-    onLibrary: () -> Unit = {},
+    /** 큰 지도 라이브러리 패널(10.5.8)의 [열기]·편집: 비행 화면을 닫고 그 미션·계획으로(떠날 수 있을 때만 켜짐). */
+    onLibraryNav: (MissionNav) -> Unit = {},
     /** 계획 화면 ▶에서 왔으면 미션을 읽은 뒤 비행 전 점검을 한 번 연다(10.5.8 → 10.5.5). */
     openPreflight: Boolean = false,
     /** 비행 전 점검 "표준 HMS ›": HMS 목록(10.5.5). */
@@ -156,7 +160,7 @@ fun FlightScreen(
                 OutlinedButton(onClick = onExit) { Text("나가기") }
             }
         }
-        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings, onCameraSettings, onAlbum, onLibrary, onHms)
+        else -> FlightContent(s, projectId, missionId, dao, vm, onExit, onShowResult, onOpenSettings, onCameraSettings, onAlbum, onLibraryNav, onHms)
     }
 }
 
@@ -170,30 +174,40 @@ private fun Centered(content: @Composable () -> Unit) {
 @Composable
 private fun FlightContent(
     s: FlightUiState,
+    projectId: Long,
     missionId: Long,
+    dao: ProjectDao,
     vm: FlightViewModel,
     onExit: () -> Unit,
     onShowResult: () -> Unit,
     onOpenSettings: () -> Unit,
     onCameraSettings: () -> Unit,
     onAlbum: () -> Unit,
-    onLibrary: () -> Unit,
+    onLibraryNav: (MissionNav) -> Unit,
     onHms: () -> Unit,
 ) {
     val ui = s.exec
     // 10.5.2 Pilot 2 카메라 뷰 배치(시안 Flight3): FPV 전체 위에 격자·줌 영역·탭 초점, 상단 바, 가운데 위 줌 상자, 오른쪽 위 노출 띠·카메라 설정,
     // 왼쪽 열(핀포인트 · 짐벌 메뉴 · AR · ZOOM)과 그 오른쪽 미션 칸(⏸/▶), 오른쪽 열(사진/영상 · 셔터 · 재생)과 세로 줌, 아래 가운데 내비 원판, 왼쪽 아래 지도.
-    // 큰 지도(10.5.4, 미니맵 누름·RC C2)일 때는 오른쪽 열 대신 지도 도구, 오른쪽 아래 [라이브러리], 왼쪽 아래 칸은 카메라. RTH는 RC RTH 버튼(Pilot 2와 같음)
+    // 큰 지도(10.5.4, 미니맵 누름·RC C2)일 때는 오른쪽 열 대신 지도 도구, 아래 라이브러리 바로가기(패널), 왼쪽 아래 칸은 카메라. RTH는 RC RTH 버튼(Pilot 2와 같음)
     val mapMain = s.mapMain
+    // 라이브러리 패널(10.5.8): 큰 지도 오른쪽. 열 때만 ViewModel을 만든다
+    var library by rememberSaveable { mutableStateOf(false) }
+    val lib = if (library && mapMain) libraryPanelViewModel(dao, projectId) else null
+    val ls = lib?.state?.collectAsStateWithLifecycle()?.value
+    LaunchedEffect(lib) { lib?.nav?.collect(onLibraryNav) }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // FPV 프레임 크기(격자·줌 영역 사각형을 영상 자리에, 10.5.2). 모의 기체는 모름(4:3으로 봄)
         var stream by remember { mutableStateOf<IntSize?>(null) }
         val fpv: @Composable (Modifier) -> Unit = { m -> FpvView(s.simulated, m) { stream = it } }
-        if (mapMain) FlightMap(s, interactive = true, pad = listOf(220.dp, 90.dp, 60.dp, 120.dp), Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack)
+        if (mapMain) FlightMap(
+            s, interactive = true, pad = listOf(220.dp, 90.dp, 60.dp, 120.dp), Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack, preview = ls?.previewRoute.orEmpty(),
+        )
         else {
             fpv(Modifier.fillMaxSize())
             // 탭 초점·초점 모드는 자동 비행 구간이 아닐 때만(지점 사진 초점을 건드리지 않게)
             CameraOverlay(s.lens, s.zoomRatio, focusEnabled = s.cameraFree, onFocus = vm::focusAt, Modifier.fillMaxSize(), stream, s.camera.ev, vm::setEv)
+            if (s.ar) ArOverlay(s, stream, Modifier.fillMaxSize())
         }
         Column(Modifier.align(Alignment.BottomStart)) {
             // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
@@ -208,7 +222,7 @@ private fun FlightContent(
         if (!mapMain) {
             ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
             ExposureStrip(s.camera, s.videoMode, focusEnabled = s.cameraFree, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
-            CameraLeftColumn(s.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), s.telemetry)
+            CameraLeftColumn(s.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), s.telemetry, s.ar, vm::toggleAr)
             CameraColumn(
                 s = s, shutterEnabled = s.shutterFree, onShutter = vm::shutter,
                 cameraEnabled = s.cameraFree, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
@@ -232,7 +246,9 @@ private fun FlightContent(
             // Pilot 2 지도 뷰에는 내비 원판이 없다(10.5.4)
             if (!mapMain) s.telemetry?.let { NavDisplay(it, s.home, s.obstacles, s.nextWaypoint) }
         }
-        if (mapMain) Box(Modifier.align(LibraryButtonAlignment).padding(8.dp)) { LibraryButton(enabled = s.canExit, onLibrary) }
+        if (mapMain) Box(Modifier.align(LibraryButtonAlignment).padding(8.dp)) { LibraryButton { library = !library } }
+        // 떠 있으면 미리보기만(열기·편집·삭제는 막음)
+        if (ls != null) LibraryPanel(ls, lib, missionId, canLeave = s.canExit, onClose = { library = false }, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar).fillMaxHeight())
 
         if (!mapMain) CameraNoticeView(s.notice)
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)

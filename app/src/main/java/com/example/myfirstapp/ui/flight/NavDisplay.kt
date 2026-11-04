@@ -32,6 +32,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myfirstapp.core.config.Tuning
+import com.example.myfirstapp.core.model.ArWaypoint
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.ObstacleDirection
 import com.example.myfirstapp.core.model.ObstacleLevel
@@ -56,8 +57,11 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 
-/** 내비 원판 왼쪽 위 다음 웨이포인트(10.5.3): 번호(지도 웨이포인트 번호와 같음), 기체에서의 수평 거리, 원판 테두리 파란 ▽ 방향을 정할 위치. */
-data class NextWaypoint(val number: Int, val distanceM: Double, val at: GeoPoint)
+/**
+ * 내비 원판 왼쪽 위 다음 웨이포인트(10.5.3): 번호(지도 웨이포인트 번호와 같음), 기체에서의 수평 거리, 원판 테두리 파란 ▽ 방향을 정할 위치.
+ * [ar]는 AR(10.5.2)로 그릴 다음 촬영 지점과 그다음 지점.
+ */
+data class NextWaypoint(val number: Int, val distanceM: Double, val at: GeoPoint, val ar: List<ArWaypoint> = emptyList())
 
 /**
  * 내비게이션 디스플레이(10.5.3, Pilot 2 카메라 뷰 아래 가운데) 300×120. 원판은 채운 어두운 원이고 **기수가 위**, 30° 눈금과 N·E·S·W·숫자 방위가 돈다(위에 기수 방위 숫자).

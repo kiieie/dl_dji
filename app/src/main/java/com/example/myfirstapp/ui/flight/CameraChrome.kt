@@ -55,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -80,6 +81,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.R
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.model.BatteryLevel
 import com.example.myfirstapp.core.model.CameraStatus
@@ -306,8 +308,8 @@ private const val SHUTTER_BLOCKED_ALPHA = 0.6f
 private fun SignalBars(q: Int?, connected: Boolean) {
     val (n, c) = when {
         !connected -> 0 to Inactive
-        q == null || q >= 60 -> 3 to Color.White
-        q >= 30 -> 2 to Caution
+        q == null || q >= Tuning.Display.SIGNAL_GOOD_PCT -> 3 to Color.White
+        q >= Tuning.Display.SIGNAL_FAIR_PCT -> 2 to Caution
         else -> 1 to Error
     }
     Canvas(Modifier.size(14.dp, 10.dp)) {
@@ -580,11 +582,14 @@ private fun LockGlyph(locked: Boolean) {
 }
 
 /**
- * 왼쪽 열(Pilot 2, 10.5.7): 핀포인트(누름 = 기체 위치, 길게 = 설정, 10.4.7 [PinpointButton]) · 짐벌 메뉴(짐벌 중앙 / 짐벌 아래 -90°) · AR(꺼 둠) · ZOOM/WIDE 전환.
+ * 왼쪽 열(Pilot 2, 10.5.7): 핀포인트(누름 = 기체 위치, 길게 = 설정, 10.4.7 [PinpointButton]) · 짐벌 메뉴(짐벌 중앙 / 짐벌 아래 -90°) ·
+ * AR(누르면 켬·끔 [onAr], 켜면 화살촉 위 초록 시야, 10.5.2 [ArOverlay]) · ZOOM/WIDE 전환.
  * 미션 칸·[미션 이어서 비행]은 화면이 핀포인트 오른쪽(x 48dp)에 따로 둔다.
  */
 @Composable
-internal fun CameraLeftColumn(lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boolean) -> Unit, modifier: Modifier, telemetry: Telemetry?) {
+internal fun CameraLeftColumn(
+    lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boolean) -> Unit, modifier: Modifier, telemetry: Telemetry?, ar: Boolean, onAr: () -> Unit,
+) {
     Box(modifier) {
         PinpointButton(telemetry, Modifier.offset(y = 4.dp))
         var gimbal by remember { mutableStateOf(false) }
@@ -598,9 +603,20 @@ internal fun CameraLeftColumn(lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boo
                 DropdownMenuItem({ Text("짐벌 아래(-90°)", fontSize = FontSize.Body, color = Color.White) }, onClick = { gimbal = false; onGimbal(true) })
             }
         }
-        Canvas(Modifier.offset(y = 116.dp).size(Dimens.TouchSmall).padding(6.dp).alpha(0.4f).semantics { contentDescription = "AR 표시(준비 중)" }) {
-            val p = Path().apply { moveTo(size.width / 2, 0f); lineTo(size.width, size.height); lineTo(size.width / 2, size.height * 0.75f); lineTo(0f, size.height); close() }
-            drawPath(p, Color.White)
+        // Pilot 2 AR 아이콘(11-04 p2_mission): 흰 화살촉과 그 위로 퍼지는 초록 시야. 끄면 시야 없이 흐린 화살촉
+        Canvas(
+            Modifier.offset(y = 116.dp).size(Dimens.TouchSmall).clip(RoundedCornerShape(3.dp))
+                .clickable(onClickLabel = if (ar) "AR 끄기" else "AR 켜기", onClick = onAr).padding(5.dp)
+                .semantics { contentDescription = if (ar) "AR 표시 켬" else "AR 표시 끔" },
+        ) {
+            val w = size.width
+            val h = size.height
+            if (ar) {
+                val cone = Path().apply { moveTo(w / 2, h * 0.4f); lineTo(w * 0.18f, 0f); lineTo(w * 0.82f, 0f); close() }
+                drawPath(cone, Brush.verticalGradient(listOf(Tertiary, Tertiary.copy(alpha = 0f)), startY = 0f, endY = h * 0.45f))
+            }
+            val p = Path().apply { moveTo(w / 2, h * 0.3f); lineTo(w * 0.85f, h); lineTo(w / 2, h * 0.82f); lineTo(w * 0.15f, h); close() }
+            drawPath(p, Color.White.copy(alpha = if (ar) 1f else DISABLED_ALPHA))
         }
         val other = if (lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE
         Box(

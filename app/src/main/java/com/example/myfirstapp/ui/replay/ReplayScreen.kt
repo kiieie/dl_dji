@@ -2,6 +2,7 @@ package com.example.myfirstapp.ui.replay
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,7 +21,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -61,10 +63,12 @@ import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.R
 import com.example.myfirstapp.core.input.fiveD
 import com.example.myfirstapp.core.model.FlightMode
+import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.core.replay.clockText
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.flight.FlightMap
+import com.example.myfirstapp.ui.mission.FiveDHints
 import com.example.myfirstapp.ui.toPoint
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.Dimens
@@ -138,7 +142,7 @@ private fun ReplayMap(s: ReplayUiState, vm: ReplayViewModel) {
     var style by remember { mutableStateOf<Style?>(null) }
     // 지도가 움직일 때마다 늘려 사진 점 자리를 다시 센다
     var moved by remember { mutableIntStateOf(0) }
-    FlightMap(s.map, interactive = true, pad = List(4) { 60.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack, tools = false) { m, st ->
+    FlightMap(s.map, interactive = true, pad = List(4) { 60.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack, tools = false, clockMs = s.wallAt, onStyle = { m, st ->
         st.addSource(GeoJsonSource(FULL_TRACK))
         st.addLayerBelow(LineLayer(FULL_TRACK, FULL_TRACK).withProperties(lineColor(MAP_TRACK), lineOpacity(0.35f), lineWidth(3f)), "track-line")
         if (map !== m) {
@@ -147,7 +151,7 @@ private fun ReplayMap(s: ReplayUiState, vm: ReplayViewModel) {
         }
         map = m
         style = st
-    }
+    })
     LaunchedEffect(style, s.fullTrack) {
         val line = s.fullTrack.takeIf { it.size >= 2 }?.let { t -> Feature.fromGeometry(LineString.fromLngLats(t.map { it.toPoint() })) }
         style?.getSourceAs<GeoJsonSource>(FULL_TRACK)?.setGeoJson(FeatureCollection.fromFeatures(listOfNotNull(line)))
@@ -259,11 +263,33 @@ private fun Photo(path: String?, modifier: Modifier) {
     bitmap?.let { Image(it, contentDescription = null, modifier, contentScale = ContentScale.Fit) }
 }
 
-/** 비행 기록(10.4.6, Pilot 2 프로필 → 비행 기록): 날짜 · 비행(미션·소티 또는 수동) · 비행 시간 · 거리, 최신순. 누르면 다시 보기. */
+/**
+ * 비행 기록(10.4.6, Pilot 2 프로필 → 비행 기록): 날짜 · 비행(미션·소티 또는 수동) · 비행 시간 · 거리, 최신순. 누르면 다시 보기.
+ * RC 5D(10.4.3, 다른 목록과 같음): ↕ 줄 고르기, ● 다시 보기(← 뒤로는 MainActivity 몫).
+ */
 @Composable
 fun FlightRecordsScreen(dao: ProjectDao, onBack: () -> Unit, onOpen: (FlightRecord) -> Unit) {
     val vm: FlightRecordsViewModel = viewModel(factory = FlightRecordsViewModel.factory(dao))
     val s by vm.state.collectAsStateWithLifecycle()
+    val app = LocalContext.current.applicationContext as InspectionApp
+    LaunchedEffect(vm) {
+        app.rcButtons.fiveD().collect { r ->
+            r.actions.forEach { b ->
+                when (b) {
+                    RcButton.FIVE_D_UP -> vm.move(-1)
+                    RcButton.FIVE_D_DOWN -> vm.move(1)
+                    RcButton.FIVE_D_CENTER -> vm.state.value.let { st -> st.records.getOrNull(st.selected) }?.let(onOpen)
+                    else -> Unit
+                }
+            }
+        }
+    }
+    val list = rememberLazyListState()
+    // 5D로 고른 줄이 화면 밖이면 따라간다
+    LaunchedEffect(s.selected) {
+        val visible = list.layoutInfo.visibleItemsInfo
+        if (s.selected >= 0 && visible.isNotEmpty() && (s.selected < visible.first().index || s.selected > visible.last().index)) list.animateScrollToItem(s.selected)
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall)) {
@@ -277,9 +303,12 @@ fun FlightRecordsScreen(dao: ProjectDao, onBack: () -> Unit, onOpen: (FlightReco
                 "기록된 비행이 없습니다. 자동 비행 소티와 수동 비행(카메라 뷰)의 궤적이 여기에 남습니다.",
                 Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            else -> LazyColumn(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(s.records, key = { "${it.sortieId}-${it.sessionId}" }) { r ->
-                    Surface(onClick = { onOpen(r) }, shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+            else -> LazyColumn(Modifier.weight(1f), list, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                itemsIndexed(s.records, key = { _, r -> "${r.sortieId}-${r.sessionId}" }) { i, r ->
+                    Surface(
+                        onClick = { onOpen(r) }, shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth(),
+                        border = if (i == s.selected) BorderStroke(1.5.dp, Accent) else null,
+                    ) {
                         Row(Modifier.height(Dimens.RowTable).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.KOREA).format(Date(r.startAt)), style = numberStyle(FontSize.Body), modifier = Modifier.width(120.dp))
                             Text(r.title, Modifier.weight(1f), fontSize = FontSize.Body, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -291,5 +320,6 @@ fun FlightRecordsScreen(dao: ProjectDao, onBack: () -> Unit, onOpen: (FlightReco
                 }
             }
         }
+        if (s.records.isNotEmpty()) FiveDHints(Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 14.dp))
     }
 }

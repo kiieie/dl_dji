@@ -127,6 +127,7 @@ class ManualFlightViewModel(
             val bg = settings?.let { mapBackgroundRetrying(it) } ?: MapBackground.NONE
             _state.update { it.copy(flight = it.flight.copy(background = bg)) }
         }
+        settings?.let { st -> viewModelScope.launch { st.arEnabled.collect { on -> _state.update { it.copy(flight = it.flight.copy(ar = on)) } } } }
         // 미니맵이 맞출 곳(실내 등 기체·홈·조종기 위치를 모를 때): 지난 비행 마지막 위치, 없으면 최근 미션 이륙 지점(11-04 RC: 흰 칸)
         viewModelScope.launch {
             val m = loadLatestMission(dao)
@@ -210,6 +211,9 @@ class ManualFlightViewModel(
     fun setShootMode(mode: ShootMode) { camera.setShootMode(mode) }
     fun setTimer(sec: Double) = camera.setTimer(sec)
     fun setEv(ev: Double) = camera.setEv(ev)
+
+    /** 왼쪽 열 AR(10.5.2): 켜고 끄며 설정에 남긴다. */
+    fun toggleAr() { settings?.let { st -> viewModelScope.launch { st.setArEnabled(!_state.value.flight.ar) } } }
 
     /** 짐벌 메뉴(10.5.7): 짐벌 중앙 / 아래(-90°). */
     fun setGimbal(down: Boolean) {

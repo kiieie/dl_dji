@@ -10,6 +10,10 @@ import com.example.myfirstapp.core.model.needsResumeConfirm
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.ExportResult
 import com.example.myfirstapp.data.MissionSummary
+import com.example.myfirstapp.data.ProjectSummary
+import com.example.myfirstapp.core.route.EnergyModel
+import com.example.myfirstapp.core.route.EnergyParams
+import com.example.myfirstapp.core.route.RouteSummary
 import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.exportMission
@@ -43,6 +47,10 @@ data class MissionListUiState(
     val routes: Map<Long, List<List<RoutePoint>>> = emptyMap(),
     /** 미션 → 예상 사진 수([com.example.myfirstapp.core.model.FlightParams.expectedPhotos], 홈·미션 칸과 같은 값). */
     val expectedPhotos: Map<Long, Int> = emptyMap(),
+    /** 미션 → 경로 요약(거리·예상 시간, 비행 화면 라이브러리 패널 카드, 체크리스트와 같은 셈 [EnergyModel.sortiePlan]). */
+    val summaries: Map<Long, RouteSummary> = emptyMap(),
+    /** 프로젝트(선로) 거르기 목록(비행 화면 라이브러리 패널). */
+    val projects: List<ProjectSummary> = emptyList(),
     /** 프로젝트(선로) 거르기. null이면 모두. */
     val projectFilter: Long? = null,
     val filter: LibraryFilter = LibraryFilter.ALL,
@@ -81,6 +89,13 @@ data class MissionListUiState(
 
     /** 열린 대화상자·메뉴가 있으면 5D를 받지 않는다. */
     val overlayOpen get() = confirm != null || deleting.isNotEmpty() || menuFor != null || exported.isNotEmpty()
+
+    /** 비행 화면 패널에서 누른 카드의 경로(소티마다 이륙 지점 → 전주 → 이륙 지점), 지도 미리보기. 누르기 전에는 비어 있다. */
+    val previewRoute: List<List<GeoPoint>>
+        get() = missions.firstOrNull { it.id == selectedId }?.let { m ->
+            val home = GeoPoint(m.homeLat, m.homeLon)
+            routes[m.id].orEmpty().map { s -> listOf(home) + s.map { GeoPoint(it.lat, it.lon) } + home }
+        }.orEmpty()
 }
 
 /** 카드의 주 동작: 계획됨은 비행, 남은 전주가 있으면 이어하기, 아니면 결과(사진이 있을 때). */
@@ -126,6 +141,7 @@ class MissionListViewModel(
     val nav = _nav.receiveAsFlow()
 
     init {
+        viewModelScope.launch { dao.observeProjects().collect { list -> _state.update { it.copy(projects = list) } } }
         viewModelScope.launch {
             dao.observeLibrary().collect { list ->
                 // 카드 그림은 미션 목록이 바뀔 때만 다시 읽는다(전주 수천 개도 한 번의 질의)
@@ -137,8 +153,20 @@ class MissionListViewModel(
                 val expected = points.mapValues { (id, pts) ->
                     params[id]?.expectedPhotos(pts.map { Pole("", GeoPoint(it.lat, it.lon), equipment = it.equipment) }) ?: 0
                 }
+                val summaries = list.mapNotNull { m ->
+                    val p = params[m.id] ?: return@mapNotNull null
+                    val energy = EnergyModel(EnergyParams(), p)
+                    val home = GeoPoint(m.homeLat, m.homeLon)
+                    val plans = points[m.id].orEmpty().groupBy { it.sortieId }.values.map { s ->
+                        energy.sortiePlan(home, s.map { Pole("", GeoPoint(it.lat, it.lon), equipment = it.equipment) })
+                    }
+                    m.id to RouteSummary.of(plans, p)
+                }.toMap()
                 _state.update {
-                    it.copy(loading = false, missions = list, routes = routes, expectedPhotos = expected, checked = it.checked.filter { id -> list.any { m -> m.id == id } }.toSet())
+                    it.copy(
+                        loading = false, missions = list, routes = routes, expectedPhotos = expected, summaries = summaries,
+                        checked = it.checked.filter { id -> list.any { m -> m.id == id } }.toSet(),
+                    )
                 }
             }
         }
@@ -161,6 +189,9 @@ class MissionListViewModel(
             null -> Unit
         }
     }
+
+    /** 비행 화면 패널 [열기](10.5.8): 카드의 주 동작(비행·이어하기·결과), 없으면(대체됨 등) 같은 경로로 계획 화면. */
+    fun open(m: MissionSummary) = if (m.primaryAction() == null) copy(m) else run(m)
 
     fun result(m: MissionSummary) = _nav.trySend(MissionNav.Result(m)).let { setMenu(null) }
     fun replay(m: MissionSummary) = _nav.trySend(MissionNav.Replay(m)).let { setMenu(null) }

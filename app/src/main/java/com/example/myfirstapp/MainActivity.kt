@@ -39,6 +39,7 @@ import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
 import com.example.myfirstapp.ui.flight.ManualFlightScreen
+import com.example.myfirstapp.ui.mission.MissionNav
 import com.example.myfirstapp.ui.procedure.PreflightScreen
 import com.example.myfirstapp.ui.procedure.HmsScreen
 import com.example.myfirstapp.ui.home.HomeScreen
@@ -149,6 +150,19 @@ class MainActivity : ComponentActivity() {
             nav.navigate("projects?pid=$pid") { popUpTo("home"); launchSingleTop = true }
             nav.navigate("flight/$pid/$mid") { launchSingleTop = true }
         }
+        /** 비행 화면 라이브러리 패널(10.5.8)에서 고른 곳: 비행 화면을 닫고(땅에서만 열림) 그 프로젝트의 비행경로 위에 연다. */
+        fun libraryNav(n: MissionNav) {
+            val m = n.mission
+            nav.navigate("projects?pid=${m.projectId}") { popUpTo("home"); launchSingleTop = true }
+            val route = when (n) {
+                is MissionNav.Flight -> "flight/${m.projectId}/${m.id}"
+                is MissionNav.Replan -> "map/${m.projectId}?replan=${m.id}"
+                is MissionNav.Result -> "result/${m.projectId}/${m.id}"
+                is MissionNav.Copy -> "map/${m.projectId}?copy=${m.id}"
+                is MissionNav.Replay -> "replay?mission=${m.id}"
+            }
+            nav.navigate(route) { launchSingleTop = true }
+        }
         // 앱 재시작 복구(6.4): 끝나지 않은 소티가 있으면 그 미션의 비행 화면을 바로 연다(뒤로 가면 비행경로)
         var recoveryChecked by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(Unit) {
@@ -206,7 +220,7 @@ class MainActivity : ComponentActivity() {
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onOpenMission = { m -> openFlight(m.projectId, m.missionId) },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
-                    onLibrary = { nav.navigate("projects") { popUpTo("home") } },
+                    onLibraryNav = ::libraryNav,
                     onPreflight = { nav.navigate("preflight?camera=false") { launchSingleTop = true } },
                     onCameraSettings = { nav.navigate("settings?camera=true") { launchSingleTop = true } },
                 )
@@ -265,8 +279,8 @@ class MainActivity : ComponentActivity() {
                     onCameraSettings = { nav.navigate("settings?camera=true") { launchSingleTop = true } },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                     onHms = { nav.navigate("hms") { launchSingleTop = true } },
-                    // 지도 [라이브러리]: 비행 화면을 닫고 그 프로젝트의 비행경로로(떠 있을 때는 버튼이 꺼짐)
-                    onLibrary = { nav.navigate("projects?pid=$pid") { popUpTo("home"); launchSingleTop = true } },
+                    // 지도 라이브러리 패널(10.5.8) [열기]·편집: 비행 화면을 닫고 그곳으로(떠 있으면 패널은 미리보기만)
+                    onLibraryNav = ::libraryNav,
                 )
             }
             composable("result/{pid}/{mid}", ids) { e ->
