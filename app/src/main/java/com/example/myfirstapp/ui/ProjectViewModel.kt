@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class ProjectUiState(
     val projects: List<ProjectSummary> = emptyList(),
@@ -41,11 +44,13 @@ data class ProjectUiState(
     /** 고른 파일로 계산한 속성 갱신 미리보기와 그때 읽은 전주. */
     val attrDiff: PoleAttrDiff? = null,
     val attrPoles: List<Pole> = emptyList(),
+    /** 가져오기를 마친 뒤 알릴 말(같은 이름이라 이름을 바꿨음 등). [확인]으로 닫는다. */
+    val notice: String? = null,
 ) {
     val canSave get() = (result as? CsvImportResult.Success)?.poles?.isNotEmpty() == true && projectName.isNotBlank()
 
     /** 메뉴·대화상자가 떠 있음(미션 표 5D를 막는다). */
-    val overlayOpen get() = importing || deleting != null || menuFor != null || attrTarget != null
+    val overlayOpen get() = importing || notice != null || deleting != null || menuFor != null || attrTarget != null
 }
 
 /** 프로젝트 목록 ①과 CSV 가져오기 ②(10장). 파일 읽기·파싱·저장·삭제를 맡는다. */
@@ -73,13 +78,20 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
         val s = _state.value
         val poles = (s.result as? CsvImportResult.Success)?.poles ?: return
         if (!s.canSave) return
-        val name = s.projectName.trim()
+        val asked = s.projectName.trim()
+        // 같은 이름이 있으면 날짜(와 번호)를 붙인다(11-03 현장: 같은 이름 프로젝트 2개)
+        val name = uniqueProjectName(asked, s.projects.map { it.name }.toSet(), SimpleDateFormat("yyyyMMdd", Locale.ROOT).format(Date()))
         viewModelScope.launch {
             runCatching { dao.importProject(name, poles) }
-                .onSuccess { cancelImport() }
+                .onSuccess {
+                    cancelImport()
+                    if (name != asked) _state.update { it.copy(notice = "같은 이름 프로젝트가 있어 '$name'(으)로 저장했습니다.") }
+                }
                 .onFailure { e -> _state.update { it.copy(message = "저장하지 못했습니다: ${e.message}") } }
         }
     }
+
+    fun dismissNotice() = _state.update { it.copy(notice = null) }
 
     fun askDelete(p: ProjectSummary) = _state.update { it.copy(deleting = p) }
     fun dismissDelete() = _state.update { it.copy(deleting = null) }
@@ -142,4 +154,12 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
     companion object {
         fun factory(dao: ProjectDao, resolver: ContentResolver) = viewModelFactory { initializer { ProjectViewModel(dao, resolver) } }
     }
+}
+
+/** [name]이 [existing]에 없으면 그대로, 있으면 `-날짜`, 그것도 있으면 `-날짜-2`, `-날짜-3` …. */
+internal fun uniqueProjectName(name: String, existing: Set<String>, yyyymmdd: String): String {
+    if (name !in existing) return name
+    val dated = "$name-$yyyymmdd"
+    if (dated !in existing) return dated
+    return generateSequence(2) { it + 1 }.map { "$dated-$it" }.first { it !in existing }
 }
