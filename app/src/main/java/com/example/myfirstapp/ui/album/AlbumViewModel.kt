@@ -9,10 +9,12 @@ import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.data.AlbumMission
 import com.example.myfirstapp.data.AlbumPhoto
 import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.data.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,21 +31,42 @@ enum class AlbumFilter(val title: String) { ALL("전체"), DETECTED("탐지만")
 
 data class AlbumUiState(
     val loading: Boolean = true,
+    /** 선로별 보기(Finder식, 기본) / 미션별 보기. 마지막에 본 것을 설정에 남긴다. */
+    val byLine: Boolean = true,
     val groups: List<AlbumGroup> = emptyList(),
     val selected: String? = null,
     val photos: List<AlbumPhoto> = emptyList(),
     val filter: AlbumFilter = AlbumFilter.ALL,
+    /** 선로별 보기 나무(선로 → 전주 → 날짜, 맨 아래 기타)와 펼친 칸, 고른 칸. */
+    val tree: List<TreeNode> = emptyList(),
+    val expanded: Set<String> = emptySet(),
+    val nodeKey: String? = null,
 ) {
     val group get() = groups.firstOrNull { it.key == selected } ?: groups.firstOrNull()
-    val shown get() = when (filter) {
-        AlbumFilter.ALL -> photos
-        AlbumFilter.DETECTED -> photos.filter { it.alertCount > 0 }
-        AlbumFilter.MANUAL -> photos.filter { it.capture.source == CaptureSource.MANUAL.name }
+    val shown get() = filtered(photos)
+
+    /** 왼쪽 나무에 보이는 줄(펼친 칸의 아이들 포함). */
+    val rows get() = visibleRows(tree, expanded)
+    val path get() = nodePath(tree, nodeKey).ifEmpty { listOfNotNull(tree.firstOrNull()) }
+    val node get() = path.lastOrNull()
+
+    /** 선로별 보기 오른쪽 격자: 고른 칸의 사진(필터 적용). 전주에 붙지 않은 수동 사진은 "탐지만"이면 뺀다. */
+    val nodePhotos get() = node?.photos?.let(::filtered).orEmpty()
+    val nodeFiles get() = if (filter == AlbumFilter.DETECTED) emptyList() else node?.files.orEmpty()
+
+    private fun filtered(list: List<AlbumPhoto>) = when (filter) {
+        AlbumFilter.ALL -> list
+        AlbumFilter.DETECTED -> list.filter { it.alertCount > 0 }
+        AlbumFilter.MANUAL -> list.filter { it.capture.source == CaptureSource.MANUAL.name }
     }
 }
 
-/** 앨범(10.4.3 ⑦, 사진 모아 보기). 미션 사진은 DB, 전주에 붙지 않은 수동 비행 사진은 앱 폴더 `manual/<날짜>/`에서 읽는다. */
-class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?) : ViewModel() {
+/**
+ * 앨범(10.4.3 ⑦, 사진 모아 보기). 미션 사진은 DB, 전주에 붙지 않은 수동 비행 사진은 앱 폴더 `manual/<날짜>/`에서 읽는다.
+ * 선로별 보기는 모든 미션 사진을 한 번에 읽어 나무로 묶는다.
+ */
+// ponytail: 모든 사진 줄을 메모리에 올림(수만 장이면 느려짐). 그때는 나무를 SQL GROUP BY로, 사진은 고른 칸만 읽기
+class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?, private val settings: SettingsStore) : ViewModel() {
     private val _state = MutableStateFlow(AlbumUiState())
     val state: StateFlow<AlbumUiState> = _state.asStateFlow()
 
@@ -60,7 +83,10 @@ class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?
             val groups = (missions + days).sortedByDescending { g ->
                 when (g) { is AlbumGroup.Mission -> g.m.createdAt.toString(); is AlbumGroup.ManualDay -> dayKey(g.day) }
             }
-            _state.update { it.copy(loading = false, groups = groups) }
+            val tree = lineTree(dao.albumAllPhotos(), days)
+            val first = tree.firstOrNull()?.key
+            val byLine = settings.albumByLine.first()
+            _state.update { it.copy(loading = false, byLine = byLine, groups = groups, tree = tree, nodeKey = first, expanded = setOfNotNull(first)) }
             groups.firstOrNull()?.let(::select)
         }
     }
@@ -80,13 +106,28 @@ class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?
 
     fun setFilter(f: AlbumFilter) = _state.update { it.copy(filter = f) }
 
-    /** 5D ↕: 왼쪽 목록에서 위·아래 줄을 고른다. 끝에서는 멈춘다. */
+    fun setByLine(on: Boolean) {
+        _state.update { it.copy(byLine = on) }
+        viewModelScope.launch { settings.setAlbumByLine(on) }
+    }
+
+    /** 나무 칸 누름(5D ●도 같음): 새로 고르면 펼치고, 고른 칸을 다시 누르면 접거나 편다. */
+    fun tapNode(key: String) = _state.update { s ->
+        val open = s.node?.key != key || key !in s.expanded
+        s.copy(nodeKey = key, expanded = if (open) s.expanded + key else s.expanded - key)
+    }
+
+    /** 5D ↕: 왼쪽 목록(미션 목록 또는 보이는 나무 줄)에서 위·아래 줄을 고른다. 끝에서는 멈춘다. */
     fun move(delta: Int) {
         val s = _state.value
-        s.groups.getOrNull(moveIndex(s.groups.indexOf(s.group), delta, s.groups.size))?.takeIf { it != s.group }?.let(::select)
+        if (s.byLine) {
+            val rows = s.rows
+            rows.getOrNull(moveIndex(rows.indexOfFirst { it.key == s.node?.key }, delta, rows.size))?.let { n -> _state.update { it.copy(nodeKey = n.key) } }
+        } else s.groups.getOrNull(moveIndex(s.groups.indexOf(s.group), delta, s.groups.size))?.takeIf { it != s.group }?.let(::select)
     }
 
     companion object {
-        fun factory(dao: ProjectDao, appFilesDir: File?) = viewModelFactory { initializer { AlbumViewModel(dao, appFilesDir) } }
+        fun factory(dao: ProjectDao, appFilesDir: File?, settings: SettingsStore) =
+            viewModelFactory { initializer { AlbumViewModel(dao, appFilesDir, settings) } }
     }
 }

@@ -17,6 +17,13 @@ class LineNumbersTest {
     private fun pole(no: String, e: Double, n: Double) = Pole("ID$no", at(e, n), "대평선", lineNo = no)
 
     @Test
+    fun `자연 순서 - 숫자는 수로, 본선이 분기보다 먼저`() {
+        val sorted = listOf("137L28R13", "138", "137L28R2", "137", "137L3", "13", "137L28").sortedWith(LineNumbers.ORDER)
+        assertEquals(listOf("13", "137", "137L3", "137L28", "137L28R2", "137L28R13", "138"), sorted)
+        assertEquals(listOf("가평선", "대평선", "대평선2", "대평선10"), listOf("대평선10", "대평선", "가평선", "대평선2").sortedWith(LineNumbers.ORDER))
+    }
+
+    @Test
     fun `앞(전원측)과 뒤(부하측) 번호`() {
         assertEquals("112", LineNumbers.previous("113"))
         assertNull(LineNumbers.previous("1"))

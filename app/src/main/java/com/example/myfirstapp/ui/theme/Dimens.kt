@@ -32,6 +32,14 @@ object Dimens {
 
     /** 미션 카드·시스템 상태 칸·판독 전주 목록 폭(시안 196dp). */
     val CardWidth = 196.dp
+    /** 판독 전주 목록 폭(10.4.3): 가운데 막대를 끌어 [ResultListMin]~[ResultListMax]로 바꾼다. 처음 폭은 `대평선 137L28R13`이 넉넉히 들어가는 값. */
+    val ResultListMin = CardWidth
+    val ResultListMax = 480.dp
+    val ResultListDefault = 240.dp
+    /** 목록과 사진 사이 끄는 막대의 터치 폭(장갑). */
+    val ResultDivider = 16.dp
+    /** 앨범 왼쪽 나무(선로 → 전주 → 날짜) 폭. */
+    val AlbumTree = 216.dp
     /** 카메라 뷰 상단 바 시스템 상태 칸. 왼쪽에 우리 표지(10.5.1)가 들어가 가운데 비행 상태 글자와 겹치지 않게 줄였다. */
     val StatusBox = 150.dp
     /** 왼쪽 아래 지도 미리보기(매뉴얼 54쪽 15번). */

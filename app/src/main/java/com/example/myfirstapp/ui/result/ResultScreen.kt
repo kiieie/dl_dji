@@ -35,6 +35,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -84,6 +86,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.graphics.graphicsLayer
@@ -146,7 +152,7 @@ fun ResultScreen(projectId: Long, missionId: Long, dao: ProjectDao, onBack: () -
     val vm: ResultViewModel = viewModel(
         factory = ResultViewModel.factory(
             dao, projectId, missionId, context.getExternalFilesDir(null)!!, (context.applicationContext as InspectionApp).rcButtons,
-            (context.applicationContext as InspectionApp).precise,
+            (context.applicationContext as InspectionApp).precise, (context.applicationContext as InspectionApp).settings,
         ) {
             context.contentResolver.openOutputStream(it)
         },
@@ -195,8 +201,17 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
             }
             if (s.loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            } else Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PoleList(s, vm, Modifier.width(Dimens.CardWidth).fillMaxHeight())
+            } else Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
+                PoleList(s, vm, Modifier.width(s.listWidthDp.dp).fillMaxHeight())
+                // 목록과 사진 사이 막대(10.4.3): 좌우로 끌어 목록 폭을 바꾼다. 놓으면 설정에 남는다
+                val density = LocalDensity.current
+                Box(
+                    Modifier.width(Dimens.ResultDivider).fillMaxHeight().draggable(
+                        rememberDraggableState { px -> vm.dragListWidth(with(density) { px.toDp().value }) }, Orientation.Horizontal,
+                        onDragStopped = { vm.saveListWidth() },
+                    ),
+                    contentAlignment = Alignment.Center,
+                ) { Box(Modifier.size(3.dp, 32.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.outline)) }
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val row = s.selected
                     Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
@@ -253,7 +268,23 @@ private fun dotColor(r: ResultRow, review: ReviewVerdict?) = when (review) {
 /** 판정 이름(10.4.3 판정 버튼과 같게): 정상·이상·보류. */
 private val ReviewVerdict.short get() = when (this) { ReviewVerdict.NONE -> "정상"; ReviewVerdict.CONFIRMED -> "이상"; ReviewVerdict.RETAKE -> "보류" }
 
-/** 왼쪽 전주 한 줄 목록(36dp): 상태 점 · 이름 · 설비 기호 · 판정(없으면 검출 대상 또는 미판독). 5D ↕로 고른다. */
+/** 전주 목록 열 폭: 상태(3글자), 설비 기호(2개), 검출 수(2자리). 머리글과 줄이 같이 쓴다. */
+private val StatusCol = 36.dp
+private val SymbolCol = 30.dp
+private val DetectCol = 20.dp
+
+/** 전주 목록 머리글과 줄의 오른쪽 세 칸(상태 · 설비 · 검출). */
+@Composable
+private fun RowScope.Cells(status: @Composable () -> Unit, symbols: @Composable () -> Unit, detect: @Composable () -> Unit) {
+    Box(Modifier.width(StatusCol)) { status() }
+    Box(Modifier.width(SymbolCol)) { symbols() }
+    Box(Modifier.width(DetectCol).padding(end = 4.dp), contentAlignment = Alignment.CenterEnd) { detect() }
+}
+
+/**
+ * 왼쪽 전주 목록(10.4.3): 머리글 `전주 · 상태 · 설비 · 검출`과 한 줄 40dp. 전주 칸은 위에 작게 판정 점·선로명, 아래 크게 선로번호
+ * (없으면 전산화번호), 오른쪽 칸은 상태(판정, 없으면 방문 상태 또는 미판독) · 설비 기호 · 검출 대상 수. 5D ↕로 고른다.
+ */
 @Composable
 private fun PoleList(s: ResultUiState, vm: ResultViewModel, modifier: Modifier) {
     val listState = rememberLazyListState()
@@ -262,36 +293,56 @@ private fun PoleList(s: ResultUiState, vm: ResultViewModel, modifier: Modifier) 
         val i = s.shown.indexOfFirst { it.visitId == s.selected?.visitId }
         if (i >= 0 && listState.layoutInfo.visibleItemsInfo.none { it.index == i }) listState.animateScrollToItem(i)
     }
-    LazyColumn(
-        modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).scrollbar(listState),
-        state = listState, contentPadding = PaddingValues(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        items(s.shown, key = { it.visitId }) { r ->
-            val selected = r.visitId == s.selected?.visitId
-            val review = s.reviews[r.visitId]?.let { ReviewVerdict.valueOf(it.verdict) }
-            val tag = when {
-                review != null -> review.short
-                r.status != "DONE" -> ResultUiState.STATUS_TITLE[r.status] ?: r.status
-                r.detectCount > 0 -> "검출 ${r.detectCount}"
-                else -> "미판독"
-            }
-            Row(
-                Modifier.fillMaxWidth().height(Dimens.RowList).clip(RoundedCornerShape(4.dp))
-                    .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
-                    .clickable { vm.select(r.visitId) },
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
-                Box(Modifier.size(7.dp).clip(CircleShape).background(dotColor(r, review)))
-                Text(
-                    r.displayName, Modifier.weight(1f), fontSize = FontSize.Body, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (selected) Color.White else TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                PoleSymbolRow(poleSymbols(r.voltage, r.equipment))
-                Text(
-                    tag, Modifier.padding(end = 8.dp), fontSize = FontSize.Caption, maxLines = 1,
-                    color = if (review == ReviewVerdict.CONFIRMED || (review == null && r.detectCount > 0)) DetectedText else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+    Column(modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
+        val head = @Composable { t: String -> Text(t, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+        Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(start = 13.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { head("전주") }
+            Cells({ head("상태") }, { head("설비") }, { head("검출") })
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth().scrollbar(listState), state = listState,
+            contentPadding = PaddingValues(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            items(s.shown, key = { it.visitId }) { r ->
+                val selected = r.visitId == s.selected?.visitId
+                val review = s.reviews[r.visitId]?.let { ReviewVerdict.valueOf(it.verdict) }
+                val tag = when {
+                    review != null -> review.short
+                    r.status != "DONE" -> ResultUiState.STATUS_TITLE[r.status] ?: r.status
+                    else -> "미판독"
+                }
+                Row(
+                    Modifier.fillMaxWidth().height(Dimens.RowTable).clip(RoundedCornerShape(4.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
+                        .clickable { vm.select(r.visitId) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
+                    Column(Modifier.weight(1f).padding(start = 6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(Modifier.size(6.dp).clip(CircleShape).background(dotColor(r, review)))
+                            Text(
+                                r.lineName.orEmpty(), fontSize = FontSize.Micro,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Text(
+                            r.lineNo?.takeIf(String::isNotBlank) ?: r.poleId, style = numberStyle(FontSize.Number, if (selected) FontWeight.Bold else FontWeight.Medium),
+                            color = if (selected) Color.White else TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Cells(
+                        {
+                            Text(
+                                tag, fontSize = FontSize.Caption, maxLines = 1,
+                                color = if (review == ReviewVerdict.CONFIRMED) DetectedText else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        { PoleSymbolRow(poleSymbols(r.voltage, r.equipment), 10.dp) },
+                        { if (r.detectCount > 0) Text("${r.detectCount}", style = numberStyle(FontSize.Label), color = DetectedText) },
+                    )
+                }
             }
         }
     }

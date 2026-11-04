@@ -17,9 +17,11 @@ import com.example.myfirstapp.data.ExportResult
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.ResultRow
 import com.example.myfirstapp.data.ReviewEntity
+import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.exportMission
 import com.example.myfirstapp.detect.PreciseDetection
 import com.example.myfirstapp.detect.labelNames
+import com.example.myfirstapp.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -44,6 +47,9 @@ enum class ResultFilter(val title: String) { ALL("전체"), DETECTED("검출"), 
 
 /** 사진 한 장과 그 위에 그릴 탐지 상자. */
 data class PhotoUi(val capture: CaptureEntity, val boxes: List<DetectionEntity>)
+
+/** 판독 전주 목록 폭(dp)을 [Dimens.ResultListMin]~[Dimens.ResultListMax]로 묶는다. */
+fun clampListWidth(dp: Float) = dp.coerceIn(Dimens.ResultListMin.value, Dimens.ResultListMax.value)
 
 /** 판정 패널에서 고치는 중인 1차 판독. */
 data class ReviewDraft(val verdict: ReviewVerdict? = null, val tags: Set<String> = emptySet(), val memo: String = "")
@@ -66,6 +72,8 @@ data class ResultUiState(
     val labelNames: Map<String, String> = emptyMap(),
     /** 착륙 뒤 정밀 탐지 진행("정밀 탐지 37/120"). 남은 사진이 없으면 null. */
     val precise: String? = null,
+    /** 왼쪽 전주 목록 폭(dp). 가운데 막대를 끌어 바꾸고 설정에 남긴다. */
+    val listWidthDp: Float = Dimens.ResultListDefault.value,
 ) {
     val statusCounts: Map<String, Int> = rows.groupingBy { STATUS_TITLE[it.status] ?: it.status }.eachCount()
 
@@ -112,6 +120,8 @@ class ResultViewModel(
     private val modelsDir: File? = null,
     /** 착륙 뒤 정밀 탐지(9.6): 진행을 보이고, 사진이 끝날 때마다 결과를 다시 읽는다. */
     private val precise: PreciseDetection? = null,
+    /** 목록 폭을 읽고 남긴다. */
+    private val settings: SettingsStore? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ResultUiState(missionId = missionId))
     val state: StateFlow<ResultUiState> = _state.asStateFlow()
@@ -124,6 +134,7 @@ class ResultViewModel(
 
     init {
         viewModelScope.launch { rcButtons.collect(::on5d) }
+        settings?.let { st -> viewModelScope.launch { st.resultListWidth.first()?.let { w -> _state.update { it.copy(listWidthDp = clampListWidth(w)) } } } }
         viewModelScope.launch {
             val names = modelsDir?.let { withContext(Dispatchers.IO) { labelNames(it) } }.orEmpty()
             _state.update { it.copy(labelNames = names) }
@@ -211,6 +222,14 @@ class ResultViewModel(
         }
     }
 
+    /** 가운데 막대 끌기: 목록 폭을 [deltaDp]만큼 바꾼다. 놓으면 [saveListWidth]로 남긴다. */
+    fun dragListWidth(deltaDp: Float) = _state.update { it.copy(listWidthDp = clampListWidth(it.listWidthDp + deltaDp)) }
+
+    fun saveListWidth() {
+        val w = _state.value.listWidthDp
+        settings?.let { viewModelScope.launch { it.setResultListWidth(w) } }
+    }
+
     fun showPhoto(i: Int) = _state.update { it.copy(photoIndex = i.coerceIn(0, (it.photos.size - 1).coerceAtLeast(0))) }
 
     /** 다음 사진(광각 → 망원 → 광각). */
@@ -286,9 +305,14 @@ class ResultViewModel(
     companion object {
         fun factory(
             dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File,
-            rcButtons: Flow<RcButton>, precise: PreciseDetection, openOutput: (Uri) -> OutputStream?,
+            rcButtons: Flow<RcButton>, precise: PreciseDetection, settings: SettingsStore, openOutput: (Uri) -> OutputStream?,
         ) = viewModelFactory {
-            initializer { ResultViewModel(dao, projectId, missionId, exportDir, openOutput, rcButtons = rcButtons, modelsDir = File(exportDir, "models"), precise = precise) }
+            initializer {
+                ResultViewModel(
+                    dao, projectId, missionId, exportDir, openOutput, rcButtons = rcButtons, modelsDir = File(exportDir, "models"),
+                    precise = precise, settings = settings,
+                )
+            }
         }
     }
 }
