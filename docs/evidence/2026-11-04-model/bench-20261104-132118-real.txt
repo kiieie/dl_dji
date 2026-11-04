@@ -1,0 +1,42 @@
+사진 /storage/emulated/0/Android/data/kr.co.dl_dji/files/projects/9/missions/20/images/1565F412_2_1793681271862_3670777_WIDE.jpg (9596KB, JPEG 기준(SOF C0)), 발열 0
+GPU 백엔드는 logcat 'tflite' 태그에서 확인: "Initialized OpenCL-based API"(캐시 됨) 또는 "OpenGL-based API"(캐시 안 됨)
+지속(SUSTAINED) 캐시: 있을 때만 잼(만들려면 --es bench full) · 모델 GPU 준비 모름
+coco-yolo11n-fp16 CPU4 열기(1회) 52ms + 첫 추론 232ms(전체 411ms) GPU 캐시 파일 2→2
+coco-yolo11n-fp16 CPU4 입력640 자르기1.0 전체디코딩 축소1/8 decode 140/139/141 pre 5/5/6 infer 204/203/206 post 4/4/4 total 353/352/356 상자1 발열 0→0
+coco-yolo11n-fp16 GPU-FAST 열기(FAST 캐시 없이) 1404ms + 첫 추론 44ms(전체 205ms) GPU 캐시 파일 2→2
+coco-yolo11n-fp16 GPU SUSTAINED 캐시 없음 – 뒤에서 생성(모델 GPU 준비), 아래는 FAST로 잼
+coco-yolo11n-fp16 GPU-FAST 입력640 자르기1.0 전체디코딩 축소1/8 decode 142/140/146 pre 5/5/5 infer 41/40/42 post 11/10/12 total 200/197/204 상자0 발열 0→0
+facility-v1-coco-1280-fp16 CPU4 열기(1회) 330ms + 첫 추론 9665ms(전체 9865ms) GPU 캐시 파일 2→2
+facility-v1-coco-1280-fp16 CPU4 입력1280 자르기1.0 전체디코딩 축소1/4 decode 162/159/163 pre 20/20/20 infer 9621/9616/9630 post 1/1/1 total 9804/9797/9815 상자4 발열 0→0
+facility-v1-coco-1280-fp16 GPU-FAST 열기(FAST 캐시 없이) 2470ms + 첫 추론 972ms(전체 1171ms) GPU 캐시 파일 2→2
+facility-v1-coco-1280-fp16 GPU-SUSTAINED 열기(SUSTAINED 캐시로) 274ms + 첫 추론 891ms(전체 1094ms) GPU 캐시 파일 2→2
+facility-v1-coco-1280-fp16 GPU-SUSTAINED 입력1280 자르기1.0 전체디코딩 축소1/4 decode 170/167/173 pre 21/21/21 infer 894/891/897 post 3/1/5 total 1088/1083/1094 상자4 발열 0→0
+facility-v1-coco-640-fp16 CPU4 열기(1회) 221ms + 첫 추론 2371ms(전체 2525ms) GPU 캐시 파일 2→2
+facility-v1-coco-640-fp16 CPU4 입력640 자르기1.0 전체디코딩 축소1/8 decode 140/138/141 pre 5/5/6 infer 2362/2359/2364 post 0/0/0 total 2507/2506/2510 상자0 발열 0→0
+facility-v1-coco-640-fp16 CPU4 입력640 자르기0.5 영역디코딩 축소1/4 decode 64/64/64 pre 6/6/7 infer 2362/2359/2365 post 0/0/0 total 2432/2429/2436 상자3 발열 0→0
+facility-v1-coco-640-fp16 CPU4 입력640 자르기0.5 전체디코딩 축소1/4 decode 92/92/95 pre 6/6/6 infer 2364/2360/2368 post 0/0/0 total 2462/2458/2466 상자3 발열 0→0
+facility-v1-coco-640-fp16 CPU4 상자 대조(옛 3개 중 새와 같은 것): 3, 새 3개
+facility-v1-coco-640-fp16 GPU-FAST 열기(FAST 캐시 없이) 1725ms + 첫 추론 268ms(전체 421ms) GPU 캐시 파일 2→2
+facility-v1-coco-640-fp16 GPU-SUSTAINED 열기(SUSTAINED 캐시로) 245ms + 첫 추론 221ms(전체 380ms) GPU 캐시 파일 2→2
+facility-v1-coco-640-fp16 GPU-SUSTAINED 입력640 자르기1.0 전체디코딩 축소1/8 decode 148/146/150 pre 5/5/6 infer 222/221/223 post 0/0/1 total 376/374/378 상자0 발열 0→0
+facility-v1-coco-640-fp16 GPU-SUSTAINED 입력640 자르기0.5 영역디코딩 축소1/4 decode 69/67/71 pre 6/6/6 infer 221/218/222 post 1/0/1 total 297/292/300 상자3 발열 0→0
+facility-v1-coco-640-fp16 GPU-SUSTAINED 입력640 자르기0.5 전체디코딩 축소1/4 decode 99/98/102 pre 6/6/6 infer 222/221/223 post 1/0/1 total 328/325/330 상자3 발열 0→0
+facility-v1-coco-640-fp16 GPU-SUSTAINED 상자 대조(옛 3개 중 새와 같은 것): 3, 새 3개
+facility-v1-coco-960-fp16 CPU4 열기(1회) 252ms + 첫 추론 5397ms(전체 5581ms) GPU 캐시 파일 2→2
+facility-v1-coco-960-fp16 CPU4 입력960 자르기1.0 전체디코딩 축소1/4 decode 162/161/164 pre 12/12/12 infer 5373/5367/5378 post 0/0/0 total 5547/5542/5552 상자3 발열 0→0
+facility-v1-coco-960-fp16 CPU4 입력960 자르기0.5 영역디코딩 축소1/2 decode 68/68/68 pre 12/12/12 infer 5372/5370/5376 post 0/0/1 total 5452/5450/5457 상자2 발열 0→0
+facility-v1-coco-960-fp16 CPU4 입력960 자르기0.5 전체디코딩 축소1/2 decode 108/108/108 pre 13/12/13 infer 5371/5367/5374 post 0/0/0 total 5492/5488/5496 상자2 발열 0→0
+facility-v1-coco-960-fp16 CPU4 상자 대조(옛 2개 중 새와 같은 것): 2, 새 2개
+facility-v1-coco-960-fp16 GPU-FAST 열기(FAST 캐시 없이) 2308ms + 첫 추론 492ms(전체 676ms) GPU 캐시 파일 2→2
+facility-v1-coco-960-fp16 GPU SUSTAINED 캐시 없음 – 뒤에서 생성(모델 GPU 준비), 아래는 FAST로 잼
+facility-v1-coco-960-fp16 GPU-FAST 입력960 자르기1.0 전체디코딩 축소1/4 decode 170/168/172 pre 12/12/12 infer 493/491/497 post 1/1/2 total 676/674/681 상자3 발열 0→0
+facility-v1-coco-960-fp16 GPU-FAST 입력960 자르기0.5 영역디코딩 축소1/2 decode 74/72/77 pre 13/13/13 infer 492/491/496 post 1/1/2 total 580/577/586 상자2 발열 0→0
+facility-v1-coco-960-fp16 GPU-FAST 입력960 자르기0.5 전체디코딩 축소1/2 decode 116/115/117 pre 13/13/13 infer 493/492/498 post 1/1/2 total 623/621/627 상자2 발열 0→0
+facility-v1-coco-960-fp16 GPU-FAST 상자 대조(옛 2개 중 새와 같은 것): 2, 새 2개
+연속 30회: facility-v1-coco-640-fp16 GPU-SUSTAINED 자르기0.5, 발열 0
+연속 5: total 296/292/298 발열 0
+연속 10: total 300/293/302 발열 0
+연속 15: total 297/293/301 발열 0
+연속 20: total 298/293/300 발열 0
+연속 25: total 297/294/300 발열 0
+연속 30: total 298/297/299 발열 0
