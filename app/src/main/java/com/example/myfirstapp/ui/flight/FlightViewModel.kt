@@ -183,9 +183,10 @@ class FlightViewModel(
         Log.i("RcKey", "$b state=${_state.value.exec.state}")
         when (b) {
             RcButton.PAUSE -> rcPause()
-            RcButton.C1 -> toggleLens()
-            RcButton.C2 -> swapView()
-            RcButton.FIVE_D_CENTER -> if (paused) resume()
+            RcButton.C1 -> if (active) toggleLens() // 판독 화면 C1(다음 사진)과 겹치지 않게 맨 위일 때만
+            RcButton.C2 -> if (active) swapView()
+            // 5D·○ 누름은 다른 화면(앨범·설정)에서도 오므로 이 화면이 맨 위이고 절차 화면이 없을 때만 재개로 받는다
+            RcButton.FIVE_D_CENTER -> if (paused && active && _state.value.page == null) resume()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
             // RC 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04). 실행기가 일시정지·수동 조종 중에만 받는다
             RcButton.SHUTTER -> if (_state.value.videoMode) toggleRecording() else send(Command.RcShutter(_state.value.lens))
@@ -427,6 +428,9 @@ class FlightViewModel(
     fun setLens(lens: Lens) = camera.setLens(lens)
 
     private val paused get() = _state.value.exec.state == ExecState.Paused
+
+    /** 비행 화면이 맨 위에 보이는 동안만 참(화면이 [androidx.lifecycle.compose.LifecycleResumeEffect]로 바꾼다). */
+    var active = false
 
     /** 줌 +/−·사진/영상·녹화는 일시정지 중에만(10.4.3). 지점 사진(광각)은 건드리지 않는다. */
     fun zoom(up: Boolean) { if (paused) camera.zoom(up) }

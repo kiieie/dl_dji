@@ -124,6 +124,11 @@ fun FlightScreen(
             vm.openPreflight()
         }
     }
+    // RC 5D 누름 재개는 이 화면이 맨 위일 때만(앨범·설정에서 누른 5D로 재개하지 않게)
+    androidx.lifecycle.compose.LifecycleResumeEffect(vm) {
+        vm.active = true
+        onPauseOrDispose { vm.active = false }
+    }
     // 비행 중에는 뒤로 가기로 화면을 떠나지 못하게 한다(떠나면 실행기가 멈춘다).
     BackHandler { if (s.canExit || s.error != null) onExit() }
 
