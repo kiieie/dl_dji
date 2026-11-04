@@ -98,6 +98,8 @@ fun FlightScreen(
     onOpenSettings: () -> Unit = {},
     /** 앨범: 비행 화면은 스택에 남아 실행기가 이어진다. */
     onAlbum: () -> Unit = {},
+    /** 큰 지도 [라이브러리](10.5.4): 비행경로 화면. 떠날 수 있을 때만 켠다. */
+    onLibrary: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
@@ -117,7 +119,7 @@ fun FlightScreen(
                 OutlinedButton(onClick = onExit) { Text("나가기") }
             }
         }
-        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings, onAlbum)
+        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings, onAlbum, onLibrary)
     }
 }
 
@@ -137,21 +139,23 @@ private fun FlightContent(
     onShowResult: () -> Unit,
     onOpenSettings: () -> Unit,
     onAlbum: () -> Unit,
+    onLibrary: () -> Unit,
 ) {
     val ui = s.exec
     // 10.4.3 자동 비행 배치: FPV 전체, 위 상단 바, 가운데 위 줌 상자, 왼쪽 위 미션 진행 카드, 오른쪽 한 열(렌즈·촬영·앨범),
-    // 아래 가운데 내비 원판, 왼쪽 아래 지도(누르면 자리 바꿈), 오른쪽 아래 RTH 길게
+    // 아래 가운데 내비 원판, 왼쪽 아래 지도(누르면 자리 바꿈), 오른쪽 아래 RTH 길게.
+    // 큰 지도(10.5.4)일 때는 오른쪽 열 대신 지도 도구, 오른쪽 아래 [라이브러리], 왼쪽 아래 칸은 카메라
     var mapMain by rememberSaveable { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val fpv: @Composable (Modifier) -> Unit = { m -> FpvView(s.simulated, m) }
-        if (mapMain) FlightMap(s, interactive = true, pad = listOf(220.dp, 90.dp, 60.dp, 120.dp), Modifier.fillMaxSize())
+        if (mapMain) FlightMap(s, interactive = true, pad = listOf(220.dp, 90.dp, 60.dp, 120.dp), Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack)
         else fpv(Modifier.fillMaxSize())
         MiniMap(mapMain, onSwap = { mapMain = !mapMain }, Modifier.align(Alignment.BottomStart)) { m ->
             if (mapMain) fpv(m) else FlightMap(s, interactive = false, pad = List(4) { 8.dp }, m)
         }
 
         TopBar(s, onExit, onOpenSettings)
-        ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
+        if (!mapMain) ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
 
         if (ui.state != ExecState.SortieDone) {
             Column(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -160,7 +164,7 @@ private fun FlightContent(
                 if (s.simulated) MockRcControls(vm)
             }
         }
-        CameraColumn(
+        if (!mapMain) CameraColumn(
             s = s, onLens = vm::setLens,
             shutterEnabled = ui.state == ExecState.Paused || s.recordingSinceMs != null, onShutter = vm::shutter,
             cameraEnabled = ui.state == ExecState.Paused, onVideoMode = vm::setVideoMode, onZoom = vm::zoom,
@@ -172,9 +176,10 @@ private fun FlightContent(
             if (s.telemetry?.landingConfirmNeeded == true) LandingConfirmButton(vm::confirmLanding)
             s.telemetry?.let { NavDisplay(it, s.home, s.obstacles) }
         }
-        // 실행기가 대기여도 기체가 떠 있으면(수동 비행 화면에서 넘어온 경우 등) RTH를 보인다
-        if ((ui.state.airborne || s.telemetry?.isFlying == true) && ui.state != ExecState.ReturningHome) {
-            RthButton(vm::returnHome, Modifier.align(Alignment.BottomEnd).padding(8.dp))
+        Column(Modifier.align(Alignment.BottomEnd).padding(8.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (mapMain) LibraryButton(enabled = s.canExit, onLibrary)
+            // 실행기가 대기여도 기체가 떠 있으면(수동 비행 화면에서 넘어온 경우 등) RTH를 보인다
+            if ((ui.state.airborne || s.telemetry?.isFlying == true) && ui.state != ExecState.ReturningHome) RthButton(vm::returnHome)
         }
 
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)

@@ -48,6 +48,8 @@ import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.fakePhotoSource
 import com.example.myfirstapp.data.listMbtiles
 import com.example.myfirstapp.data.MapBackground
+import com.example.myfirstapp.data.MapSource
+import com.example.myfirstapp.data.pickMapSource
 import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.data.toEntity
 import com.example.myfirstapp.data.flightParamsFromJson
@@ -101,6 +103,8 @@ data class FlightUiState(
     val params: FlightParams? = null,
     /** 충돌 경고(13번): 방향별 등급·거리. 내비 원판 부채꼴과 상단 상태 칸에 보인다. */
     val obstacles: ObstacleWarning = ObstacleWarning(),
+    /** 지도 비행 궤적(10.5.4 주황 선): 떠 있는 동안의 기체 위치, 개수 상한([withTrack]). 지도 지우개로 비운다. */
+    val track: List<GeoPoint> = emptyList(),
 ) {
     /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
@@ -241,7 +245,7 @@ class FlightViewModel(
         combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->
             val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
             val wasPaused = paused
-            _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need) }
+            _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need).withTrack(t) }
             // RC 재개 등으로 일시정지를 벗어나면 녹화를 멈추고 사진 모드로(10.4.3)
             if (wasPaused && ui.state != ExecState.Paused) camera.backToPhoto()
         }
@@ -337,6 +341,12 @@ class FlightViewModel(
             d.returnHome().onFailure { e -> _state.update { it.copy(exec = it.exec.copy(message = "RTH 실패: ${e.message}")) } }
         }
     }
+
+    /** 지도 지우개(10.5.4): 비행 궤적을 지운다(기록 TELEMETRY_SAMPLE은 그대로). */
+    fun clearTrack() = _state.update { it.copy(track = emptyList()) }
+
+    /** 지도 레이어(10.5.7): 배경을 바꾸고 설정에도 남긴다. */
+    fun setMapSource(source: MapSource) { viewModelScope.launch { settings.pickMapSource(source).let { bg -> _state.update { it.copy(background = bg) } } } }
 
     /** FPV 렌즈 전환(Pilot 2 카메라 뷰 전환). */
     fun setLens(lens: Lens) = camera.setLens(lens)

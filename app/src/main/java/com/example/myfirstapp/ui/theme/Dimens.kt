@@ -34,6 +34,10 @@ object Dimens {
     val CardWidth = 196.dp
     /** 왼쪽 아래 지도 미리보기(매뉴얼 54쪽 15번). */
     val MiniMap = DpSize(132.dp, 92.dp)
+    /** 꺾쇠로 키운 지도 미리보기(10.5.4). 아래 가운데 내비 원판(300dp)과 겹치지 않는 폭. */
+    val MiniMapLarge = DpSize(216.dp, 150.dp)
+    /** 지도 웨이포인트 번호 원(흰 원 파란 번호, 10.5.4). */
+    val MarkerWaypoint = 16.dp
     /** 계획 화면 파라미터 −/+ 버튼. */
     val Stepper = 32.dp
 

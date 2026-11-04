@@ -54,10 +54,9 @@ suspend fun mapBackground(source: MapSource, labels: Boolean): MapBackground {
 
 /** 설정대로 배경을 만든다. Bing 주소를 아직 못 받았으면(인터넷 없음) 10초마다 다시 해 본다. 화면을 닫으면 취소된다. */
 suspend fun mapBackgroundRetrying(settings: SettingsStore): MapBackground {
-    val source = settings.mapSource.first()
-    val labels = settings.vworldLabels.first()
     while (true) {
-        val bg = mapBackground(source, labels)
+        // 기다리는 동안 지도 레이어 버튼으로 바꿨을 수 있어 매번 다시 읽는다
+        val bg = mapBackground(settings.mapSource.first(), settings.vworldLabels.first())
         // 토큰이 없으면 다시 해도 같다
         if (bg.tiles.isNotEmpty() || (bg.source == MapSource.BING && BuildConfig.CESIUM_ION_TOKEN.isBlank())) return bg
         delay(AppConfig.Timeouts.BACKGROUND_RETRY_MS)
@@ -68,3 +67,9 @@ suspend fun mapBackgroundRetrying(settings: SettingsStore): MapBackground {
 fun MapBackground.baseFiles(files: List<File>): List<File> = files.filter { it.name !in CACHE_NAMES || it.name == cacheName }
 
 fun MapBackground.labelCacheFile(files: List<File>): File? = labelCacheName?.let { n -> files.firstOrNull { it.name == n } }
+
+/** 지도 레이어 버튼(10.5.7)에서 배경을 고른다: 설정에 저장하고(다른 지도 화면도 따름) 새 배경을 돌려준다. */
+suspend fun SettingsStore.pickMapSource(source: MapSource): MapBackground {
+    setMapSource(source)
+    return mapBackground(source, vworldLabels.first())
+}
