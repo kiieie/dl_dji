@@ -5,11 +5,11 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.ShotMode
 
-/** 에너지 모델 파라미터(5.5). 초기값은 보수적으로 잡았고 필드 테스트로 보정한다. */
+/** 에너지 모델 파라미터(5.5). 기본값은 `Tuning.Energy`(2026-11-03 현장 보정). */
 data class EnergyParams(
-    /** 순항 소모율(%/s). M3E 공칭 45분 대신 25분 기준. */
+    /** 순항 소모율(%/s). */
     val cruisePctPerSec: Double = Tuning.Energy.CRUISE_PCT_PER_SEC,
-    /** 호버 소모율(%/s). 28분 기준. */
+    /** 호버 소모율(%/s). */
     val hoverPctPerSec: Double = Tuning.Energy.HOVER_PCT_PER_SEC,
     /** 전주 1개 처리 시간(촬영 + 다운로드 + 분석 + 대기). */
     val visitSec: Double = Tuning.Energy.VISIT_SEC,

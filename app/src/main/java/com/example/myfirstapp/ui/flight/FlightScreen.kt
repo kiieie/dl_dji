@@ -296,21 +296,15 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
         Card(Modifier.fillMaxWidth(0.7f), shape = RoundedCornerShape(6.dp), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerLow)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("비행 전 점검", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                // 화면 높이가 좁아 두 줄로 나눠 놓는다
+                // 배터리(지금·예상 사용·예비, 5.5)는 업로드 전 판단의 핵심이라 한 줄 전체로 보인다
+                val battery = items.firstOrNull { it.label == PreflightEvaluator.BATTERY }
+                battery?.let { PreflightRow(it) }
+                // 나머지는 화면 높이가 좁아 두 줄로 나눠 놓는다
+                val rest = items - listOfNotNull(battery).toSet()
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    items.chunked((items.size + 1) / 2).forEach { col ->
+                    rest.chunked((rest.size + 1) / 2).forEach { col ->
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            col.forEach { c ->
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(if (c.ok) "●" else "▲", color = if (c.ok) PoleDone else PoleFailed, style = MaterialTheme.typography.bodyMedium)
-                                    Text(c.label, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        c.value, modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = if (c.ok) MaterialTheme.colorScheme.onSurfaceVariant else PoleFailed,
-                                    )
-                                }
-                            }
+                            col.forEach { PreflightRow(it) }
                         }
                     }
                 }
@@ -334,6 +328,20 @@ private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
                 }
             }
         }
+    }
+}
+
+/** 비행 전 점검 한 줄: 통과 ●/경고 ▲, 항목 이름, 값(오른쪽 맞춤). */
+@Composable
+private fun PreflightRow(c: PreflightCheck) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(if (c.ok) "●" else "▲", color = if (c.ok) PoleDone else PoleFailed, style = MaterialTheme.typography.bodyMedium)
+        Text(c.label, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            c.value, modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (c.ok) MaterialTheme.colorScheme.onSurfaceVariant else PoleFailed,
+        )
     }
 }
 
