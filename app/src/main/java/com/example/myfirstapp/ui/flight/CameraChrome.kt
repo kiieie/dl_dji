@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -37,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -47,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -65,8 +71,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.InspectionApp
@@ -77,6 +86,8 @@ import com.example.myfirstapp.core.model.CameraStatus
 import com.example.myfirstapp.core.model.FlightTitle
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ObstacleLevel
+import com.example.myfirstapp.core.model.ShootMode
+import com.example.myfirstapp.core.model.shootModeBlock
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.model.batteryBand
 import com.example.myfirstapp.core.model.batteryLevel
@@ -374,60 +385,122 @@ internal fun ZoomBox(lens: Lens, zoomRatio: Double, modifier: Modifier) {
 /**
  * 영상 위 겹침(10.5.2): 3×3 격자와 가운데 ✕, 광각이면 지금 망원 배율이 찍을 범위(녹색 꺾쇠 사각형 + 배율, [zoomFrameFraction]),
  * 탭 초점([focusEnabled]이면 누른 자리를 영상 안 0~1로 [onFocus]에 넘기고 노란 사각형을 [AppConfig.CameraView.FOCUS_MARK_MS] 보인다).
+ * 노란 사각형 오른쪽 ☀(Pilot 2 노출 손잡이, 10.5.7)를 위아래로 끌면 [Dimens.ZoomDragStep]마다 EV 1/3 단계([onEv], 지금 값 [ev]). 끄는 동안 사각형이 남는다.
  * 모두 실제 영상 자리([videoContentRect], [stream] 크기, 모르면 4:3) 안에 그린다: 4:3 영상이면 양옆 검은 띠에는 격자가 없고 줌 사각형도 4:3.
  */
 @Composable
-internal fun CameraOverlay(lens: Lens, zoomRatio: Double, focusEnabled: Boolean, onFocus: (Double, Double) -> Unit, modifier: Modifier, stream: IntSize? = null) {
+internal fun CameraOverlay(
+    lens: Lens, zoomRatio: Double, focusEnabled: Boolean, onFocus: (Double, Double) -> Unit, modifier: Modifier, stream: IntSize? = null,
+    ev: String? = null, onEv: ((Double) -> Unit)? = null,
+) {
     var mark by remember { mutableStateOf<Offset?>(null) }
-    LaunchedEffect(mark) { if (mark != null) { delay(AppConfig.CameraView.FOCUS_MARK_MS); mark = null } }
+    /** ☀를 끌 때마다 늘어 사각형을 보이는 시간을 다시 센다. */
+    var touch by remember { mutableIntStateOf(0) }
+    LaunchedEffect(mark, touch) { if (mark != null) { delay(AppConfig.CameraView.FOCUS_MARK_MS); mark = null } }
     val focus by rememberUpdatedState(onFocus)
     val streamNow by rememberUpdatedState(stream)
     val measurer = rememberTextMeasurer()
     val label = TextStyle(fontSize = FontSize.Body, fontWeight = FontWeight.Bold, color = Tertiary)
-    Canvas(
-        modifier.pointerInput(focusEnabled) {
-            if (focusEnabled) detectTapGestures { p ->
-                val v = videoContentRect(size.width.toDouble(), size.height.toDouble(), streamNow?.width, streamNow?.height)
-                val x = (p.x - v.left) / v.width
-                val y = (p.y - v.top) / v.height
-                // 검은 띠를 누르면 무시
-                if (x in 0.0..1.0 && y in 0.0..1.0) {
-                    mark = p
-                    focus(x, y)
+    Box(modifier) {
+        Canvas(
+            Modifier.matchParentSize().pointerInput(focusEnabled) {
+                if (focusEnabled) detectTapGestures { p ->
+                    val v = videoContentRect(size.width.toDouble(), size.height.toDouble(), streamNow?.width, streamNow?.height)
+                    val x = (p.x - v.left) / v.width
+                    val y = (p.y - v.top) / v.height
+                    // 검은 띠를 누르면 무시
+                    if (x in 0.0..1.0 && y in 0.0..1.0) {
+                        mark = p
+                        focus(x, y)
+                    }
                 }
+            },
+        ) {
+            val v = videoContentRect(size.width.toDouble(), size.height.toDouble(), stream?.width, stream?.height)
+            val left = v.left.toFloat()
+            val top = v.top.toFloat()
+            val vw = v.width.toFloat()
+            val vh = v.height.toFloat()
+            val mid = Offset(left + vw / 2, top + vh / 2)
+            val thin = 1.dp.toPx()
+            val grid = Color.White.copy(alpha = 0.45f)
+            for (i in 1..2) {
+                drawLine(grid, Offset(left + vw * i / 3, top), Offset(left + vw * i / 3, top + vh), thin)
+                drawLine(grid, Offset(left, top + vh * i / 3), Offset(left + vw, top + vh * i / 3), thin)
             }
-        },
+            val a = 4.dp.toPx()
+            val b = 10.dp.toPx()
+            listOf(1f to 1f, -1f to 1f, 1f to -1f, -1f to -1f).forEach { (sx, sy) ->
+                drawLine(Color.White, Offset(mid.x + sx * a, mid.y + sy * a), Offset(mid.x + sx * b, mid.y + sy * b), 1.5.dp.toPx())
+            }
+            val f = zoomFrameFraction(zoomRatio).toFloat()
+            if (lens == Lens.WIDE && f < 1f) {
+                // 영상과 같은 비율의 사각형(한 변 = 영상 / 배율)
+                val w = vw * f
+                val h = vh * f
+                brackets(Offset(mid.x - w / 2, mid.y - h / 2), Size(w, h), Tertiary, minOf(12.dp.toPx(), w / 3), 2.dp.toPx())
+                val text = measurer.measure("%.1fX".format(zoomRatio), label)
+                drawText(text, topLeft = Offset(mid.x + w / 2 - text.size.width, mid.y + h / 2 + 2.dp.toPx()))
+            }
+            mark?.let { p ->
+                val s = FOCUS_MARK.toPx()
+                drawRect(Caution, Offset(p.x - s / 2, p.y - s / 2), Size(s, s), style = Stroke(1.5.dp.toPx()))
+            }
+        }
+        val p = mark
+        if (p != null && onEv != null) SunHandle(p, ev?.toDoubleOrNull() ?: 0.0, onEv) { touch++ }
+    }
+}
+
+/** 탭 초점 노란 사각형 한 변(Pilot 2 약 70px). */
+private val FOCUS_MARK = 48.dp
+
+/**
+ * ☀ 노출 손잡이(10.5.7, Pilot 2 탭 초점 사각형 오른쪽 가운데): 위로 끌면 밝게(+), 아래로 어둡게(−), [Dimens.ZoomDragStep]마다 [AppConfig.CameraView.EV_STEP].
+ * 끄는 동안 옆에 EV 값을 보인다. [now]는 기체가 알려 준 지금 EV(모르면 0).
+ */
+@Composable
+private fun SunHandle(mark: Offset, now: Double, onEv: (Double) -> Unit, onTouch: () -> Unit) {
+    val stepPx = with(LocalDensity.current) { Dimens.ZoomDragStep.toPx() }
+    val half = with(LocalDensity.current) { (FOCUS_MARK / 2 + 12.dp).toPx() }
+    val box = with(LocalDensity.current) { Dimens.TouchSmall.roundToPx() }
+    val ev by rememberUpdatedState(now)
+    val emit by rememberUpdatedState(onEv)
+    val touched by rememberUpdatedState(onTouch)
+    var dragEv by remember { mutableStateOf<Double?>(null) }
+    Row(
+        Modifier.offset { IntOffset((mark.x + half).toInt() - box / 2, mark.y.toInt() - box / 2) }.semantics { contentDescription = "노출 보정, 위아래로 끌기" },
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        val v = videoContentRect(size.width.toDouble(), size.height.toDouble(), stream?.width, stream?.height)
-        val left = v.left.toFloat()
-        val top = v.top.toFloat()
-        val vw = v.width.toFloat()
-        val vh = v.height.toFloat()
-        val mid = Offset(left + vw / 2, top + vh / 2)
-        val thin = 1.dp.toPx()
-        val grid = Color.White.copy(alpha = 0.45f)
-        for (i in 1..2) {
-            drawLine(grid, Offset(left + vw * i / 3, top), Offset(left + vw * i / 3, top + vh), thin)
-            drawLine(grid, Offset(left, top + vh * i / 3), Offset(left + vw, top + vh * i / 3), thin)
+        Canvas(
+            Modifier.size(Dimens.TouchSmall).pointerInput(stepPx) {
+                var acc = 0f
+                detectVerticalDragGestures(onDragStart = { acc = 0f; dragEv = ev }, onDragEnd = { dragEv = null }, onDragCancel = { dragEv = null }) { change, dy ->
+                    change.consume()
+                    acc += dy
+                    touched()
+                    while (acc <= -stepPx || acc >= stepPx) {
+                        val up = acc < 0
+                        acc += if (up) stepPx else -stepPx
+                        val next = ((dragEv ?: ev) + if (up) AppConfig.CameraView.EV_STEP else -AppConfig.CameraView.EV_STEP)
+                            .coerceIn(-AppConfig.CameraView.EV_MAX, AppConfig.CameraView.EV_MAX)
+                        dragEv = next
+                        emit(next)
+                    }
+                }
+            },
+        ) {
+            val c = Offset(size.width / 2, size.height / 2)
+            val r = 3.5.dp.toPx()
+            drawCircle(Caution, r, c)
+            for (i in 0 until 8) {
+                val a = Math.toRadians(i * 45.0)
+                val dx = Math.cos(a).toFloat()
+                val dy = Math.sin(a).toFloat()
+                drawLine(Caution, Offset(c.x + dx * (r + 2.dp.toPx()), c.y + dy * (r + 2.dp.toPx())), Offset(c.x + dx * (r + 4.5.dp.toPx()), c.y + dy * (r + 4.5.dp.toPx())), 1.5.dp.toPx())
+            }
         }
-        val a = 4.dp.toPx()
-        val b = 10.dp.toPx()
-        listOf(1f to 1f, -1f to 1f, 1f to -1f, -1f to -1f).forEach { (sx, sy) ->
-            drawLine(Color.White, Offset(mid.x + sx * a, mid.y + sy * a), Offset(mid.x + sx * b, mid.y + sy * b), 1.5.dp.toPx())
-        }
-        val f = zoomFrameFraction(zoomRatio).toFloat()
-        if (lens == Lens.WIDE && f < 1f) {
-            // 영상과 같은 비율의 사각형(한 변 = 영상 / 배율)
-            val w = vw * f
-            val h = vh * f
-            brackets(Offset(mid.x - w / 2, mid.y - h / 2), Size(w, h), Tertiary, minOf(12.dp.toPx(), w / 3), 2.dp.toPx())
-            val text = measurer.measure("%.1fX".format(zoomRatio), label)
-            drawText(text, topLeft = Offset(mid.x + w / 2 - text.size.width, mid.y + h / 2 + 2.dp.toPx()))
-        }
-        mark?.let { p ->
-            val s = 48.dp.toPx()
-            drawRect(Caution, Offset(p.x - s / 2, p.y - s / 2), Size(s, s), style = Stroke(1.5.dp.toPx()))
-        }
+        dragEv?.let { Text(if (kotlin.math.abs(it) < 0.05) "0" else "%+.1f".format(it), style = numberStyle(FontSize.Body, FontWeight.Bold), color = Caution) }
     }
 }
 
@@ -539,15 +612,18 @@ internal fun CameraLeftColumn(lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boo
 }
 
 /**
- * 오른쪽 열(Pilot 2, 10.5.2): 카메라 설정(슬라이더) → 사진/영상 아이콘 → 셔터(녹화 중 빨강) → ▶ 재생(앨범). 왼쪽 옆에 세로 줌(+ / 눈금 / −).
- * 영상 모드에서 셔터는 녹화 시작·정지([FlightUiState.recordingSinceMs]가 있으면 빨간 네모와 경과 mm:ss).
- * [cameraEnabled]가 거짓이면 사진/영상·줌을 막는다(자동 비행은 일시정지 중에만). [onAlbum]이 null이면 재생을 숨긴다.
+ * 오른쪽 열(Pilot 2, 10.5.2): 카메라 설정(슬라이더) → 촬영 모드 아이콘(지금 모드: 단일 ▭ · 타이머 · SMART · 영상, 누르면 촬영 모드 메뉴 10.5.7) → 셔터 → ▶ 재생(앨범).
+ * 왼쪽 옆에 세로 줌(+ / 눈금 / −). 셔터는 단일 흰 원, 타이머 "2s", SMART "SMART", 타이머·SMART 촬영 중 회색 원에 도는 고리(누르면 타이머 멈춤),
+ * 영상 모드는 녹화 시작·정지([FlightUiState.recordingSinceMs]가 있으면 빨간 네모와 경과 mm:ss).
+ * [cameraEnabled]가 거짓이면 촬영 모드 메뉴·줌을 막는다(자동 비행은 일시정지 중에만). [onAlbum]이 null이면 재생을 숨긴다.
  */
 @Composable
 internal fun CameraColumn(
     s: FlightUiState, shutterEnabled: Boolean, onShutter: () -> Unit,
     cameraEnabled: Boolean, onVideoMode: (Boolean) -> Unit, onZoom: (Boolean) -> Unit,
     onCameraSettings: () -> Unit, modifier: Modifier, onAlbum: (() -> Unit)? = null, shotsLabel: String? = null,
+    /** 촬영 모드 메뉴(10.5.7): 열기·닫기, 단일·타이머·파노라마·SMART, 타이머 간격. */
+    onOpenMenu: () -> Unit = {}, onCloseMenu: () -> Unit = {}, onShootMode: (ShootMode) -> Unit = {}, onTimer: (Double) -> Unit = {},
 ) {
     Box(modifier) {
         ZoomControl(s.zoomRatio, cameraEnabled, onZoom, Modifier.padding(top = 50.dp, end = 48.dp).align(Alignment.TopEnd))
@@ -560,34 +636,44 @@ internal fun CameraColumn(
                     drawCircle(Color.White, 3.dp.toPx(), Offset(size.width * knob, size.height * y), style = Stroke(w))
                 }
             }
+            // 촬영 중(타이머·녹화)에는 메뉴를 열지 않는다(누르면 "촬영 중" 안내문은 ViewModel이)
             val modeEnabled = cameraEnabled && s.recordingSinceMs == null
-            Canvas(
-                Modifier.size(Dimens.TouchSmall, 28.dp).clickable(enabled = modeEnabled, onClickLabel = if (s.videoMode) "사진 모드로" else "영상 모드로") { onVideoMode(!s.videoMode) }
-                    .padding(horizontal = 3.dp, vertical = 4.dp).semantics { contentDescription = if (s.videoMode) "영상 모드" else "사진 모드" },
+            Box(
+                Modifier.size(Dimens.TouchSmall, 28.dp).clickable(enabled = modeEnabled, onClickLabel = "촬영 모드 메뉴", onClick = onOpenMenu)
+                    .semantics { contentDescription = if (s.videoMode) "영상 모드" else "사진 ${s.shootMode.label}" },
+                contentAlignment = Alignment.Center,
             ) {
-                val c = Color.White.copy(alpha = if (modeEnabled) 1f else DISABLED_ALPHA)
-                val w = 2.dp.toPx()
-                drawRect(c, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), style = Stroke(w))
-                if (s.videoMode) drawCircle(Error, size.height / 4, center)
-                else drawRect(c, Offset(size.width * 0.18f, size.height * 0.25f), Size(size.width * 0.64f, size.height * 0.5f))
+                // 메뉴가 열리면 Pilot 2처럼 노란색
+                ModeGlyph(s, if (s.shootMenu) Caution else Color.White.copy(alpha = if (modeEnabled) 1f else DISABLED_ALPHA))
             }
             val since = s.recordingSinceMs
             // Pilot 2 흰 셔터: 흰 고리 + 흰 원. 누를 수 없을 때(자동 비행 중)는 고리는 흰색 그대로, 원만 흐린 흰색(회색 원이 아님)
             Box(
                 Modifier.size(44.dp).clip(CircleShape).border(2.dp, Color.White, CircleShape)
-                    .clickable(enabled = shutterEnabled, onClickLabel = if (!s.videoMode) "촬영" else if (since == null) "녹화 시작" else "녹화 정지", onClick = onShutter),
+                    .clickable(enabled = shutterEnabled, onClickLabel = shutterLabel(s), onClick = onShutter),
                 contentAlignment = Alignment.Center,
             ) {
+                val disc = Modifier.size(34.dp).clip(CircleShape)
+                val a = if (shutterEnabled) 1f else SHUTTER_BLOCKED_ALPHA
                 when {
                     since != null -> Box(Modifier.size(16.dp).clip(RoundedCornerShape(2.dp)).background(Error))
-                    s.videoMode -> Box(Modifier.size(34.dp).clip(CircleShape).background(Error.copy(alpha = if (shutterEnabled) 1f else SHUTTER_BLOCKED_ALPHA)))
-                    else -> Box(Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(alpha = if (shutterEnabled) 1f else SHUTTER_BLOCKED_ALPHA)))
+                    s.videoMode -> Box(disc.background(Error.copy(alpha = a)))
+                    // Pilot 2 SMART 촬영 중(11-04 녹화 0258): 회색 원에 도는 흰 고리. 타이머 촬영 중도 같게(누르면 멈춤)
+                    s.timerRunning || s.capturing -> Spinner(disc.background(SurfaceContainerHighest))
+                    else -> Box(disc.background(Color.White.copy(alpha = a)), contentAlignment = Alignment.Center) {
+                        when (s.shootMode) {
+                            ShootMode.TIMER -> Text(secLabel(s.timerSec), style = numberStyle(FontSize.Title, FontWeight.Bold), color = Color.Black, maxLines = 1)
+                            ShootMode.SMART -> Text("SMART", style = numberStyle(FontSize.Micro, FontWeight.Bold), color = Color.Black, maxLines = 1)
+                            else -> Unit
+                        }
+                    }
                 }
             }
             if (since != null) {
                 val now by produceState(System.currentTimeMillis(), since) { while (true) { value = System.currentTimeMillis(); delay(500) } }
                 Text(mmss(((now - since) / 1000).coerceAtLeast(0).toInt()), style = numberStyle(FontSize.Body), color = Error)
-            } else shotsLabel?.let { Text(it, style = numberStyle(FontSize.Body), color = Color.White) }
+            } else if (s.timerRunning) Text(secLabel(s.timerSec), style = numberStyle(FontSize.Body), color = Color.White)
+            else shotsLabel?.let { Text(it, style = numberStyle(FontSize.Body), color = Color.White) }
             if (onAlbum != null) {
                 Box(
                     Modifier.size(Dimens.TouchSmall).clickable(onClickLabel = "재생(앨범)", onClick = onAlbum).semantics { contentDescription = "재생(앨범)" },
@@ -601,7 +687,166 @@ internal fun CameraColumn(
                 }
             }
         }
+        // 촬영 모드 메뉴(Pilot 2 11-04 녹화 0254·0255): 오른쪽 열 바로 왼쪽, 위는 열보다 조금 아래
+        if (s.shootMenu) {
+            val d = LocalDensity.current
+            Popup(
+                alignment = Alignment.TopEnd, offset = with(d) { IntOffset(-44.dp.roundToPx(), 7.dp.roundToPx()) },
+                onDismissRequest = onCloseMenu, properties = PopupProperties(focusable = true),
+            ) { ShootMenu(s, onVideoMode, onShootMode, onTimer) }
+        }
     }
+}
+
+/** 셔터 누름 설명(접근성). */
+private fun shutterLabel(s: FlightUiState) = when {
+    s.recordingSinceMs != null -> "녹화 정지"
+    s.videoMode -> "녹화 시작"
+    s.timerRunning -> "타이머 촬영 멈춤"
+    s.shootMode == ShootMode.TIMER -> "타이머 촬영 시작"
+    else -> "촬영"
+}
+
+/** 타이머 간격 글자(Pilot 2 "0.7s", "2s"). */
+private fun secLabel(sec: Double) = if (sec % 1.0 == 0.0) "${sec.toInt()}s" else "${sec}s"
+
+/** 촬영 중 셔터 안 도는 흰 고리. */
+@Composable
+private fun Spinner(modifier: Modifier) {
+    val turn by rememberInfiniteTransition(label = "shoot").animateFloat(0f, 360f, infiniteRepeatable(tween(1_000)), label = "turn")
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(20.dp).rotate(turn)) { drawArc(Color.White, 0f, 270f, false, style = Stroke(2.5.dp.toPx())) }
+    }
+}
+
+/** 오른쪽 열 촬영 모드 아이콘(Pilot 2): 영상은 테두리와 빨간 점, 단일은 빈 ▭, 타이머는 초시계, SMART는 흰 바탕 글자. */
+@Composable
+private fun ModeGlyph(s: FlightUiState, c: Color) {
+    when {
+        s.videoMode -> Canvas(Modifier.size(26.dp, 20.dp)) {
+            val w = 2.dp.toPx()
+            drawRect(c, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), style = Stroke(w))
+            drawCircle(Error, size.height / 4, center)
+        }
+        else -> ShootGlyph(s.shootMode, c)
+    }
+}
+
+/** 사진 모드 그림(오른쪽 열·메뉴 같은 그림). */
+@Composable
+private fun ShootGlyph(mode: ShootMode, c: Color) {
+    when (mode) {
+        ShootMode.SMART -> Text(
+            "SMART", Modifier.background(c, RoundedCornerShape(2.dp)).padding(horizontal = 2.dp),
+            style = numberStyle(FontSize.Micro, FontWeight.Bold), color = Color.Black, maxLines = 1,
+        )
+        else -> Canvas(Modifier.size(26.dp, 22.dp)) {
+            val w = 2.dp.toPx()
+            val mid = center
+            when (mode) {
+                ShootMode.TIMER -> {
+                    val r = size.height / 2 - w
+                    drawCircle(c, r, Offset(mid.x, mid.y + w / 2), style = Stroke(w))
+                    drawLine(c, Offset(mid.x, mid.y + w / 2), Offset(mid.x - r * 0.55f, mid.y + w / 2 - r * 0.55f), w)
+                    drawLine(c, Offset(mid.x - w, 0f), Offset(mid.x + w, 0f), w)
+                }
+                ShootMode.PANORAMA -> {
+                    val r = size.height / 2 - w / 2
+                    drawCircle(c, r, mid, style = Stroke(w))
+                    drawOval(c, Offset(mid.x - r / 2.2f, mid.y - r), Size(r / 1.1f, 2 * r), style = Stroke(w * 0.8f))
+                    drawLine(c, Offset(mid.x - r, mid.y), Offset(mid.x + r, mid.y), w * 0.8f)
+                }
+                // 단일: 굵은 테두리 빈 사각형(Pilot 2 ▭)
+                else -> drawRect(c, Offset(w * 1.5f, size.height * 0.15f), Size(size.width - w * 3, size.height * 0.7f), style = Stroke(w * 1.3f))
+            }
+        }
+    }
+}
+
+/**
+ * 촬영 모드 메뉴(10.5.7, Pilot 2 11-04 녹화 0254·0255): 어두운 판 두 열 — 왼쪽 단일 · 타이머 · 파노라마 · SMART(사진일 때), 오른쪽 사진 · 동영상.
+ * 고른 것은 노랑. 타이머면 그 왼쪽에 간격 열(기체 범위, 모르면 [AppConfig.CameraView.TIMER_INTERVALS_SEC], 스크롤).
+ * 고를 수 없는 모드([shootModeBlock]: 파노라마, 기체가 모르는 모드)는 흐리게, 누르면 이유를 안내문으로(ViewModel).
+ */
+@Composable
+private fun ShootMenu(s: FlightUiState, onVideoMode: (Boolean) -> Unit, onShootMode: (ShootMode) -> Unit, onTimer: (Double) -> Unit) {
+    val flying = s.telemetry?.isFlying == true
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (!s.videoMode && s.shootMode == ShootMode.TIMER) {
+            Column(
+                Modifier.width(72.dp).height(MENU_HEIGHT).background(ControlBg, RoundedCornerShape(4.dp)).verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                s.photoModes.intervalsSec.ifEmpty { AppConfig.CameraView.TIMER_INTERVALS_SEC }.forEach { sec ->
+                    Text(
+                        secLabel(sec), Modifier.fillMaxWidth().height(38.dp).clickable(onClickLabel = "타이머 ${secLabel(sec)}") { onTimer(sec) }.wrapContentHeight(),
+                        style = numberStyle(FontSize.Number), color = if (sec == s.timerSec) Caution else Color.White, textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+        Row(Modifier.height(MENU_HEIGHT).background(ControlBg, RoundedCornerShape(4.dp))) {
+            if (!s.videoMode) Column(Modifier.width(70.dp).fillMaxHeight(), verticalArrangement = Arrangement.SpaceEvenly) {
+                ShootMode.entries.forEach { m ->
+                    val sel = s.shootMode == m
+                    val c = if (sel) Caution else Color.White.copy(alpha = if (shootModeBlock(m, s.photoModes.modes, flying) == null) 1f else DISABLED_ALPHA)
+                    MenuItem(m.label, c, { onShootMode(m) }) { ShootGlyph(m, c) }
+                }
+            }
+            Column(Modifier.width(72.dp).fillMaxHeight(), verticalArrangement = Arrangement.SpaceEvenly) {
+                val photo = if (!s.videoMode) Caution else Color.White
+                MenuItem("사진", photo, { onVideoMode(false) }) {
+                    Canvas(Modifier.size(26.dp, 22.dp)) {
+                        drawRect(photo, Offset(size.width * 0.3f, 0f), Size(size.width * 0.4f, size.height * 0.2f))
+                        drawRoundRect(photo, Offset(0f, size.height * 0.15f), Size(size.width, size.height * 0.85f), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+                        drawCircle(ControlBg, size.height * 0.26f, Offset(center.x, size.height * 0.58f))
+                        drawCircle(photo, size.height * 0.14f, Offset(center.x, size.height * 0.58f))
+                    }
+                }
+                val video = if (s.videoMode) Caution else Color.White
+                MenuItem("동영상", video, { onVideoMode(true) }) {
+                    Canvas(Modifier.size(26.dp, 22.dp)) {
+                        drawRoundRect(video, Offset(0f, size.height * 0.2f), Size(size.width * 0.68f, size.height * 0.6f), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+                        val p = Path().apply { moveTo(size.width * 0.72f, size.height / 2); lineTo(size.width, size.height * 0.22f); lineTo(size.width, size.height * 0.78f); close() }
+                        drawPath(p, video)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Pilot 2 촬영 모드 메뉴 높이(녹화 324px ÷ 1.25). */
+private val MENU_HEIGHT = 259.dp
+
+@Composable
+private fun MenuItem(label: String, c: Color, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clickable(onClickLabel = label, onClick = onClick).padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Box(Modifier.height(22.dp), contentAlignment = Alignment.Center) { icon() }
+        Text(label, fontSize = FontSize.Body, color = c, maxLines = 1)
+    }
+}
+
+/**
+ * Pilot 2 안내문(10.5.7, 11-04 녹화 0256·0258·0266): 검은 반투명 판에 흰 글. 가운데 큰 글(위에서 273dp, 파노라마 불가),
+ * 가운데 작은 글(252dp, 촬영 중 조작 금지), 왼쪽 열 핀포인트 옆 두 줄(위치 레코딩 실패, 핀포인트 안내와 같은 모양). [AppConfig.CameraView.NOTICE_MS] 뒤 ViewModel이 지운다.
+ */
+@Composable
+internal fun BoxScope.CameraNoticeView(n: CameraNotice?) {
+    n ?: return
+    val (place, size) = when (n.kind) {
+        NoticeKind.CENTER -> Modifier.align(Alignment.TopCenter).padding(top = 273.dp) to FontSize.Title
+        NoticeKind.SMALL -> Modifier.align(Alignment.TopCenter).padding(top = 252.dp) to FontSize.Caption
+        // 핀포인트 안내(`AnnotationNotice`, 왼쪽 열 핀포인트 + (46, 55))와 같은 자리·폭
+        NoticeKind.PINPOINT -> Modifier.align(Alignment.TopStart).padding(start = 54.dp, top = Dimens.TopBar + 78.dp).width(Dimens.CardWidth + 64.dp) to FontSize.Body
+    }
+    Text(
+        n.text, place.background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+        color = Color.White, fontSize = size, maxLines = 2,
+    )
 }
 
 /**

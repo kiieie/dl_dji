@@ -8,11 +8,14 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Obstacles
+import com.example.myfirstapp.core.model.PhotoModes
+import com.example.myfirstapp.core.model.ShootMode
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.route.Viewpoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlin.math.abs
 
 /**
@@ -106,6 +109,24 @@ interface DroneGateway {
 
     /** 녹화 시작·정지. 영상은 SD에만 남는다(받지 않음). */
     suspend fun setRecording(on: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException("녹화 미지원"))
+
+    /** 촬영 모드 메뉴(10.5.7): 기체가 받는 사진 모드와 타이머 간격. 모르면 null(화면은 [PhotoModes.BASIC]). */
+    suspend fun photoModes(): PhotoModes? = null
+
+    /** 사진 모드(단일·SMART). 타이머는 [intervalShots]가 시작할 때 카메라를 인터벌로 바꾸고 끝나면 단일로 돌린다. */
+    suspend fun setShootMode(mode: ShootMode): Result<Unit> = Result.failure(UnsupportedOperationException("촬영 모드 미지원"))
+
+    /**
+     * 타이머 촬영(카메라 인터벌, 10.5.7): 모으면 [intervalSec]마다 찍기 시작하고, 새 사진마다 내보낸다(앱 촬영, 지점 사진 아님).
+     * [stopInterval]을 부르면 멈추고 늦게 온 사진까지 내보낸 뒤 끝난다. 모으기를 취소해도 멈춘다. 시작이 거절되면 예외로 끝난다.
+     */
+    fun intervalShots(intervalSec: Double): Flow<CaptureInfo> = flow { throw UnsupportedOperationException("타이머 미지원") }
+
+    /** [intervalShots]를 멈춘다. 돌고 있지 않으면 아무 일 없다. */
+    suspend fun stopInterval() {}
+
+    /** 노출 보정(탭 초점 ☀ 손잡이, 10.5.7): [ev]에 가장 가까운 기체 단계(1/3 EV)로. */
+    suspend fun setExposureCompensation(ev: Double): Result<Unit> = Result.failure(UnsupportedOperationException("노출 보정 미지원"))
 }
 
 /** 미션은 올렸지만 기체가 시작을 거절함([DroneGateway.startSortie]). 다시 올려도 같으므로 재시도하지 않는다(지형 추적 KMZ, 2026-10-30 시뮬레이터). */

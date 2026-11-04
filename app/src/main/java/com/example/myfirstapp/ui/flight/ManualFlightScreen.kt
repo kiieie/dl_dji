@@ -86,7 +86,7 @@ fun ManualFlightScreen(
         if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack)
         else {
             fpv(Modifier.fillMaxSize())
-            CameraOverlay(f.lens, f.zoomRatio, focusEnabled = s.connected, onFocus = vm::focusAt, Modifier.fillMaxSize(), stream)
+            CameraOverlay(f.lens, f.zoomRatio, focusEnabled = s.connected, onFocus = vm::focusAt, Modifier.fillMaxSize(), stream, f.camera.ev, vm::setEv)
         }
         Column(Modifier.align(Alignment.BottomStart)) {
             // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
@@ -106,6 +106,7 @@ fun ManualFlightScreen(
                 cameraEnabled = s.connected, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 6.dp),
                 onAlbum = onAlbum, shotsLabel = "${s.shots}장",
+                onOpenMenu = vm::openShootMenu, onCloseMenu = vm::closeShootMenu, onShootMode = vm::setShootMode, onTimer = vm::setTimer,
             )
         }
         // 떠 있는 동안 비행 화면으로 바꾸면 이 화면의 착륙 확인을 잃으므로 착륙한 뒤에만 보인다
@@ -113,6 +114,7 @@ fun ManualFlightScreen(
             MissionPill(it, onOpen = { onOpenMission(it) }, Modifier.align(Alignment.TopStart).padding(start = 48.dp, top = Dimens.TopBar + 19.dp))
         }
         NoticeLines(listOfNotNull(s.message?.let { it to Color.White }), Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 48.dp).widthIn(max = 300.dp))
+        if (!mapMain) CameraNoticeView(f.notice)
 
         val t = f.telemetry
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {

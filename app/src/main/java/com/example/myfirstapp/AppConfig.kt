@@ -352,7 +352,26 @@ object AppConfig {
 
     /** 카메라 뷰(10.5.2). */
     object CameraView {
-        /** 탭 초점 노란 사각형을 보이는 시간. */
+        /** 탭 초점 노란 사각형을 보이는 시간(☀ 노출 손잡이를 끄는 동안은 다시 셈). */
         const val FOCUS_MARK_MS = 2_000L
+
+        /** 카메라 뷰 안내문(Pilot 2 토스트 "기체 비행 전. 파노라마 촬영 불가" 등, 10.5.7)을 보이는 시간. */
+        const val NOTICE_MS = 2_500L
+
+        /** 타이머 간격(초): 기체가 범위(`KeyIntervalModeParamRange`)를 알려 주지 않을 때. M3E 사양 JPEG 0.7~60초. */
+        val TIMER_INTERVALS_SEC = listOf(0.7, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0, 60.0)
+
+        /** 처음 타이머 간격(Pilot 2 11-04 녹화 "2s"). */
+        const val TIMER_DEFAULT_SEC = 2.0
+
+        /** 인터벌 촬영 장수. ponytail: 255 = 멈출 때까지(MSDK V4 규칙)로 본다. 실기에서 255장 뒤 멈추면 다시 시작하게 바꾼다. */
+        const val INTERVAL_COUNT_CONTINUOUS = 255
+
+        /** ☀ 노출 손잡이: 한 단계(1/3 EV)와 범위(Pilot 2 ±3 EV). 끄는 거리는 [com.example.myfirstapp.ui.theme.Dimens.ZoomDragStep]마다 한 단계. */
+        const val EV_STEP = 1.0 / 3
+        const val EV_MAX = 3.0
+
+        /** SMART(저조도) 사진은 여러 장을 합쳐 늦게 저장된다(Pilot 2 "3s"): 새 사진 알림을 이만큼 기다린다. */
+        const val SMART_PHOTO_MS = 15_000L
     }
 }

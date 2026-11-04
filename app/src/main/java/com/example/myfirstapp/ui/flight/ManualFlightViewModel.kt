@@ -7,11 +7,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.core.config.Tuning
-import com.example.myfirstapp.core.executor.shutterLinkTarget
-import com.example.myfirstapp.core.model.CaptureSource
-import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
+import com.example.myfirstapp.core.model.ShootMode
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.RcButton
@@ -20,8 +18,6 @@ import com.example.myfirstapp.data.logTelemetry
 import com.example.myfirstapp.data.ManualSessionEntity
 import com.example.myfirstapp.data.ManualTrackEntity
 import com.example.myfirstapp.data.ProjectDao
-import com.example.myfirstapp.data.RecorderSortie
-import com.example.myfirstapp.data.RoomRecorder
 import com.example.myfirstapp.ui.home.LatestMission
 import com.example.myfirstapp.ui.home.loadLatestMission
 import com.example.myfirstapp.data.listMbtiles
@@ -45,11 +41,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /** 수동 비행 카메라 뷰 상태. 지도·상단 바는 비행 화면과 같은 [FlightUiState]를 쓴다. */
 data class ManualFlightUiState(
@@ -79,7 +71,10 @@ class ManualFlightViewModel(
     private val _state = MutableStateFlow(ManualFlightUiState())
     val state: StateFlow<ManualFlightUiState> = _state.asStateFlow()
     private val drone: DroneGateway? = if (djiAircraftConnected()) DjiDroneGateway(viewModelScope, File(appFilesDir, "manual/kmz")) else null
-    private val camera = CameraControl(viewModelScope, { drone }, { _state.value.flight }, { f -> _state.update { it.copy(flight = f(it.flight)) } }, "manual")
+    private val camera = CameraControl(
+        viewModelScope, { drone }, { _state.value.flight }, { f -> _state.update { it.copy(flight = f(it.flight)) } }, "manual",
+        onTimerPhoto = { info -> drone?.let { d -> saved(info, photos.keep(d, info, _state.value.flight.lens)) } },
+    )
     private val tone = ToneNotifier()
     /** 셔터 사진의 마지막 사진 썸네일(9.6). 모델 설정이 없으면(시험) 만들지 않는다. */
     private val live = settings?.let {
@@ -87,6 +82,8 @@ class ManualFlightViewModel(
             _state.update { s -> s.copy(flight = s.flight.copy(lastPhoto = p)) }
         }
     }
+    /** 셔터·타이머 사진: 남은 전주가 있는 최근 미션의 전주가 20m 안이면 그 전주, 아니면 기타(6.4). */
+    private val photos = ManualPhotos(dao, appFilesDir, { dao.latestOpenMission() }, live, precise)
 
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))
@@ -155,55 +152,41 @@ class ManualFlightViewModel(
     /** 기록 중인 수동 비행(MANUAL_SESSION). 떠 있지 않으면 null. */
     private var session: Long? = null
 
-    /** 화면 셔터: 영상 모드면 녹화 시작·정지, 사진이면 [shoot]. */
-    fun shutter() = if (_state.value.flight.videoMode) toggleRecording() else shoot()
+    /** 화면 셔터: 영상 모드면 녹화 시작·정지, 타이머면 시작·멈춤(10.5.7), 아니면 [shoot](단일·SMART). */
+    fun shutter() {
+        val f = _state.value.flight
+        when {
+            f.videoMode -> toggleRecording()
+            f.shootMode == ShootMode.TIMER -> camera.toggleTimer()
+            else -> shoot()
+        }
+    }
 
-    /** 사진 셔터: 찍고 원본을 받는다. */
+    /** 사진 한 장(단일·SMART): 찍고 원본을 받는다. 찍는 동안([FlightUiState.capturing]) 다른 카메라 조작은 "촬영 중" 안내문. */
     fun shoot() {
         val d = drone ?: return
         if (_state.value.shooting) return
         val lens = _state.value.flight.lens
-        keep(d, lens) { d.capture(lens, 0.0, 1.0).getOrThrow() }
-    }
-
-    private fun keep(d: DroneGateway, lens: Lens, shot: suspend () -> CaptureInfo) {
-        _state.update { it.copy(shooting = true) }
+        _state.update { it.copy(shooting = true, flight = it.flight.copy(capturing = true)) }
         viewModelScope.launch {
-            val result = runCatching {
-                val info = shot()
-                val bytes = d.download(info, DownloadMode.ORIGINAL).getOrThrow()
-                store(info, bytes, lens).also { (_, path) ->
-                    live?.offer(bytes, path)
-                    precise?.kick()
-                }.first
-            }
-            OpLog.log("manual", "shoot", mapOf("ok" to result.isSuccess, "saved" to result.getOrNull(), "error" to result.exceptionOrNull()?.message))
-            _state.update {
-                it.copy(
-                    shooting = false, shots = it.shots + if (result.isSuccess) 1 else 0,
-                    message = result.fold({ s -> "저장했습니다: $s" }, { e -> "촬영 실패: ${e.message}" }),
-                )
-            }
+            val shot = d.capture(lens, 0.0, 1.0)
+            _state.update { it.copy(flight = it.flight.copy(capturing = false)) }
+            val info = shot.getOrNull()
+            saved(info, if (info == null) Result.failure(shot.exceptionOrNull() ?: IllegalStateException("촬영 실패")) else photos.keep(d, info, lens))
+            _state.update { it.copy(shooting = false) }
         }
     }
 
-    /** 최근 미션 전주가 가까우면 그 방문의 수동 사진(4.3 미션 `images/`), 아니면 `manual/<날짜>/`. (저장한 곳 안내, 파일 경로)를 돌려준다. */
-    private suspend fun store(info: CaptureInfo, bytes: ByteArray, lens: Lens): Pair<String, String?> {
-        val m = dao.latestOpenMission()
-        val v = if (m == null) null else shutterLinkTarget(info.position, dao.missionVisits(m.id)) { GeoPoint(it.lat, it.lon) }
-        if (m != null && v != null) {
-            val rec = RoomRecorder(
-                dao, m.id, listOf(RecorderSortie(v.sortieId, listOf(v.visitId to v.poleId))),
-                File(appFilesDir, "projects/${m.projectId}/missions/${m.id}/images"), DownloadMode.ORIGINAL,
+    /** 사진 하나의 결과(셔터·타이머): 장수·안내 줄, 위치가 없으면 Pilot 2 "위치 레코딩 실패". */
+    private fun saved(info: CaptureInfo?, result: Result<String>) {
+        OpLog.log("manual", "shoot", mapOf("ok" to result.isSuccess, "saved" to result.getOrNull(), "error" to result.exceptionOrNull()?.message))
+        if (info != null && info.position == null) camera.noPosition()
+        _state.update {
+            it.copy(
+                shots = it.shots + if (result.isSuccess) 1 else 0,
+                message = result.fold({ s -> "저장했습니다: $s" }, { e -> "촬영 실패: ${e.message}" }),
             )
-            val id = rec.saveCapture(0, 0, info.copy(lens = lens, viewpoint = null), CaptureSource.MANUAL)
-            rec.saveImage(id, bytes)
-            return "전주 ${v.poleId}" to dao.capture(id)?.filePath
         }
-        val day = SimpleDateFormat("yyyyMMdd", Locale.ROOT).format(Date())
-        val file = File(appFilesDir, "manual/$day/manual_${info.takenAtMs}_${info.mediaId}_${lens}.jpg")
-        withContext(Dispatchers.IO) { file.parentFile?.mkdirs(); file.writeBytes(bytes) }
-        return file.name to file.path
     }
 
 
@@ -220,6 +203,13 @@ class ManualFlightViewModel(
     fun zoom(up: Boolean) = camera.zoom(up)
     fun setVideoMode(on: Boolean) = camera.setVideoMode(on)
     fun toggleRecording() = camera.toggleRecording()
+
+    /** 촬영 모드 메뉴(10.5.7)·☀ 노출(탭 초점 옆). */
+    fun openShootMenu() = camera.openShootMenu()
+    fun closeShootMenu() = camera.closeShootMenu()
+    fun setShootMode(mode: ShootMode) { camera.setShootMode(mode) }
+    fun setTimer(sec: Double) = camera.setTimer(sec)
+    fun setEv(ev: Double) = camera.setEv(ev)
 
     /** 짐벌 메뉴(10.5.7): 짐벌 중앙 / 아래(-90°). */
     fun setGimbal(down: Boolean) {

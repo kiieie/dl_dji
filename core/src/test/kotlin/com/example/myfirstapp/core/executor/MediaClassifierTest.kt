@@ -28,6 +28,23 @@ class MediaClassifierTest {
     }
 
     @Test
+    fun `타이머 촬영 파일은 끝날 때까지 모두 앱 촬영 것(일시정지 중 지점이 바뀌어 보여도), 끝난 뒤 잠깐까지`() {
+        val c = MediaClassifier()
+        assertEquals(WAYPOINT, c.classify(500, shot = 0))
+        c.screenStarted(continuous = true)
+        assertEquals(SCREEN, c.classify(1_000, shot = 0))
+        assertEquals(SCREEN, c.classify(3_000, shot = 1)) // 홑 촬영이면 지점 1 사진으로 갔을 파일
+        assertEquals(SCREEN, c.classify(5_000, shot = null))
+        c.screenEnded(6_000)
+        assertEquals(SCREEN, c.classify(6_500, shot = null)) // 멈춘 뒤 늦게 온 파일
+        assertEquals(NONE, c.classify(9_000, shot = null))
+        // 다음 홑 촬영은 다시 첫 파일만
+        c.screenStarted()
+        assertEquals(SCREEN, c.classify(10_000, shot = 1))
+        assertEquals(WAYPOINT, c.classify(10_100, shot = 1))
+    }
+
+    @Test
     fun `화면 수동 촬영 뒤 둘째 파일은 지점 사진이 아니다`() {
         val c = MediaClassifier()
         assertEquals(WAYPOINT, c.classify(500, shot = 0))

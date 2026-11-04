@@ -10,6 +10,8 @@ import com.example.myfirstapp.core.model.FlightMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Obstacles
+import com.example.myfirstapp.core.model.PhotoModes
+import com.example.myfirstapp.core.model.ShootMode
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.DroneEvent
@@ -20,10 +22,13 @@ import com.example.myfirstapp.core.port.PreflightReport
 import com.example.myfirstapp.core.route.Enu
 import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.route.Viewpoint
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -245,10 +250,36 @@ class FakeDroneGateway(
             failNextCaptures--
             return Result.failure(IllegalStateException("모의 촬영 실패"))
         }
+        Result.success(newShot(lens, gimbalPitchDeg))
+    }
+
+    private fun newShot(lens: Lens, gimbalPitchDeg: Double): CaptureInfo {
         val t = _telemetry.value
-        val info = CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, gimbalPitchDeg, 0.0, System.currentTimeMillis())
-        sdCard += info
-        Result.success(info)
+        return CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, gimbalPitchDeg, 0.0, System.currentTimeMillis()).also { sdCard += it }
+    }
+
+    // 모의 촬영 모드(10.5.7): 단일·타이머·SMART(파노라마 없음). 타이머는 간격(실제 시간, 배속 없음)마다 모의 사진을 내보낸다
+    override suspend fun photoModes(): PhotoModes = PhotoModes(setOf(ShootMode.SINGLE, ShootMode.TIMER, ShootMode.SMART))
+    override suspend fun setShootMode(mode: ShootMode): Result<Unit> = Result.success(Unit).also { calls += "shootMode:$mode" }
+    private var intervalStop: CompletableDeferred<Unit>? = null
+
+    override fun intervalShots(intervalSec: Double): Flow<CaptureInfo> {
+        val stop = CompletableDeferred<Unit>().also { intervalStop = it }
+        return flow {
+            captureLock.withLock {
+                calls += "interval:$intervalSec"
+                while (withTimeoutOrNull((intervalSec * 1000).toLong()) { stop.await() } == null) emit(newShot(Lens.WIDE, _telemetry.value.gimbalPitchDeg))
+            }
+        }
+    }
+
+    override suspend fun stopInterval() {
+        intervalStop?.complete(Unit)
+    }
+
+    override suspend fun setExposureCompensation(ev: Double): Result<Unit> = Result.success(Unit).also {
+        calls += "ev:$ev"
+        _camera.update { it.copy(ev = if (abs(ev) < 0.05) "0" else "%+.1f".format(ev)) }
     }
 
     // 모의 카메라: 노출 띠 값은 그럴듯한 고정값, 초점 모드만 바뀐다(10.5.2)

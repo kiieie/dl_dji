@@ -62,6 +62,27 @@ data class Telemetry(
     }
 }
 
+/** 사진 촬영 모드(10.5.7 Pilot 2 촬영 모드 메뉴): 단일 · 타이머(카메라 인터벌) · 파노라마 · SMART(저조도 사진). */
+enum class ShootMode(val label: String) { SINGLE("단일"), TIMER("타이머"), PANORAMA("파노라마"), SMART("SMART") }
+
+/** 기체가 받는 사진 모드와 타이머 간격(초, 오름차순). 간격을 모르면 빈 목록(앱 기본 간격). */
+data class PhotoModes(val modes: Set<ShootMode>, val intervalsSec: List<Double> = emptyList()) {
+    companion object {
+        /** 기체에 묻기 전(또는 못 읽음): Pilot 2 기본 두 모드. */
+        val BASIC = PhotoModes(setOf(ShootMode.SINGLE, ShootMode.TIMER))
+    }
+}
+
+/**
+ * 촬영 모드를 고를 수 없는 이유(10.5.7 안내문). 고를 수 있으면 null.
+ * 파노라마는 이 앱에서 찍지 않는다: 기체가 제자리에서 돌며 여러 장을 찍어 전주 점검 사진이 아니고, 타일을 전주에 붙일 수 없다. 땅에서는 Pilot 2 문구 그대로.
+ */
+fun shootModeBlock(mode: ShootMode, supported: Set<ShootMode>, flying: Boolean): String? = when {
+    mode == ShootMode.PANORAMA -> if (flying) "파노라마 촬영 불가(이 앱은 지원하지 않음, Pilot 2에서 촬영)" else "기체 비행 전. 파노라마 촬영 불가"
+    mode !in supported -> "이 기체는 ${mode.label} 촬영을 지원하지 않습니다"
+    else -> null
+}
+
 /** 초점 모드(Pilot 2 노출 띠 AFS·AFC·MF, 누르면 차례로 바뀜). */
 enum class FocusMode {
     AFS, AFC, MF;
