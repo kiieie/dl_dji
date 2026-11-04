@@ -89,7 +89,7 @@ fun djiAircraftSettingTabs(): List<Pair<String, List<AircraftSetting>>> = listOf
     ),
     "조종기" to listOf(
         choice("스틱 모드", RemoteControllerKey.KeyControlMode, listOf(ControlMode.JP to "모드 1", ControlMode.USA to "모드 2", ControlMode.CH to "모드 3")),
-        AircraftSetting("사용자 버튼", AircraftSetting.Kind.Info, read = { "C1 재개 · C2 짐벌 중앙/아래 · 일시정지 버튼은 기체가 처리" }),
+        AircraftSetting("사용자 버튼", AircraftSetting.Kind.Info, read = { "C1 광각/줌 · C2 지도/카메라 · 일시정지 버튼은 기체가 처리(재개는 화면 ▶)" }),
         action("조종기 연동(페어링)", RemoteControllerKey.KeyRequestPairing, "기체의 연동 버튼을 눌러야 합니다. 지금 연결이 끊깁니다. 시작할까요?"),
     ),
     "영상 전송" to listOf(
