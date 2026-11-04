@@ -38,4 +38,12 @@ class FlightParamsTest {
         assertEquals(2, FlightParams(shotMode = ShotMode.OVERHEAD).photosPerPole(bank))
         assertEquals(4, FlightParams(lenses = listOf(Lens.WIDE), equipmentDropM = emptyMap()).photosPerPole(bank))
     }
+
+    @Test
+    fun `미션 예상 사진 수는 전주마다 설비를 보고 더한다(홈·라이브러리·미션 칸 같은 값)`() {
+        val bank = Pole("P", GeoPoint(36.0, 127.0), equipment = "가공뱅크")
+        val plain = Pole("Q", GeoPoint(36.0, 127.0))
+        assertEquals(16 + 8, FlightParams().expectedPhotos(listOf(bank, plain)))
+        assertEquals(0, FlightParams().expectedPhotos(emptyList()))
+    }
 }

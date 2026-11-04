@@ -44,6 +44,7 @@ import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.album.AlbumScreen
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.settings.SettingsHub
+import com.example.myfirstapp.ui.theme.LightScreen
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -162,8 +163,9 @@ class MainActivity : ComponentActivity() {
         }
         NavHost(nav, startDestination = "home") {
             // 홈(Pilot 2 홈페이지, 10장): 비행경로·앨범·설정 타일, 기체 상태, 카메라 뷰로 들어가기
+            // 절차 화면은 Pilot 2처럼 밝은 바탕(LightScreen, 2026-11-04 사용자 결정). 카메라 뷰·지도는 어두운 기본 테마
             composable("home") {
-                HomeScreen(
+                LightScreen { HomeScreen(
                     dao,
                     onRoutes = { nav.navigate("projects") },
                     onAlbum = { _, _ -> nav.navigate("album") },
@@ -174,7 +176,7 @@ class MainActivity : ComponentActivity() {
                     onSettings = { nav.navigate("settings?general=true") { launchSingleTop = true } },
                     onAircraftCheck = { nav.navigate("settings") { launchSingleTop = true } },
                     onVerification = { nav.navigate("verify") },
-                )
+                ) }
             }
             // 수동 비행 카메라 뷰(Pilot 2 카메라 뷰): 미션 없이 조종사가 스틱으로 난다. 경로 알약을 누르면 최근 미션 비행 화면으로
             composable("camera") {
@@ -192,14 +194,16 @@ class MainActivity : ComponentActivity() {
             // 비행 전 점검(10.5.5): camera면 [카메라 뷰 입력]으로 수동 비행 카메라 뷰(점검 화면은 스택에서 뺌), 아니면 닫기만
             composable("preflight?camera={camera}", listOf(navArgument("camera") { type = NavType.BoolType; defaultValue = false })) { e ->
                 val toCamera = e.arguments!!.getBoolean("camera")
-                PreflightScreen(
-                    onClose = { nav.popBackStack() },
-                    onNext = if (toCamera) ({ nav.navigate("camera") { popUpTo("preflight?camera={camera}") { inclusive = true } } }) else null,
-                )
+                LightScreen {
+                    PreflightScreen(
+                        onClose = { nav.popBackStack() },
+                        onNext = if (toCamera) ({ nav.navigate("camera") { popUpTo("preflight?camera={camera}") { inclusive = true } } }) else null,
+                    )
+                }
             }
             // 비행경로(마스터-디테일). pid가 있으면 그 프로젝트를 고른 채 연다
             composable("projects?pid={pid}", listOf(navArgument("pid") { type = NavType.LongType; defaultValue = -1L })) { e ->
-                ProjectScreen(
+                LightScreen { ProjectScreen(
                     dao,
                     initialProjectId = e.arguments!!.getLong("pid").takeIf { it > 0 },
                     onBack = { nav.popBackStack() },
@@ -208,7 +212,7 @@ class MainActivity : ComponentActivity() {
                     onReplan = { pid, mid -> nav.navigate("map/$pid?replan=$mid") },
                     onResult = { pid, mid -> nav.navigate("result/$pid/$mid") },
                     onCopy = { pid, mid -> nav.navigate("map/$pid?copy=$mid") },
-                )
+                ) }
             }
             composable(
                 "map/{pid}?replan={replan}&copy={copy}",
@@ -245,10 +249,10 @@ class MainActivity : ComponentActivity() {
                 "settings?general={general}&camera={camera}",
                 listOf(navArgument("general") { type = NavType.BoolType; defaultValue = false }, navArgument("camera") { type = NavType.BoolType; defaultValue = false }),
             ) { e ->
-                SettingsHub(onBack = { nav.popBackStack() }, initialGeneral = e.arguments!!.getBoolean("general"), initialCamera = e.arguments!!.getBoolean("camera"))
+                LightScreen { SettingsHub(onBack = { nav.popBackStack() }, initialGeneral = e.arguments!!.getBoolean("general"), initialCamera = e.arguments!!.getBoolean("camera")) }
             }
             // 앨범(10.4.3 ⑦): 사진 모아 보기. 미션 사진을 누르면 그 미션 판독으로
-            composable("album") { AlbumScreen(dao, onBack = { nav.popBackStack() }, onReview = { pid, mid -> nav.navigate("result/$pid/$mid") }) }
+            composable("album") { LightScreen { AlbumScreen(dao, onBack = { nav.popBackStack() }, onReview = { pid, mid -> nav.navigate("result/$pid/$mid") }) } }
             composable("verify") { VerificationPanel() }
         }
     }

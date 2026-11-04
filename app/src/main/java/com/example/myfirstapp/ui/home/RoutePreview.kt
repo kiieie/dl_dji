@@ -21,21 +21,29 @@ import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.TextSoft
-import com.example.myfirstapp.ui.theme.Warning
+import com.example.myfirstapp.ui.flight.PoleDone
+import com.example.myfirstapp.ui.theme.MAP_POLE_PENDING
+import com.example.myfirstapp.ui.theme.MAP_POLE_PENDING_STROKE
+import com.example.myfirstapp.ui.theme.MapThumbBg
+import androidx.compose.foundation.background
 import com.example.myfirstapp.ui.theme.numberStyle
 import kotlin.math.cos
 import kotlin.math.min
 
 /**
- * 경로 미리보기: 소티마다 이륙 지점(H)에서 방문 순서대로 초록 선, 전주 점(끝남 초록, 남음 주황)과 전주번호.
+ * 경로 미리보기: 연한 지도 색 바탕([MapThumbBg], Pilot 2 라이브러리 썸네일처럼 카드가 그림·글로 갈라져 보이지 않게) 위에
+ * 소티마다 이륙 지점(H)에서 방문 순서대로 초록 선, 전주 점(끝남 초록, 남음은 비행 지도와 같은 밝은 회색에 어두운 테두리)과 전주번호.
  * 위경도를 위도 cos로 보정한 평면에 그대로 맞춘다(수 km 안의 미리보기라 충분). [labels]가 거짓이면(라이브러리 카드 그림) 번호를 쓰지 않는다.
+ * ponytail: 위성 MBTiles 조각을 깔지 않고 단색 지도 색만 깐다(타일 합성은 비싸다). 필요하면 미션 영역 캐시 타일을 비트맵으로 붙인다.
  */
 @Composable
 internal fun RoutePreview(route: List<List<RoutePoint>>, home: GeoPoint?, modifier: Modifier, labels: Boolean = true) {
     val measurer = rememberTextMeasurer()
     val routeColor = MaterialTheme.colorScheme.tertiary
     val labelStyle = numberStyle(FontSize.Caption, FontWeight.Medium).copy(color = TextSoft)
-    Canvas(modifier) {
+    val pending = Color(android.graphics.Color.parseColor(MAP_POLE_PENDING))
+    val pendingStroke = Color(android.graphics.Color.parseColor(MAP_POLE_PENDING_STROKE))
+    Canvas(modifier.background(MapThumbBg)) {
         val pts = route.flatten()
         if (pts.isEmpty()) return@Canvas
         val lats = pts.map { it.lat } + listOfNotNull(home?.lat)
@@ -64,8 +72,8 @@ internal fun RoutePreview(route: List<List<RoutePoint>>, home: GeoPoint?, modifi
         val r = (if (pts.size > 60) 2.5 else 4.0).dp.toPx()
         pts.forEach { p ->
             val c = at(p.lat, p.lon)
-            drawCircle(Color.Black, r + 1.2.dp.toPx(), c)
-            drawCircle(if (p.done) routeColor else Warning, r, c)
+            drawCircle(if (p.done) Color.White else pendingStroke, r + 1.2.dp.toPx(), c)
+            drawCircle(if (p.done) PoleDone else pending, r, c)
         }
         // 전주번호(10.4.3): 점 오른쪽 위, 어두운 바탕. 앞 번호와 겹치면 건너뛴다(방문 순서가 앞인 것이 남음). 많으면 모두 생략
         if (labels && pts.size <= MAX_LABELS) {

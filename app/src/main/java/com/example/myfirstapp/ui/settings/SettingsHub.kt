@@ -192,7 +192,7 @@ private fun TabRow(name: String, selected: Boolean, badge: Int?, onClick: () -> 
         Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Accent else Color.Transparent))
         Text(
             name, Modifier.weight(1f).padding(start = 8.dp), fontSize = FontSize.Body, maxLines = 1,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Color.White else TextSoft,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         badge?.let {
             Box(Modifier.padding(end = 8.dp).size(16.dp).clip(CircleShape).background(Warning), contentAlignment = Alignment.Center) {
@@ -230,7 +230,7 @@ private fun StatusTab(s: AircraftSettingsUiState, vm: AircraftSettingsViewModel,
             }
             Button(
                 onClick = vm::recheck, enabled = !s.checking, modifier = Modifier.height(Dimens.TouchSmall), shape = RoundedCornerShape(4.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp), colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
+                contentPadding = PaddingValues(horizontal = 12.dp), colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.onSurface),
             ) { Text(if (s.checking) "점검 중" else "다시 점검", fontSize = FontSize.Caption) }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -251,7 +251,7 @@ private fun InfoPair(label: String, name: String, detail: String) {
     Text(
         buildAnnotatedString {
             append("$label ")
-            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.SemiBold)) { append(name) }
+            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)) { append(name) }
             if (detail.isNotEmpty()) withStyle(numberStyle(FontSize.Body, FontWeight.Medium).toSpanStyle()) { append("  $detail") }
         },
         fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -272,7 +272,7 @@ private fun CheckRow(item: CheckItem, mode: Char?, onGuide: (String) -> Unit) {
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(Modifier.size(7.dp).clip(CircleShape).background(color))
-        Text(item.name, Modifier.width(96.dp), fontSize = FontSize.Body, fontWeight = if (bad) FontWeight.SemiBold else FontWeight.Normal, color = if (bad) Color.White else TextSoft)
+        Text(item.name, Modifier.width(96.dp), fontSize = FontSize.Body, fontWeight = if (bad) FontWeight.SemiBold else FontWeight.Normal, color = if (bad) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
         if (item.name == "비행 모드") {
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 listOf('F', 'N', 'S').forEach { m ->
@@ -285,7 +285,7 @@ private fun CheckRow(item: CheckItem, mode: Char?, onGuide: (String) -> Unit) {
                 Text("자동 비행은 N에서만", Modifier.padding(start = 6.dp), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
-            Text(item.value, Modifier.weight(1f), fontSize = FontSize.Body, color = if (bad) color else TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.value, Modifier.weight(1f), fontSize = FontSize.Body, color = if (bad) color else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         val g = item.guide
         if (g != null) {

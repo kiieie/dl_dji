@@ -71,6 +71,12 @@ data class FlightParams(
         return points * perAim * aims
     }
 
+    /**
+     * 미션의 예상 사진 수(10.5 숫자 규칙, 2026-11-04): 미션의 모든 방문 전주에 [photosPerPole]을 더한 값.
+     * 홈·라이브러리·미션 칸·계획 칩이 모두 이 값을 "사진 찍은/예상"의 분모로 쓴다.
+     */
+    fun expectedPhotos(poles: List<Pole>): Int = poles.sumOf { photosPerPole(it) }
+
     /** RTH 고도 = 이동 고도 + 10m, 법정 상한 150m을 넘지 않는다(6.3). */
     val rthAltitudeM: Double get() = minOf(transitAltitudeM + Tuning.Safety.RTH_MARGIN_M, Tuning.Safety.MAX_ALTITUDE_M)
 
@@ -79,7 +85,7 @@ data class FlightParams(
         if (transitAltitudeM !in 30.0..120.0) add("이동 고도는 30~120m여야 합니다.")
         if (inspectAltitudeM <= 0.0 || inspectAltitudeM > transitAltitudeM) add("점검 고도는 0m 초과, 이동 고도 이하여야 합니다.")
         if (transitAltitudeM + Tuning.Safety.RTH_MARGIN_M > Tuning.Safety.MAX_ALTITUDE_M) add("RTH 고도가 150m를 넘습니다.")
-        if (speedMps !in 2.0..15.0) add("비행 속도는 2~15m/s여야 합니다.")
+        if (speedMps !in Tuning.Safety.SPEED_RANGE_MPS) add("비행 속도는 1.0~15.0m/s여야 합니다.")
         if (offsetDistanceM < 0.0) add("오프셋 거리는 0m 이상이어야 합니다.")
         if (gimbalPitchDeg !in -90.0..0.0) add("짐벌 피치는 -90~0°여야 합니다.")
         if (lenses.isEmpty()) add("촬영 렌즈를 하나 이상 선택해야 합니다.")

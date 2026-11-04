@@ -32,6 +32,8 @@ data class LatestMission(
     val total: Int,
     val status: String = "PLANNED",
     val sorties: Int = 0,
+    /** 사진 찍은/예상(10.5 숫자 규칙): 예상은 [FlightParams.expectedPhotos](모든 방문 전주). */
+    val photosTaken: Int = 0,
     val photos: Int = 0,
     val shotMode: ShotMode = ShotMode.OVERHEAD,
     val home: GeoPoint? = null,
@@ -40,7 +42,10 @@ data class LatestMission(
     val remaining get() = total - done
 }
 
-/** 날 미션(남은 전주가 있는 가장 최근 것, 없으면 가장 최근 미션)과 진행 수. 미션이 없으면 null. */
+/**
+ * 날 미션(남은 전주가 있는 가장 최근 것, 없으면 가장 최근 미션)과 진행 수. 미션이 없으면 null.
+ * 숫자 규칙(10.5, 모든 화면 같음): 전주 = 끝난(완료·건너뜀·실패)/모든 방문, 사진 = 찍은(CAPTURE)/예상([FlightParams.expectedPhotos]).
+ */
 suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     val m = dao.latestOpenMission() ?: dao.latestMission() ?: return null
     val visits = dao.missionVisits(m.id)
@@ -49,7 +54,8 @@ suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     val route = visits.groupBy { it.sortieId }.values.map { s -> s.map { RoutePoint(it.lat, it.lon, isDone(it), it.lineNo?.takeIf(String::isNotBlank) ?: it.poleId.takeLast(4)) } }
     return LatestMission(
         m.projectId, m.id, dao.projectName(m.projectId).orEmpty(), visits.count(isDone), visits.size,
-        status = m.status, sorties = route.size, photos = visits.sumOf { params.photosPerPole(it.toPole()) }, shotMode = params.shotMode,
+        status = m.status, sorties = route.size, photosTaken = dao.missionCaptureCount(m.id), photos = params.expectedPhotos(visits.map { it.toPole() }),
+        shotMode = params.shotMode,
         home = GeoPoint(m.homeLat, m.homeLon), route = route,
     )
 }

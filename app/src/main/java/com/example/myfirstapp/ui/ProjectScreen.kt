@@ -143,7 +143,7 @@ fun ProjectScreen(
     LaunchedEffect(vm, enabled5d) { if (enabled5d) rc.collect(vm::on5d) }
 
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp, end = 8.dp)) {
+        Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).background(MaterialTheme.colorScheme.surface).padding(start = 4.dp, end = 8.dp)) {
             if (s.selecting) {
                 IconButton(onClick = { vm.setSelecting(false) }, modifier = Modifier.size(Dimens.TouchSmall).align(Alignment.CenterStart).semantics { contentDescription = "선택 끝내기" }) {
                     Text("✕", fontSize = FontSize.Number)
@@ -203,7 +203,7 @@ fun ProjectScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("전주 ${p.poleCount}", style = numberStyle(FontSize.Label, FontWeight.Medium), color = TextSoft)
+                            Text("전주 ${p.poleCount}", style = numberStyle(FontSize.Label, FontWeight.Medium), color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -251,8 +251,8 @@ private fun SearchField(value: String, onChange: (String?) -> Unit, modifier: Mo
     ) {
         BasicTextField(
             value, onValueChange = { onChange(it) }, Modifier.weight(1f), singleLine = true,
-            textStyle = TextStyle(color = Color.White, fontSize = FontSize.Label), cursorBrush = SolidColor(Color.White),
-            decorationBox = { inner -> if (value.isEmpty()) Text("프로젝트 이름·미션 번호", fontSize = FontSize.Label, color = TextSoft); inner() },
+            textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = FontSize.Label), cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+            decorationBox = { inner -> if (value.isEmpty()) Text("프로젝트 이름·미션 번호", fontSize = FontSize.Label, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() },
         )
         IconButton(onClick = { onChange(null) }, modifier = Modifier.size(Dimens.TouchSmall).semantics { contentDescription = "검색 닫기" }) { Text("✕", fontSize = FontSize.Body) }
     }

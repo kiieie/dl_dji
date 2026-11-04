@@ -14,6 +14,9 @@ import kotlin.math.ceil
 data class PreflightCheck(val label: String, val value: String, val ok: Boolean, val problem: String, val blocking: Boolean = false)
 
 /** 비행 전 점검 판정(6.7). */
+/** SD 남은 용량 글(Pilot 2 "211.4G", 10.5.5): 모든 화면(비행 전 점검·체크리스트·홈·기체 점검)이 같은 꼴을 쓴다. */
+fun sdFreeLabel(mb: Long): String = String.format(java.util.Locale.ROOT, "%.1fG", mb / 1024.0)
+
 object PreflightEvaluator {
     /** 배터리 항목 이름. 비행 전 점검 화면이 이 줄을 한 줄 전체로 크게 보인다. */
     const val BATTERY = "배터리"
@@ -41,20 +44,20 @@ object PreflightEvaluator {
                 report.gpsSatellites >= Tuning.Preflight.MIN_GPS_SATELLITES && report.gpsLevel >= Tuning.Preflight.MIN_GPS_LEVEL,
                 "GPS 신호가 약합니다(위성 ${report.gpsSatellites}개, 등급 ${report.gpsLevel}).",
             ),
-            PreflightCheck("홈 포인트", if (report.homeRecorded && report.home != null) "기록됨" else "없음", report.homeRecorded && report.home != null, "홈 포인트가 기록되지 않았습니다."),
+            PreflightCheck("홈포인트", if (report.homeRecorded && report.home != null) "기록됨" else "미설정", report.homeRecorded && report.home != null, "홈포인트가 기록되지 않았습니다."),
             PreflightCheck(
                 BATTERY, "지금 $now% · 예상 사용 $use% (+예비 $reserve%)", report.batteryPct >= use + params.batteryReservePct,
                 "배터리가 부족합니다(지금 $now%, 예상 사용 $use% + 예비 $reserve% = ${use + reserve}%).",
             ),
             PreflightCheck("배터리 온도", "${report.batteryTempC}℃", report.batteryTempC in Tuning.Preflight.BATTERY_TEMP_RANGE, "배터리 온도가 범위를 벗어났습니다(${report.batteryTempC}℃)."),
-            PreflightCheck("SD 카드", "${report.sdFreeMb / 1024}GB 남음", report.sdFreeMb >= Tuning.Preflight.MIN_SD_FREE_MB, "SD 카드 여유 공간이 부족합니다(${report.sdFreeMb}MB)."),
+            PreflightCheck("SD 카드", sdFreeLabel(report.sdFreeMb), report.sdFreeMb >= Tuning.Preflight.MIN_SD_FREE_MB, "SD 카드 여유 공간이 부족합니다(${report.sdFreeMb}MB)."),
             PreflightCheck(
                 "LDM", if (report.ldmEnabled) "켜짐" else "꺼짐 · 시작 불가", report.ldmEnabled,
                 "LDM(로컬 데이터 모드)이 꺼져 있어 비행을 시작할 수 없습니다. 조종기 Wi-Fi·SIM을 끄고 앱을 다시 시작하세요.", blocking = true,
             ),
             PreflightCheck("장애물 감지", if (report.obstacleAvoidanceOn) "켜짐" else "꺼짐", report.obstacleAvoidanceOn, "장애물 회피가 꺼져 있습니다."),
             PreflightCheck("RTH 고도", "${report.rthAltitudeM.toInt()}m", report.rthAltitudeM <= Tuning.Safety.MAX_ALTITUDE_M, "RTH 고도가 150m를 넘습니다(${report.rthAltitudeM}m)."),
-            PreflightCheck("신호 상실 동작", if (report.lostLinkActionIsRth) "RTH" else "RTH 아님", report.lostLinkActionIsRth, "통신 상실 동작이 RTH가 아닙니다."),
+            PreflightCheck("신호 끊김 조치", if (report.lostLinkActionIsRth) "RTH" else "RTH 아님", report.lostLinkActionIsRth, "신호 끊김 조치가 RTH가 아닙니다."),
             PreflightCheck(
                 FIRST_POLE, firstDist?.let { "${it.toInt()}m" } ?: "--",
                 firstDist == null || firstDist <= params.vlosRadiusM, "첫 전주가 가시권 반경 밖입니다(${firstDist?.toInt()}m, 반경 ${params.vlosRadiusM.toInt()}m).",

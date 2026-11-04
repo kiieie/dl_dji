@@ -80,6 +80,10 @@ object Tuning {
          * 줌 영역 사각형이 2.0X에서 화면 폭의 절반, 7.0X에서 약 1/7). 실기 화면과 다르면 고친다.
          */
         const val ZOOM_RATIO_PER_WIDE = 1.0
+
+        /** 내비 짐벌 피치 막대의 위·아래 끝(°, M3E 짐벌 틸트 범위 +35 ~ -90). 파란 표지는 이 사이에서 움직인다. */
+        const val GIMBAL_BAR_UP_DEG = 35.0
+        const val GIMBAL_BAR_DOWN_DEG = -90.0
     }
 
     /**
@@ -151,6 +155,12 @@ object Tuning {
     object Safety {
         /** 법정 최대 고도(m). */
         const val MAX_ALTITUDE_M = 150.0
+
+        /** 비행 속도 범위(m/s, 6.3): Pilot 2 체크리스트 "비행 임무 속도 (1.0~15.0m/s)"와 같다(2026-11-04). */
+        val SPEED_RANGE_MPS = 1.0..15.0
+
+        /** 체크리스트 속도 칸 단위(m/s, Pilot 2 소수 한 자리 0.5). */
+        const val SPEED_STEP_MPS = 0.5
 
         /** RTH 고도 = 이동 고도 + 이 값(6.3). */
         const val RTH_MARGIN_M = 10.0

@@ -133,7 +133,7 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
                     ) {
                         Text(
                             f.title, fontSize = FontSize.Caption, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
-                            color = when { on -> Color.White; f == AlbumFilter.DETECTED -> DetectedText; else -> TextSoft },
+                            color = when { on -> MaterialTheme.colorScheme.onSurface; f == AlbumFilter.DETECTED -> DetectedText; else -> MaterialTheme.colorScheme.onSurfaceVariant },
                         )
                     }
                 }
@@ -228,11 +228,11 @@ private fun GroupRow(g: AlbumGroup, selected: Boolean, onClick: () -> Unit) {
         Text(
             when (g) { is AlbumGroup.Mission -> "#${g.m.missionId} ${g.m.projectName}"; is AlbumGroup.ManualDay -> "수동 비행 · ${dayLabel(g.day)}" },
             Modifier.weight(1f).padding(start = 8.dp), fontSize = FontSize.Body, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) Color.White else TextSoft,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             "${when (g) { is AlbumGroup.Mission -> g.m.photoCount; is AlbumGroup.ManualDay -> g.files.size }}",
-            Modifier.padding(horizontal = 8.dp), style = numberStyle(FontSize.Label, FontWeight.Medium), color = if (selected) TextSoft else MaterialTheme.colorScheme.onSurfaceVariant,
+            Modifier.padding(horizontal = 8.dp), style = numberStyle(FontSize.Label, FontWeight.Medium), color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -245,7 +245,7 @@ private fun Thumb(path: String?, label: String, symbols: List<PoleSymbol>, detec
         if (detected) Box(Modifier.padding(4.dp).size(8.dp).clip(CircleShape).background(Detected).border(1.5.dp, Color.Black, CircleShape))
         if (manual) Text(
             "수동", Modifier.align(Alignment.TopEnd).padding(4.dp).background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),
-            fontSize = FontSize.Micro, color = TextSoft,
+            fontSize = FontSize.Micro, color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             label, Modifier.align(Alignment.BottomStart).padding(4.dp).background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),

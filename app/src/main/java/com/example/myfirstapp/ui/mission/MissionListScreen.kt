@@ -1,6 +1,11 @@
 package com.example.myfirstapp.ui.mission
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -95,7 +100,9 @@ internal fun LibraryFilters(s: MissionListUiState, projects: List<ProjectSummary
             listOf<Pair<String, () -> Unit>>("모든 프로젝트(선로)" to { vm.setProject(null) }) + projects.map { p -> "${p.name} (${p.poleCount})" to { vm.setProject(p.id) } },
             Modifier.weight(1f),
         )
+        FilterDivider()
         FilterDrop(s.filter.label, LibraryFilter.entries.map { f -> f.label to { vm.setFilter(f) } }, Modifier.weight(1f))
+        FilterDivider()
         FilterDrop(
             if (s.newestFirst) "업데이트 시간 내림차순" else "업데이트 시간 오름차순",
             listOf("업데이트 시간 내림차순" to { vm.setNewestFirst(true) }, "업데이트 시간 오름차순" to { vm.setNewestFirst(false) }),
@@ -103,6 +110,10 @@ internal fun LibraryFilters(s: MissionListUiState, projects: List<ProjectSummary
         )
     }
 }
+
+/** 필터 칸 사이 세로 구분선(Pilot 2). */
+@Composable
+private fun FilterDivider() = Box(Modifier.width(1.dp).height(18.dp).background(MaterialTheme.colorScheme.outlineVariant))
 
 @Composable
 private fun FilterDrop(label: String, items: List<Pair<String, () -> Unit>>, modifier: Modifier) {
@@ -112,8 +123,8 @@ private fun FilterDrop(label: String, items: List<Pair<String, () -> Unit>>, mod
             Modifier.fillMaxWidth().height(36.dp).clickable(onClickLabel = label) { open = true }.padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, Modifier.weight(1f), fontSize = FontSize.Body, color = TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Icon(painterResource(R.drawable.ic_arrow_down), contentDescription = null, modifier = Modifier.size(11.dp), tint = TextSoft)
+            Text(label, Modifier.weight(1f), fontSize = FontSize.Body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Icon(painterResource(R.drawable.ic_chevron_down), contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         DropdownMenu(open, onDismissRequest = { open = false }, properties = MENU_PROPERTIES) {
             items.forEach { (t, a) -> DropdownMenuItem(text = { Text(t) }, onClick = { open = false; a() }) }
@@ -143,57 +154,68 @@ internal fun MissionGrid(s: MissionListUiState, vm: MissionListViewModel, modifi
                 contentPadding = PaddingValues(start = 10.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(list, key = { it.id }) { m -> MissionCard(m, s.routes[m.id].orEmpty(), m.id == selected?.id, s, vm) }
+                items(list, key = { it.id }) { m -> MissionCard(m, s.routes[m.id].orEmpty(), s.expectedPhotos[m.id] ?: 0, m.id == selected?.id, s, vm) }
             }
         }
     }
 }
 
 /**
- * 경로 카드 128dp(Pilot 2: 왼쪽 경로 그림, 이름 · 기체 · 생성/업데이트 시간): 이름 "<프로젝트> #<미션>", 기체 M3E,
- * 우리 배지(상태 · 전주 n/m · 소티 · 사진)와 주 버튼([비행]/[이어하기]/[결과]), ⋯(결과 · 다시 날기 · 즐겨찾기 · 삭제). 다중 선택 중이면 ⋯ 대신 체크.
+ * 경로 카드 128dp(Pilot 2: 왼쪽 경로 그림, 유형 아이콘 + 이름, "기체 · 카메라 · 고도", 생성/업데이트 시간): 이름 "<프로젝트> #<미션>",
+ * M3 · M3E · 촬영 고도, 우리 배지(상태 · 전주 끝난/전체 · 소티 · 사진 찍은/예상, 10.5 숫자 규칙)와 주 버튼([비행]/[이어하기]/[결과]),
+ * ⋯(결과 · 다시 날기 · 즐겨찾기 · 삭제). 다중 선택 중이면 ⋯ 대신 체크.
  */
 @Composable
-private fun MissionCard(m: MissionSummary, route: List<List<com.example.myfirstapp.ui.home.RoutePoint>>, selected: Boolean, s: MissionListUiState, vm: MissionListViewModel) {
+private fun MissionCard(
+    m: MissionSummary, route: List<List<com.example.myfirstapp.ui.home.RoutePoint>>, expectedPhotos: Int, selected: Boolean, s: MissionListUiState, vm: MissionListViewModel,
+) {
     val action = m.primaryAction()
-    val photos = remember(m.flightParams, m.poleCount) { m.poleCount * flightParamsFromJson(m.flightParams).photosPerPole() }
+    val altitude = remember(m.flightParams) { flightParamsFromJson(m.flightParams).shotAltitudeM }
     val checked = m.id in s.checked
+    val strong = MaterialTheme.colorScheme.onSurface
+    val soft = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        Modifier.fillMaxWidth().height(128.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainer)
+        Modifier.fillMaxWidth().height(128.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)
             .border(if (selected || checked) 1.5.dp else 0.dp, if (selected || checked) Accent else Color.Transparent, RoundedCornerShape(6.dp))
             .clickable(onClickLabel = "${m.projectName} #${m.id}") { if (s.selecting) vm.toggleCheck(m) else vm.select(m) },
     ) {
-        Box(Modifier.width(128.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
+        Box(Modifier.width(128.dp).fillMaxHeight()) {
             RoutePreview(route, GeoPoint(m.homeLat, m.homeLon), Modifier.fillMaxSize(), labels = false)
             if (m.favorite) Text("★", Modifier.align(Alignment.TopStart).padding(4.dp), color = Caution, fontSize = FontSize.Title)
         }
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // 경로 유형 아이콘(Pilot 2 이름 앞): 우리 유형은 전주 점검 하나(10.5.8)
+                Icon(painterResource(R.drawable.ic_route), contentDescription = "전주 점검 경로", modifier = Modifier.padding(end = 4.dp).size(14.dp))
                 Text(
                     buildAnnotatedString {
                         append(m.projectName)
-                        withStyle(SpanStyle(color = TextSoft, fontWeight = FontWeight.Medium)) { append(" #${m.id}") }
+                        withStyle(SpanStyle(color = soft, fontWeight = FontWeight.Medium)) { append(" #${m.id}") }
                     },
                     Modifier.weight(1f), fontSize = FontSize.Title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 if (s.selecting) Checkbox(checked, onCheckedChange = { vm.toggleCheck(m) }, modifier = Modifier.size(Dimens.TouchSmall))
                 else CardMenu(m, s.menuFor == m.id, vm)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("기체 M3E", fontSize = FontSize.Caption, color = TextSoft)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Pilot 2 "기체 M3 · 카메라 M3E · 고도 0 m": 기체 · 페이로드 · 촬영 고도
+                CardSpec(SpecIcon.AIRCRAFT, "M3")
+                CardSpec(SpecIcon.CAMERA, "M3E")
+                CardSpec(SpecIcon.ALTITUDE, "${altitude.toInt()} m")
                 val c = statusColor(m.status)
                 Text(STATUS_TITLE[m.status] ?: m.status, fontSize = FontSize.Caption, color = c, modifier = Modifier.border(1.dp, c, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp))
             }
             Text(
                 buildAnnotatedString {
                     append("전주 ")
-                    withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = Color.White)) { append("${m.doneCount}") }
+                    withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = strong)) { append("${m.finishedCount}") }
                     append("/${m.poleCount} · 소티 ")
-                    withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = Color.White)) { append("${m.sortieCount}") }
+                    withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = strong)) { append("${m.sortieCount}") }
                     append(" · 사진 ")
-                    withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = Color.White)) { append("$photos") }
+                    withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = strong)) { append("${m.photoCount}") }
+                    append("/$expectedPhotos")
                 },
-                fontSize = FontSize.Caption, color = TextSoft, maxLines = 1,
+                fontSize = FontSize.Caption, color = soft, maxLines = 1,
             )
             Spacer(Modifier.weight(1f))
             Row(verticalAlignment = Alignment.Bottom) {
@@ -203,7 +225,7 @@ private fun MissionCard(m: MissionSummary, route: List<List<com.example.myfirsta
                 }
                 if (action != null && !s.selecting) Button(
                     onClick = { vm.run(m) }, modifier = Modifier.width(76.dp).height(Dimens.ButtonChip), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
-                    colors = if (selected) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainerHighest, Color.White),
+                    colors = if (selected) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainerHigh, strong),
                 ) { Text(action.label, fontSize = FontSize.Body, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) }
             }
         }
@@ -214,7 +236,7 @@ private fun MissionCard(m: MissionSummary, route: List<List<com.example.myfirsta
 @Composable
 private fun CardMenu(m: MissionSummary, open: Boolean, vm: MissionListViewModel) {
     Box {
-        IconButton(onClick = { vm.setMenu(m) }, modifier = Modifier.size(Dimens.TouchSmall).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = FontSize.Number, color = TextSoft) }
+        IconButton(onClick = { vm.setMenu(m) }, modifier = Modifier.size(Dimens.TouchSmall).semantics { contentDescription = "더 보기" }) { Text("⋯", fontSize = FontSize.Number, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         DropdownMenu(open, onDismissRequest = { vm.setMenu(null) }, properties = MENU_PROPERTIES) {
             if (m.doneCount > 0 && m.primaryAction() != MissionAction.RESULT) DropdownMenuItem(text = { Text("결과") }, onClick = { vm.result(m) })
             DropdownMenuItem(text = { Text("다시 날기") }, onClick = { vm.copy(m) })
@@ -291,11 +313,49 @@ internal fun FiveDHints(modifier: Modifier, hints: List<Pair<String, String>> = 
         hints.forEach { (k, v) ->
             Text(
                 buildAnnotatedString {
-                    withStyle(SpanStyle(color = TextSoft, fontWeight = FontWeight.SemiBold)) { append(k) }
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)) { append(k) }
                     append(" $v")
                 },
                 fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+
+/** 카드 사양 아이콘(Pilot 2 라이브러리 카드): 기체 · 카메라 · 고도. */
+private enum class SpecIcon { AIRCRAFT, CAMERA, ALTITUDE }
+
+/** 카드 사양 한 칸: 작은 회색 선 아이콘 + 글. */
+@Composable
+private fun CardSpec(icon: SpecIcon, text: String) {
+    val c = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Canvas(Modifier.size(12.dp)) {
+            val w = 1.3.dp.toPx()
+            when (icon) {
+                SpecIcon.AIRCRAFT -> {
+                    // 위에서 본 쿼드콥터: X 팔과 프로펠러 원 4개
+                    drawLine(c, Offset(size.width * 0.2f, size.height * 0.2f), Offset(size.width * 0.8f, size.height * 0.8f), w)
+                    drawLine(c, Offset(size.width * 0.8f, size.height * 0.2f), Offset(size.width * 0.2f, size.height * 0.8f), w)
+                    listOf(0.2f to 0.2f, 0.8f to 0.2f, 0.2f to 0.8f, 0.8f to 0.8f).forEach { (x, y) ->
+                        drawCircle(c, size.width * 0.17f, Offset(size.width * x, size.height * y), style = Stroke(w))
+                    }
+                }
+                SpecIcon.CAMERA -> {
+                    drawRoundRect(c, Offset(0f, size.height * 0.25f), Size(size.width, size.height * 0.65f), CornerRadius(w), style = Stroke(w))
+                    drawCircle(c, size.width * 0.18f, Offset(size.width / 2, size.height * 0.58f), style = Stroke(w))
+                    drawRect(c, Offset(size.width * 0.3f, size.height * 0.1f), Size(size.width * 0.4f, size.height * 0.15f))
+                }
+                SpecIcon.ALTITUDE -> {
+                    // 땅 위 세로 화살표(고도)
+                    drawLine(c, Offset(0f, size.height * 0.95f), Offset(size.width, size.height * 0.95f), w)
+                    drawLine(c, Offset(size.width / 2, size.height * 0.8f), Offset(size.width / 2, size.height * 0.05f), w)
+                    drawLine(c, Offset(size.width / 2, size.height * 0.05f), Offset(size.width * 0.28f, size.height * 0.3f), w)
+                    drawLine(c, Offset(size.width / 2, size.height * 0.05f), Offset(size.width * 0.72f, size.height * 0.3f), w)
+                }
+            }
+        }
+        Text(text, fontSize = FontSize.Caption, color = c, maxLines = 1)
     }
 }

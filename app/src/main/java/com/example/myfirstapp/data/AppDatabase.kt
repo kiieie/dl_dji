@@ -352,13 +352,18 @@ data class MissionSummary(
     val favorite: Boolean = false,
     val homeLat: Double = 0.0,
     val homeLon: Double = 0.0,
+    /** 미션에서 찍은 사진(CAPTURE 행) 수. */
+    val photoCount: Int = 0,
 ) {
     /** Pilot 2 "업데이트 시간": 마지막 비행, 날지 않았으면 만든 때. */
     val updatedAt get() = lastFlightAt ?: createdAt
+
+    /** 끝난 전주(완료·건너뜀·실패, 남은 전주가 아닌 것). 화면의 "전주 끝난/전체"(10.5 숫자 규칙). */
+    val finishedCount get() = poleCount - remainingCount
 }
 
 /** 라이브러리 경로 그림의 전주 한 점(미션 · 소티 · 방문 순서). */
-data class LibraryPoint(val missionId: Long, val sortieId: Long, val lat: Double, val lon: Double, val status: String)
+data class LibraryPoint(val missionId: Long, val sortieId: Long, val lat: Double, val lon: Double, val status: String, val equipment: String? = null)
 
 /** 앱 재시작 복구(6.4): 시작했지만 끝나지 않은 소티가 속한 미션. */
 data class OpenSortieMission(val projectId: Long, val missionId: Long)
@@ -551,6 +556,10 @@ interface ProjectDao {
     )
     suspend fun missionCaptures(missionId: Long): List<CaptureEntity>
 
+    /** 미션에서 찍은 사진 수(홈 카드 "사진 찍은/예상", 10.5 숫자 규칙). */
+    @Query("SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId")
+    suspend fun missionCaptureCount(missionId: Long): Int
+
     /** 앨범(10.4.3 ⑦) 왼쪽 목록: 모든 미션, 최신순, 사진 수. */
     @Query(
         "SELECT m.id AS missionId, m.projectId, p.name AS projectName, m.createdAt, " +
@@ -589,14 +598,15 @@ interface ProjectDao {
             "(SELECT 1 FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert)) AS detectedCount, " +
             "(SELECT COUNT(DISTINCT r.visitId) FROM review r JOIN visit v ON v.id = r.visitId JOIN sortie s ON s.id = v.sortieId " +
             "WHERE s.missionId = m.id) AS reviewedCount, " +
-            "(SELECT MAX(COALESCE(s.endedAt, s.startedAt)) FROM sortie s WHERE s.missionId = m.id) AS lastFlightAt " +
+            "(SELECT MAX(COALESCE(s.endedAt, s.startedAt)) FROM sortie s WHERE s.missionId = m.id) AS lastFlightAt, " +
+            "(SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS photoCount " +
             "FROM mission m JOIN project p ON p.id = m.projectId ORDER BY m.id DESC",
     )
     fun observeLibrary(): Flow<List<MissionSummary>>
 
     /** 라이브러리 카드의 경로 그림: 모든 미션의 방문 전주(소티·방문 순서). */
     @Query(
-        "SELECT s.missionId, s.id AS sortieId, p.lat, p.lon, v.status FROM sortie s JOIN visit v ON v.sortieId = s.id " +
+        "SELECT s.missionId, s.id AS sortieId, p.lat, p.lon, v.status, p.equipment FROM sortie s JOIN visit v ON v.sortieId = s.id " +
             "JOIN pole p ON p.id = v.poleRowId ORDER BY s.missionId, s.seq, v.`order`",
     )
     suspend fun libraryPoints(): List<LibraryPoint>
