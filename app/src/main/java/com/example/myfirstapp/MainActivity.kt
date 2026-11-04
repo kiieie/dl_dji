@@ -40,6 +40,7 @@ import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
 import com.example.myfirstapp.ui.flight.ManualFlightScreen
 import com.example.myfirstapp.ui.procedure.PreflightScreen
+import com.example.myfirstapp.ui.procedure.HmsScreen
 import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.album.AlbumScreen
 import com.example.myfirstapp.ui.result.ResultScreen
@@ -55,7 +56,7 @@ import java.io.File
 import java.nio.ByteBuffer
 
 /** RC 5D ←를 뒤로 가기로 쓰는 화면(10.3 허용 목록). 계획 화면은 ↔가 값 바꾸기라 뺀다. */
-private val FIVE_D_BACK_ROUTES = listOf("projects", "settings", "verify", "album", "records")
+private val FIVE_D_BACK_ROUTES = listOf("projects", "settings", "verify", "album", "records", "hms")
 
 class MainActivity : ComponentActivity() {
 
@@ -176,7 +177,7 @@ class MainActivity : ComponentActivity() {
                     // Pilot 2 [카메라 뷰 입력] → 비행 전 점검 → 카메라 뷰(10.5.5)
                     onCamera = { nav.navigate("preflight?camera=true") },
                     onSettings = { nav.navigate("settings?general=true") { launchSingleTop = true } },
-                    onAircraftCheck = { nav.navigate("settings") { launchSingleTop = true } },
+                    onHms = { nav.navigate("hms") { launchSingleTop = true } },
                     onVerification = { nav.navigate("verify") },
                     onFlightRecords = { nav.navigate("records") },
                 ) }
@@ -217,9 +218,13 @@ class MainActivity : ComponentActivity() {
                     PreflightScreen(
                         onClose = { nav.popBackStack() },
                         onNext = if (toCamera) ({ nav.navigate("camera") { popUpTo("preflight?camera={camera}") { inclusive = true } } }) else null,
-                        onHms = { nav.navigate("settings") { launchSingleTop = true } },
+                        onHms = { nav.navigate("hms") { launchSingleTop = true } },
                     )
                 }
+            }
+            // HMS 목록(10.5.5): 홈 HMS 칸·비행 전 점검 "표준 HMS ›". [기체 점검 ›]은 ⋯ 상태 점검
+            composable("hms") {
+                LightScreen { HmsScreen(onClose = { nav.popBackStack() }, onAircraftCheck = { nav.navigate("settings") { launchSingleTop = true } }) }
             }
             // 비행경로(마스터-디테일). pid가 있으면 그 프로젝트를 고른 채 연다
             composable("projects?pid={pid}", listOf(navArgument("pid") { type = NavType.LongType; defaultValue = -1L })) { e ->
@@ -259,6 +264,7 @@ class MainActivity : ComponentActivity() {
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onCameraSettings = { nav.navigate("settings?camera=true") { launchSingleTop = true } },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
+                    onHms = { nav.navigate("hms") { launchSingleTop = true } },
                     // 지도 [라이브러리]: 비행 화면을 닫고 그 프로젝트의 비행경로로(떠 있을 때는 버튼이 꺼짐)
                     onLibrary = { nav.navigate("projects?pid=$pid") { popUpTo("home"); launchSingleTop = true } },
                 )

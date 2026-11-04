@@ -1,6 +1,7 @@
 package com.example.myfirstapp
 
 import com.example.myfirstapp.drone.startDjiInputLog
+import com.example.myfirstapp.drone.DjiFlySafe
 import com.example.myfirstapp.detect.GpuCachePrep
 import com.example.myfirstapp.detect.ModelBench
 import com.example.myfirstapp.detect.PreciseDetection
@@ -143,6 +144,8 @@ class InspectionApp : Application() {
                 override fun onRegisterSuccess() {
                     setDjiStatus("✅ DJI SDK 등록 성공")
                     runCatching { startDjiInputLog() }.onFailure { OpLog.log("error", "inputLog", mapOf("message" to it.message)) }
+                    // GEO 구역(10.5.5): SDK가 알리는 기체 둘레 구역을 받아 둔다(리스너만, 조회·받기 없음, 7.2)
+                    runCatching { DjiFlySafe.watch() }.onFailure { OpLog.log("error", "flySafe", mapOf("message" to it.message)) }
                     djiRegistered.value = true
                 }
 

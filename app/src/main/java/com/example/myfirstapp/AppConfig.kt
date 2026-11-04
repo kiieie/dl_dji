@@ -1,6 +1,9 @@
 package com.example.myfirstapp
 
 import com.example.myfirstapp.core.config.Tuning
+import com.example.myfirstapp.core.model.GeoSummary
+import com.example.myfirstapp.core.model.HmsIssue
+import com.example.myfirstapp.core.model.HmsLevel
 
 /**
  * 앱(:app) 운용 조정값을 한곳에 모은다(2026-10-31). 값은 옮기기 전과 같다.
@@ -289,12 +292,12 @@ object AppConfig {
     /** 비행 전 점검·웨이포인트 경로 체크리스트(10.5.5, Pilot 2 같은 범위). */
     object Preflight {
         /**
-         * RTH·최고 고도 범위(m): Pilot 2 비행 전 점검 "(20~1500 m)"와 같다(2026-11-04). 기체 키로 범위를 주지 않아(MSDK 5.18) 고정값,
-         * 범위 밖 값은 기체가 거절하거나 고쳐 다시 읽는다. 법정 상한 150m은 우리 점검이 본다.
+         * RTH·최고 고도 범위(m): Pilot 2 비행 전 점검 "(20~1500 m)". 기체가 붙어 있으면 범위 키(`KeyGoHomeHeightRange`·`KeyHeightLimitRange`)로 읽고,
+         * 이 값은 모의 기체·읽기 실패 때 쓴다(2026-11-04). 범위 밖 값은 기체가 거절하거나 고쳐 다시 읽는다. 법정 상한 150m은 우리 점검이 본다.
          */
         val ALTITUDE_RANGE_M = 20..1500
 
-        /** 최대 비행 거리 범위(m). */
+        /** 최대 비행 거리 범위(m). 기체 값은 `KeyDistanceLimitRange`, 이 값은 모의 기체·읽기 실패 때. */
         val DISTANCE_RANGE_M = 15..8000
 
         /** 배터리 경고 손잡이 범위(%): 매우 낮음 ~ 낮음. */
@@ -348,6 +351,12 @@ object AppConfig {
             "사진 형식" to 0, "사진 비율" to 0, "짐벌 피치 위로 확장" to false, "SD 카드" to "NORMAL · 211GB 남음",
             "LED 설정" to true, "기기 이름" to "모의 기체", "정보" to "Mavic 3 Enterprise(모의)",
         )
+    }
+
+    /** HMS·GEO 구역(10.5.5). 모의 값은 기체 연결 안 됨이고 비행 화면 모의 RC 줄 [HMS]를 켰을 때만 보인다(`MockHealth`). */
+    object Health {
+        val FAKE_ISSUE = HmsIssue("0x16100001", "[모의] 나침반 간섭", "모의 기체 HMS 항목입니다. 비행 화면 모의 RC 줄 [HMS]로 끕니다.", HmsLevel.CAUTION)
+        val FAKE_GEO = GeoSummary(120, 1, "[모의] 비행장", 3200.0)
     }
 
     /** 카메라 뷰(10.5.2). */

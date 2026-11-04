@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.drone.AircraftCheck
 import com.example.myfirstapp.drone.AircraftSetting
+import com.example.myfirstapp.drone.loadRanges
 import com.example.myfirstapp.data.MapSource
 import com.example.myfirstapp.data.SettingsStore
 import kotlinx.coroutines.async
@@ -22,6 +23,8 @@ import kotlinx.coroutines.launch
 data class AircraftSettingsUiState(
     val tab: Int = 0,
     val values: Map<String, Any?> = emptyMap(),
+    /** 숫자 항목 범위(`id` → 범위): 기체 범위 키(RTH·최고 고도·최대 거리), 모의 기체·실패는 앱 범위. */
+    val ranges: Map<String, IntRange> = emptyMap(),
     val loading: Boolean = false,
     val message: String? = null,
     val confirming: AircraftSetting? = null,
@@ -63,7 +66,8 @@ class AircraftSettingsViewModel(
             _state.update { it.copy(loading = true) }
             // 함께 읽는다: 기체가 모르는 키는 시간 제한까지 기다리므로 차례로 읽으면 탭이 늦게 뜬다
             val values = items.map { async { it.id to it.load() } }.awaitAll().toMap()
-            _state.update { it.copy(values = values, loading = false) }
+            val ranges = items.loadRanges()
+            _state.update { it.copy(values = values, ranges = ranges, loading = false) }
         }
     }
 

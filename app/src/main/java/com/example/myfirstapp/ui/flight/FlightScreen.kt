@@ -123,6 +123,8 @@ fun FlightScreen(
     onLibrary: () -> Unit = {},
     /** 계획 화면 ▶에서 왔으면 미션을 읽은 뒤 비행 전 점검을 한 번 연다(10.5.8 → 10.5.5). */
     openPreflight: Boolean = false,
+    /** 비행 전 점검 "표준 HMS ›": HMS 목록(10.5.5). */
+    onHms: () -> Unit = onOpenSettings,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
@@ -154,7 +156,7 @@ fun FlightScreen(
                 OutlinedButton(onClick = onExit) { Text("나가기") }
             }
         }
-        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings, onCameraSettings, onAlbum, onLibrary)
+        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings, onCameraSettings, onAlbum, onLibrary, onHms)
     }
 }
 
@@ -176,6 +178,7 @@ private fun FlightContent(
     onCameraSettings: () -> Unit,
     onAlbum: () -> Unit,
     onLibrary: () -> Unit,
+    onHms: () -> Unit,
 ) {
     val ui = s.exec
     // 10.5.2 Pilot 2 카메라 뷰 배치(시안 Flight3): FPV 전체 위에 격자·줌 영역·탭 초점, 상단 바, 가운데 위 줌 상자, 오른쪽 위 노출 띠·카메라 설정,
@@ -234,8 +237,8 @@ private fun FlightContent(
         if (!mapMain) CameraNoticeView(s.notice)
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
         // 절차 화면(10.5.5): 비행 전 점검 → 체크리스트. 화면 전체를 덮는다
-        // HMS 칸을 누르면 기체 점검(⋯ 설정)
-        if (s.page != null) ProcedurePages(s, vm, onHms = onOpenSettings)
+        // HMS 칸을 누르면 HMS 목록
+        if (s.page != null) ProcedurePages(s, vm, onHms = onHms)
         if (ui.terrainFallbackAsk) TerrainFallbackDialog(vm)
     }
 }
@@ -417,16 +420,17 @@ internal fun LandingConfirmButton(onClick: () -> Unit) {
     }
 }
 
-/** 모의 조작(모의 기체 전용): RC 일시정지 버튼, RC RTH 버튼(실제 기체는 펌웨어), 배터리 −30%, 장애물(없음 → 8m → 4m). */
+/** 모의 조작(모의 기체 전용): RC 일시정지 버튼, RC RTH 버튼(실제 기체는 펌웨어), 배터리 −30%, 장애물(없음 → 8m → 4m), HMS·GEO 모의 값 켜기. */
 @Composable
 private fun MockRcControls(vm: FlightViewModel, modifier: Modifier) {
-    // [장애물]이 들어가게 카드보다 조금 넓다
-    Row(modifier.width(Dimens.CardWidth + 56.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+    // [장애물]·[HMS]가 들어가게 카드보다 넓다
+    Row(modifier.width(Dimens.CardWidth + 104.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("모의 RC", fontSize = FontSize.Caption, color = TextSoft)
         CardButton("Ⅱ", CardBg, Color.White, { vm.rcPause() }, Modifier.weight(1f), height = Dimens.ButtonChip)
         CardButton("RTH", CardBg, Color.White, { vm.returnHome() }, Modifier.weight(1f), height = Dimens.ButtonChip)
         CardButton("−30%", CardBg, Color.White, { vm.dropBattery() }, Modifier.weight(1f), height = Dimens.ButtonChip)
         CardButton("장애물", CardBg, Color.White, { vm.cycleObstacle() }, Modifier.weight(1f), height = Dimens.ButtonChip)
+        CardButton("HMS", CardBg, Color.White, { vm.toggleMockHealth() }, Modifier.weight(1f), height = Dimens.ButtonChip)
     }
 }
 
