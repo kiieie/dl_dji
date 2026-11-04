@@ -104,6 +104,7 @@ stateDiagram-v2
 **방식 A 흐름(기본, 2026-10-30)**: 위 그림은 방식 B다. 방식 A는 같은 상태를 이렇게 쓴다.
 
 - `PreparingLeg`: 소티의 남은 전주 전체로 KMZ를 만들어 `startSortie` 한 번 → `FlyingLeg`("임무 비행").
+- **체크리스트 두 단계(10.5.5, 2026-11-04)**: [비행 임무 업로드] = `Command.Upload`(체크리스트 파라미터) → `PreflightCheck` → `PreparingLeg`(이륙 없이 `uploadSortie`) → `Uploaded`(땅, 대기). [시작] = `Start` → `Takeoff` → `PreparingLeg`(`startUploaded`만) → `FlyingLeg`. [업로드 취소] `CancelUpload` → `Idle`. 시작 거절은 땅이므로 `Idle`(지형 추적이면 이륙 기준을 묻고 한 번에 다시 올림). 재개·복구·이륙 기준 다시 올리기는 한 번에(`startSortie` = 올리기 + 시작). 완료 동작이 RTH가 아니면 `MissionFinished` 뒤 `Paused`(착륙하면 `SortieDone`).
 - `FlyingLeg`에 머무는 동안 기체가 지점마다 찍는다. `WaypointReached`로 그 전주를 `IN_PROGRESS`로, `PhotoTaken`마다 사진 처리(다운로드 → 저장 → 탐지 → 기록·알림음)를 비행과 병렬로 차례차례 한다. 전주의 모든 지점 사진이 기록되면 `DONE`. 사진이 하나도 없는 전주는 `DONE`이 아니다(`FAILED`).
 - 일시정지: RC 버튼은 펌웨어가 멈춤(`PausedByRc`), 화면 버튼은 `pauseMission`. 재개: `resumeMission`(중단 지점으로 돌아가 이어 감). 건너뛰기·완료 처리는 기록만 바꾸고 미션은 그대로다.
 - `MissionFinished`(마지막 지점 뒤 RTH 시작) → `ReturningHome` → 착륙 → `SortieDone`. 남은 사진 처리는 착륙 뒤에도 끝까지 한다.
