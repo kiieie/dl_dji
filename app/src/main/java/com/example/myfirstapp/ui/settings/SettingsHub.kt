@@ -121,8 +121,11 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false) {
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp, end = 10.dp)) {
-            IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall).align(Alignment.CenterStart)) {
-                Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
+            Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall)) {
+                    Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
+                }
+                com.example.myfirstapp.ui.AppBadge()
             }
             Text(if (tab == general) "설정" else "기체 점검", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
             Row(

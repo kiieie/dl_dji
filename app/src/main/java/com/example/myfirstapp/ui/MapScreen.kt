@@ -261,6 +261,7 @@ private fun PlanHeader(s: PlanUiState, replanFrom: Long?, copyFrom: Long?, onBac
         IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall)) {
             Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(15.dp))
         }
+        AppBadge()
         Text(s.projectName, fontSize = FontSize.Label, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 240.dp))
         Text(replanFrom?.let { "미션 #$it 남은 전주" } ?: copyFrom?.let { "미션 #$it 다시 날기" } ?: "새 계획", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         val saved = s.savedMissionId

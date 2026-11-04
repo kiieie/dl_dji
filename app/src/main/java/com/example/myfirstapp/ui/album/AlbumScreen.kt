@@ -114,8 +114,11 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
 
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 4.dp, end = 10.dp)) {
-            IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall).align(Alignment.CenterStart)) {
-                Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
+            androidx.compose.foundation.layout.Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall)) {
+                    Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
+                }
+                com.example.myfirstapp.ui.AppBadge()
             }
             Text("앨범", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
             Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
