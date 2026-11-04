@@ -55,7 +55,7 @@ fun ManualFlightScreen(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
-    val vm: ManualFlightViewModel = viewModel(factory = ManualFlightViewModel.factory(dao, context.getExternalFilesDir(null), app.rcButtons, app.settings))
+    val vm: ManualFlightViewModel = viewModel(factory = ManualFlightViewModel.factory(dao, context.getExternalFilesDir(null), app.rcButtons, app.settings, app.precise))
     val s by vm.state.collectAsStateWithLifecycle()
     val f = s.flight
     var mapMain by rememberSaveable { mutableStateOf(false) }
@@ -74,8 +74,12 @@ fun ManualFlightScreen(
             }
         }
         if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack) else fpv(Modifier.fillMaxSize())
-        MiniMap(mapMain, onSwap = { mapMain = !mapMain }, Modifier.align(Alignment.BottomStart)) { m ->
-            if (mapMain) fpv(m) else FlightMap(f, interactive = false, pad = List(4) { 8.dp }, m)
+        Column(Modifier.align(Alignment.BottomStart)) {
+            // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
+            f.lastPhoto?.let { LastPhotoThumb(it, Modifier) }
+            MiniMap(mapMain, onSwap = { mapMain = !mapMain }, Modifier) { m ->
+                if (mapMain) fpv(m) else FlightMap(f, interactive = false, pad = List(4) { 8.dp }, m)
+            }
         }
 
         TopBar(f, onExit, onOpenSettings, label = "수동 비행", canExit = true)

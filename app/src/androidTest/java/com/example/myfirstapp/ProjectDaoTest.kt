@@ -1,6 +1,9 @@
 package com.example.myfirstapp
 
 import androidx.room.Room
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.myfirstapp.data.AppDatabase
@@ -135,5 +138,51 @@ class ProjectDaoTest {
             assertTrue(json.getJSONArray("poles").getJSONObject(1).isNull("review"))
             assertEquals(setOf("bird_nest" to true, "전주" to false), (0 until 2).map { dets.getJSONObject(it).let { d -> d.getString("label") to d.getBoolean("alert") } }.toSet())
         }
+    }
+    @Test
+    fun 정밀_탐지는_남은_사진만_고르고_결과를_바꾸며_설비는_검출로_세지_않는다() = runTest {
+        val id = dao.importProject("정밀", listOf(pole("A-1")))
+        val row = dao.observePoles(id).first().single().id
+        val missionId = dao.saveMission(MissionEntity(0, id, 100, "{}", 37.5, 127.0, FlightParams().toJson(), null, "DONE"), listOf(SortieDraft(1.0, 1.0, listOf(row))))
+        val v = dao.visits(dao.sorties(missionId).single().id).single().id
+        val a = dao.insertCapture(CaptureEntity(0, v, "m1", "/a.jpg", "WIDE", "AUTO", 37.5, 127.0, 30.0, -10.0, 0.0, 1))
+        val b = dao.insertCapture(CaptureEntity(0, v, "m2", "/b.jpg", "WIDE", "AUTO", 37.5, 127.0, 30.0, -10.0, 0.0, 2))
+        dao.insertCapture(CaptureEntity(0, v, "m3", null, "WIDE", "AUTO", 37.5, 127.0, 30.0, -10.0, 0.0, 3)) // 이미지 없음
+        dao.insertDetections(listOf(DetectionEntity(0, a, "bird_nest", 0.9f, 0f, 0f, 0.1f, 0.1f, alert = true))) // 비행 중 옛 결과
+
+        assertEquals(listOf(a, b), dao.capturesWithoutDetection("full-1", 0))
+        assertTrue(dao.capturesWithoutDetection("full-1", 101).isEmpty()) // 오래된 미션은 하지 않음
+        dao.savePreciseDetections(a, "full-1", listOf(DetectionEntity(0, a, "LP", 0.8f, 0f, 0f, 0.1f, 0.1f, alert = false)))
+        dao.savePreciseDetections(b, "full-1", emptyList()) // 0개도 끝낸 것으로
+        assertTrue(dao.capturesWithoutDetection("full-1", 0).isEmpty())
+        assertEquals(listOf(a, b), dao.capturesWithoutDetection("full-2", 0)) // 모델을 바꾸면 다시
+        assertEquals("full-1", dao.mission(missionId)?.modelVersion)
+        assertEquals(listOf("LP"), dao.missionDetections(missionId).map { it.label }) // 옛 결과는 바뀜
+        assertEquals(0 to 1, dao.resultRows(missionId).single().let { it.detectCount to it.facilityCount })
+    }
+
+    @Test
+    fun 마이그레이션_7_8은_사진에_정밀_모델_칸을_더한다() {
+        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        ctx.deleteDatabase("migration-7-8.db")
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(ctx).name("migration-7-8.db").callback(object : SupportSQLiteOpenHelper.Callback(7) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE capture (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, visitId INTEGER NOT NULL, mediaId TEXT NOT NULL)")
+                    db.execSQL("INSERT INTO capture (visitId, mediaId) VALUES (1, 'M1')")
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+            }).build(),
+        )
+        val db = helper.writableDatabase
+        AppDatabase.MIGRATION_7_8.migrate(db)
+        db.query("SELECT mediaId, detectModel FROM capture").use {
+            assertTrue(it.moveToFirst())
+            assertEquals("M1", it.getString(0))
+            assertTrue(it.isNull(1)) // 옛 사진은 아직 정밀 탐지 전
+        }
+        helper.close()
+        ctx.deleteDatabase("migration-7-8.db")
     }
 }

@@ -81,6 +81,7 @@ class InspectionExecutor(
     private val notifier: Notifier,
     private val storage: StorageMonitor,
     private val energy: EnergyModel,
+    /** 방식 B(도착 후 분석)에서만 쓴다. 방식 A는 사진을 받아 저장만 하고 탐지는 앱의 두 단계 탐지(9.6)가 한다. */
     private val detector: Detector?,
     private val sorties: List<SortiePlan>,
     private val config: ExecutorConfig = ExecutorConfig(),
@@ -111,8 +112,8 @@ class InspectionExecutor(
         /** RC 셔터로 앱이 찍은 사진(실패면 null). */
         data class Shutter(val capture: CaptureInfo?) : Msg
 
-        /** 방식 A 사진 처리 결과(다운로드 실패면 [bytes]가 null). */
-        data class Photo(val captureId: Long, val bytes: ByteArray?, val detections: List<Detection>?, val error: String?) : Msg
+        /** 방식 A 사진 받기 결과(다운로드 실패면 [bytes]가 null). */
+        data class Photo(val captureId: Long, val bytes: ByteArray?) : Msg
     }
 
     private sealed interface StepResult {
@@ -170,8 +171,8 @@ class InspectionExecutor(
 
     fun start() {
         scope.launch { drone.events.collect { inbox.send(Msg.Drone(it)) } }
-        // 사진 처리(방식 A, RC 셔터)는 상태와 무관하게 차례로 한다. 착륙한 뒤에도 남은 사진을 끝까지 처리한다
-        scope.launch { for ((id, info) in photoQueue) inbox.send(processPhoto(id, info)) }
+        // 사진 받기(방식 A, RC 셔터)는 상태와 무관하게 차례로 한다. 착륙한 뒤에도 남은 사진을 끝까지 받는다
+        scope.launch { for ((id, info) in photoQueue) inbox.send(Msg.Photo(id, drone.download(info, params.downloadMode).getOrNull())) }
         scope.launch { drone.telemetry.collect { inbox.send(Msg.Tele(it)) } }
         recoverSortie?.let { inbox.trySend(Msg.Recover(it)) }
         scope.launch { for (m in inbox) handle(m) }
@@ -669,27 +670,13 @@ class InspectionExecutor(
         photoQueue.send(id to capture)
     }
 
-    /** 다운로드 → 탐지. 실패는 비행을 막지 않는다(6.5). */
-    private suspend fun processPhoto(id: Long, info: CaptureInfo): Msg.Photo {
-        val bytes = drone.download(info, params.downloadMode).getOrNull() ?: return Msg.Photo(id, null, null, "다운로드 실패")
-        val det = detector ?: return Msg.Photo(id, bytes, null, "탐지 모델 없음")
-        return try {
-            Msg.Photo(id, bytes, det.detect(bytes), null)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Msg.Photo(id, bytes, null, e.message ?: e::class.simpleName)
-        }
-    }
-
+    /**
+     * 받은 사진 저장. 실패는 비행을 막지 않는다(6.5). 탐지는 하지 않는다: 비행 중 최근 1장 표시와 착륙 뒤 정밀 탐지는
+     * 앱이 저장한 이미지를 보고 따로 한다(9.6). 판독은 미션 뒤 결과 화면에서(10장).
+     */
     private suspend fun onPhotoProcessed(m: Msg.Photo) {
         photosInProgress--
         m.bytes?.let { recorder.saveImage(m.captureId, it) }
-        m.detections?.let {
-            recorder.saveDetections(m.captureId, detector?.modelVersion.orEmpty(), it)
-            lastDetections = it
-            // 비행 중에는 촬영에 집중한다: 탐지는 저장만 하고 알리지 않는다. 판독은 미션 뒤 결과 화면에서(10장, 2026-10-30 사용자 요청)
-        }
         if (m.bytes == null) message = "사진 다운로드 실패 — 비행 후 원본을 받으세요."
     }
 

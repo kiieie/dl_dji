@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import androidx.compose.material3.Button
@@ -21,7 +20,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -33,7 +31,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,29 +75,21 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             s.paramErrors.forEach { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             FlightDefaults(s.params, vm::updateParams)
         }
-        Section("탐지 모델", "앱 폴더 models/ · 고른 모델이 없거나 규격에 맞지 않으면 이름이 가장 뒤인 모델을 씁니다.") {
+        Section("탐지 모델", "앱 폴더 models/ · 비행 중에는 최근 사진 1장만 가볍게(가운데 자르기), 착륙 뒤 모든 사진을 정밀 모델로 탐지합니다(9.6). 고르지 않으면 model.json의 role로 자동으로 고릅니다.") {
             if (s.models.isEmpty()) Text("모델이 없습니다. 모의 탐지기(fake-1)로 비행합니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             s.models.forEach { m ->
-                // 장갑 조작: 줄 전체를 눌러 고른다
-                Row(
-                    Modifier.heightIn(min = 56.dp).selectable(
-                        selected = m.dir == s.activeModel, enabled = m.error == null, role = Role.RadioButton,
-                        onClick = { vm.selectModel(m.dir) },
-                    ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(selected = m.dir == s.activeModel, onClick = null, enabled = m.error == null)
-                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                Row(Modifier.heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(m.dir, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            m.dir + if (m.dir == s.activeModel) " · 사용 중" else "",
-                            style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            m.error?.let { "규격 불일치: $it" } ?: "버전 ${m.version} · 라벨 ${m.labels}개",
+                            m.error?.let { "규격 불일치: $it" } ?: listOfNotNull("버전 ${m.version}", "입력 ${m.inputSize}", m.role?.let { "role $it" }, "라벨 ${m.labels}개").joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (m.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    // 장갑 조작: 칸마다 칩 하나(48dp 줄), 고른 칩이 지금 쓰는 모델
+                    FilterChip(m.dir == s.activeLive, { vm.selectLive(m.dir) }, label = { Text("비행 중") }, enabled = m.error == null, modifier = Modifier.heightIn(min = Dimens.TouchLarge))
+                    FilterChip(m.dir == s.activeFull, { vm.selectFull(m.dir) }, label = { Text("정밀") }, enabled = m.error == null, modifier = Modifier.heightIn(min = Dimens.TouchLarge))
                     TextButton(onClick = { vm.askDelete(PendingDelete.Model(m.dir)) }, modifier = Modifier.heightIn(min = Dimens.TouchLarge)) { Text("삭제") }
                 }
             }

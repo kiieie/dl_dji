@@ -165,7 +165,9 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
                 Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         when (group) {
-                            is AlbumGroup.Mission -> "${group.m.projectName} #${group.m.missionId} · ${count}장"
+                            // 설비(9.6)는 표시만 하는 탐지 수. 빨간 점(탐지)은 검출 대상만
+                            is AlbumGroup.Mission -> "${group.m.projectName} #${group.m.missionId} · ${count}장" +
+                                s.shown.sumOf { it.facilityCount }.let { if (it > 0) " · 설비 $it" else "" }
                             is AlbumGroup.ManualDay -> "수동 비행 ${dayLabel(group.day)} · 전주에 붙지 않은 사진 ${count}장"
                             null -> ""
                         },

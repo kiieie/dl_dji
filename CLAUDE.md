@@ -10,7 +10,7 @@
 - **RC Pro Enterprise 실기기를 쓰고 있고 M3E 기체도 확보할 수 있습니다**(2026-10-28). RC Pro에서 DJI SDK 등록, PoC ⑤(TFLite 약 0.4초/장)·⑦(adb) 완료, ⑥ 하드웨어 버튼은 기체 없이 감지까지 확인했습니다(`docs/evidence/2026-10-28-rcpro`). 다음은 기체를 연결해 PoC ④ LDM, ⑥ 미션 중 일시정지·C1 재개(프로펠러 제거, 시뮬레이터), ①~③입니다. 기체가 필요한 항목(6.1 방식 B 등)은 PoC 전까지 가정으로 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
-- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 전력 설비 탐지 모델은 아직 없고 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)로 검증합니다. 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 프로젝트·계획 화면 `ViewModel` 전환(완료) ⑤ 앱 재시작 복구(6.4, 모의 기체, 완료) ⑥ 설정 화면(비행 기본값, 모델·지도 관리, 완료) ⑦ 비행 화면 DJI 배치(FPV 전체·상단 상태바·위성 미니맵, 반투명 버튼)와 RC 버튼 매핑(일시정지, C1 재개, C2 짐벌은 기체 뒤)은 2026-10-29 완료(RC Pro에서 C1 재개·일시정지 버튼·위성 미니맵 확인), FPV 영상은 기체 확보 뒤 DJI UX SDK로. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. 배경 지도는 ⑥ 설정에서 Bing 위성(Cesium ion, 기본) / VWorld 위성(라벨 켬·끔) / VWorld 일반 중 고르고, 계획을 저장하면 미션 영역을 `maps/`의 지도별 MBTiles 캐시로 미리 받습니다(7.4, 2026-10-31. 토큰 `secrets/cesium.properties`, 키 `secrets/vworld.properties`).
+- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 설비 탐지 모델(사용자 학습, 9.6 두 단계 탐지, Room 8 `CAPTURE.detectModel`)을 2026-11-04에 붙였고, 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)도 그대로 쓸 수 있습니다. RC 속도 측정은 앱 안에서 합니다(`adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`, 결과 `files/logs/bench-*.txt`). 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 프로젝트·계획 화면 `ViewModel` 전환(완료) ⑤ 앱 재시작 복구(6.4, 모의 기체, 완료) ⑥ 설정 화면(비행 기본값, 모델·지도 관리, 완료) ⑦ 비행 화면 DJI 배치(FPV 전체·상단 상태바·위성 미니맵, 반투명 버튼)와 RC 버튼 매핑(일시정지, C1 재개, C2 짐벌은 기체 뒤)은 2026-10-29 완료(RC Pro에서 C1 재개·일시정지 버튼·위성 미니맵 확인), FPV 영상은 기체 확보 뒤 DJI UX SDK로. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. 배경 지도는 ⑥ 설정에서 Bing 위성(Cesium ion, 기본) / VWorld 위성(라벨 켬·끔) / VWorld 일반 중 고르고, 계획을 저장하면 미션 영역을 `maps/`의 지도별 MBTiles 캐시로 미리 받습니다(7.4, 2026-10-31. 토큰 `secrets/cesium.properties`, 키 `secrets/vworld.properties`).
 
 ## 프로젝트 개요
 
@@ -30,7 +30,7 @@
 - **오프라인 우선**: 현장에서는 인터넷 없이 동작해야 합니다. 지도는 MBTiles로 미리 내려받습니다.
 - **대상 기체**: 1차는 Mavic 3 Enterprise 계열만 지원합니다(Matrice 4E/4T는 추후 확장). 조종 장치는 RC Pro Enterprise(가로 1920×1080)입니다.
 - **개발 장비**: M3E 기본 구성에 RC Pro Enterprise가 포함되어 있습니다. 기체가 없어도 지도, 경로 계획, 상태머신은 에뮬레이터와 `FakeDroneGateway`로 개발할 수 있습니다. 실제 기체가 필요한 작업은 PoC와 비행 연동 단계입니다(`docs/design/07-test-roadmap.md` 13.1).
-- **탐지 모델**: 아직 없습니다. 앱은 `docs/design/05-detection.md` 9.1의 모델 규격(model.tflite + labels.txt + model.json)만 따르고, 모델은 교체할 수 있게 설계합니다.
+- **탐지 모델**: 사용자가 학습한 설비 탐지 모델(YOLO11l, COS·LP·SUS·LA, 2026-11-04)이 있습니다. 원본 가중치는 `models_src/`(AGPL·사내 데이터라 저장소 제외), 변환은 `tools/export_facility_model.py`(fp16 tflite 640·960·1280, `build/models/`)입니다. 설비는 이상이 아니라 표시만 합니다(`alertLabels: []`, 회색 상자). 탐지는 두 단계입니다(9.6): 비행 중 최근 1장(640+가운데 50%, `detect/LiveDetection`), 착륙 뒤 정밀(1280, `detect/PreciseDetection`, `InspectionApp` 수명). 앱은 `docs/design/05-detection.md` 9.1의 모델 규격(model.tflite + labels.txt + model.json, `role`·`displayNames`)만 따르고, 모델은 교체할 수 있게 설계합니다.
 
 ## 참고 자료
 
@@ -86,14 +86,15 @@ app/src/main/
 │   ├── ui/flight/               # ④ 비행과 소티 완료 화면(FlightViewModel + FlightScreen + FlightMap 미니맵, 모의 기체)
 │   ├── drone/DjiRcButtons.kt    # RC Pro 버튼(일시정지, C1, C2, RTH, 5D)을 DJI KeyManager로 받기
 │   ├── ui/settings/             # ⑥ 설정(SettingsViewModel + SettingsScreen): 비행 기본값, 모델·지도 관리
-│   ├── data/SettingsStore.kt    # 설정 값(DataStore): 비행 기본값 JSON, 고른 모델
+│   ├── data/SettingsStore.kt    # 설정 값(DataStore): 비행 기본값 JSON, 비행 중·정밀 모델
 │   ├── data/AppFiles.kt         # 앱 폴더의 지도(maps/)·모델(models/) 파일 관리
 │   ├── data/CesiumImagery.kt    # Cesium ion(Bing Aerial) 온라인 위성 타일 주소 받기(7.4 임시)
 │   ├── sound/ToneNotifier.kt    # 알림음(신호음, 11장)
 │   ├── data/FakePhotos.kt       # 모의 기체 사진
 │   ├── ui/result/               # ⑤ 결과와 1차 판독(ResultViewModel + ResultScreen, MVVM·UDF)
 │   ├── data/MissionExport.kt    # 미션 결과 ZIP(result.csv + mission.json + images/)
-│   ├── detect/TfliteYoloDetector.kt # YOLO TFLite 탐지기(9.1 모델 폴더 검사, 레터박스, 추론)
+│   ├── detect/TfliteYoloDetector.kt # YOLO TFLite 탐지기(9.1 모델 폴더 검사, GPU delegate·CPU, 축소 디코딩, 단계별 시간)
+│   ├── detect/                  # ModelSpec(model.json), LiveDetection(비행 중 1장), PreciseDetection(착륙 뒤), ModelBench(속도 측정)
 │   └── ui/theme/                # Compose 테마 (Color, Theme, Type)
 ├── keepRules/rules.keep         # R8 keep 규칙 (AGP 9 방식)
 └── res/
@@ -103,7 +104,7 @@ core/src/                        # 순수 Kotlin(JVM) 도메인 모듈
 │   ├── route/                   # 투영, 다각형, TSP, 소티 분할, 에너지 모델
 │   ├── executor/                # InspectionExecutor 상태머신, 비행 전 점검 판정
 │   ├── input/                   # FiveDGate (5D 버튼 겹침 걸러 내기)
-│   ├── detect/                  # YoloDecoder (YOLO 출력 해석, NMS)
+│   ├── detect/                  # YoloDecoder (YOLO 출력 해석, NMS), TwoStage (최근 1장·정밀 순서·모델 고르기, 9.6)
 │   └── fake/                    # FakeDroneGateway (모의 기체), FakeDetector (모의 탐지기)
 └── test/                        # JUnit + kotlinx-coroutines-test
 tools/make_test_data.py          # 시험용 전주 CSV와 합성 MBTiles 생성(python3 + Pillow)

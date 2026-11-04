@@ -29,6 +29,8 @@ import com.example.myfirstapp.data.pickMapSource
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.drone.DjiDroneGateway
+import com.example.myfirstapp.detect.LiveDetection
+import com.example.myfirstapp.detect.PreciseDetection
 import com.example.myfirstapp.drone.djiAircraftConnected
 import com.example.myfirstapp.sound.ToneNotifier
 import kotlinx.coroutines.Dispatchers
@@ -68,17 +70,28 @@ class ManualFlightViewModel(
     rcButtons: Flow<RcButton> = emptyFlow(),
     /** 배경 지도 선택(7.4). 없으면 Bing. */
     private val settings: SettingsStore? = null,
+    /** 착륙 뒤 정밀 탐지(9.6): 떠 있는 동안 쉬게 알린다. */
+    private val precise: PreciseDetection? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(ManualFlightUiState())
     val state: StateFlow<ManualFlightUiState> = _state.asStateFlow()
     private val drone: DroneGateway? = if (djiAircraftConnected()) DjiDroneGateway(viewModelScope, File(appFilesDir, "manual/kmz")) else null
     private val camera = CameraControl(viewModelScope, { drone }, { _state.value.flight }, { f -> _state.update { it.copy(flight = f(it.flight)) } }, "manual")
     private val tone = ToneNotifier()
+    /** 셔터 사진의 마지막 사진 썸네일(9.6). 모델 설정이 없으면(시험) 만들지 않는다. */
+    private val live = settings?.let { LiveDetection(viewModelScope, File(appFilesDir, "models"), it) { p -> _state.update { s -> s.copy(flight = s.flight.copy(lastPhoto = p)) } } }
 
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))
         _state.update { it.copy(connected = drone != null, message = if (drone == null) "기체가 연결되지 않았습니다" else null) }
-        drone?.let { d -> viewModelScope.launch { d.telemetry.collect { t -> _state.update { it.copy(flight = it.flight.copy(telemetry = t, home = t.home).withTrack(t)) } } } }
+        drone?.let { d ->
+            viewModelScope.launch {
+                d.telemetry.collect { t ->
+                    precise?.setFlying("manual", t.isFlying)
+                    _state.update { it.copy(flight = it.flight.copy(telemetry = t, home = t.home).withTrack(t)) }
+                }
+            }
+        }
         // 수동 비행 궤적은 운용 로그에(떠 있는 동안 1초마다, 4.4)
         drone?.let { d -> viewModelScope.launch { while (true) { delay(AppConfig.Polling.TRACK_MS); d.telemetry.value.takeIf { it.isFlying }?.let { logTelemetry("manual", it) } } } }
         drone?.let { d -> viewModelScope.watchObstacles(d, tone) { w -> _state.update { it.copy(flight = it.flight.copy(obstacles = w)) } } }
@@ -120,7 +133,11 @@ class ManualFlightViewModel(
         viewModelScope.launch {
             val result = runCatching {
                 val info = shot()
-                store(info, d.download(info, DownloadMode.ORIGINAL).getOrThrow(), lens)
+                val bytes = d.download(info, DownloadMode.ORIGINAL).getOrThrow()
+                store(info, bytes, lens).also { (_, path) ->
+                    live?.offer(bytes, path)
+                    precise?.kick()
+                }.first
             }
             OpLog.log("manual", "shoot", mapOf("ok" to result.isSuccess, "saved" to result.getOrNull(), "error" to result.exceptionOrNull()?.message))
             _state.update {
@@ -132,8 +149,8 @@ class ManualFlightViewModel(
         }
     }
 
-    /** 최근 미션 전주가 가까우면 그 방문의 수동 사진(4.3 미션 `images/`), 아니면 `manual/<날짜>/`. 저장한 곳을 돌려준다. */
-    private suspend fun store(info: CaptureInfo, bytes: ByteArray, lens: Lens): String {
+    /** 최근 미션 전주가 가까우면 그 방문의 수동 사진(4.3 미션 `images/`), 아니면 `manual/<날짜>/`. (저장한 곳 안내, 파일 경로)를 돌려준다. */
+    private suspend fun store(info: CaptureInfo, bytes: ByteArray, lens: Lens): Pair<String, String?> {
         val m = dao.latestOpenMission()
         val v = if (m == null) null else shutterLinkTarget(info.position, dao.missionVisits(m.id)) { GeoPoint(it.lat, it.lon) }
         if (m != null && v != null) {
@@ -141,13 +158,14 @@ class ManualFlightViewModel(
                 dao, m.id, listOf(RecorderSortie(v.sortieId, listOf(v.visitId to v.poleId))),
                 File(appFilesDir, "projects/${m.projectId}/missions/${m.id}/images"), DownloadMode.ORIGINAL,
             )
-            rec.saveImage(rec.saveCapture(0, 0, info.copy(lens = lens, viewpoint = null), CaptureSource.MANUAL), bytes)
-            return "전주 ${v.poleId}"
+            val id = rec.saveCapture(0, 0, info.copy(lens = lens, viewpoint = null), CaptureSource.MANUAL)
+            rec.saveImage(id, bytes)
+            return "전주 ${v.poleId}" to dao.capture(id)?.filePath
         }
         val day = SimpleDateFormat("yyyyMMdd", Locale.ROOT).format(Date())
         val file = File(appFilesDir, "manual/$day/manual_${info.takenAtMs}_${info.mediaId}_${lens}.jpg")
         withContext(Dispatchers.IO) { file.parentFile?.mkdirs(); file.writeBytes(bytes) }
-        return file.name
+        return file.name to file.path
     }
 
 
@@ -183,10 +201,12 @@ class ManualFlightViewModel(
     override fun onCleared() {
         (drone as? DjiDroneGateway)?.close()
         tone.release()
+        live?.close()
+        precise?.setFlying("manual", false)
     }
 
     companion object {
-        fun factory(dao: ProjectDao, appFilesDir: File?, rcButtons: Flow<RcButton>, settings: SettingsStore) =
-            viewModelFactory { initializer { ManualFlightViewModel(dao, appFilesDir, rcButtons, settings) } }
+        fun factory(dao: ProjectDao, appFilesDir: File?, rcButtons: Flow<RcButton>, settings: SettingsStore, precise: PreciseDetection) =
+            viewModelFactory { initializer { ManualFlightViewModel(dao, appFilesDir, rcButtons, settings, precise) } }
     }
 }

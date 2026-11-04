@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.myfirstapp.core.detect.ModelPick
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.data.ModelInfo
 import com.example.myfirstapp.data.MapSource
@@ -41,8 +42,9 @@ data class SettingsUiState(
     val params: FlightParams = FlightParams(),
     val savedParams: FlightParams = FlightParams(),
     val models: List<ModelInfo> = emptyList(),
-    /** ⑥ 설정에서 고른 모델 폴더. null이면 이름이 가장 뒤인 모델(9.1). */
-    val selectedModel: String? = null,
+    /** ⑥ 설정에서 고른 비행 중(live)·정밀(full) 모델 폴더. null이면 `role`로 자동으로 고른다(9.6). */
+    val selectedLive: String? = null,
+    val selectedFull: String? = null,
     val maps: List<MapFile> = emptyList(),
     val message: String? = null,
     val deleting: PendingDelete? = null,
@@ -54,9 +56,13 @@ data class SettingsUiState(
     val paramErrors get() = params.validate()
     val canSave get() = params != savedParams && paramErrors.isEmpty()
 
-    /** 비행할 때 실제로 쓸 모델: 고른 모델이 규격을 통과하면 그것, 아니면 통과한 모델 중 이름이 가장 뒤인 것. */
-    val activeModel get() = models.firstOrNull { it.dir == selectedModel && it.error == null }?.dir
-        ?: models.firstOrNull { it.error == null }?.dir
+    private val valid get() = models.filter { it.error == null }.map { it.choice() }
+
+    /** 비행 중 최근 1장에 실제로 쓸 모델(9.6 `ModelPick`): 고른 것, 없으면 `live` 중 입력이 가장 작은 것. */
+    val activeLive get() = ModelPick.liveOrder(valid, selectedLive).firstOrNull()
+
+    /** 착륙 뒤 정밀 탐지에 실제로 쓸 모델: 고른 것, 없으면 `full`, 그것도 없으면 비행 중 모델. */
+    val activeFull get() = ModelPick.fullOrder(valid, selectedFull, selectedLive).firstOrNull()
 }
 
 /** ⑥ 설정(10장): 비행 기본값(F-09), 탐지 모델 관리(F-18), 오프라인 지도 관리. */
@@ -74,7 +80,7 @@ class SettingsViewModel(
             val p = settings.flightDefaults.first()
             _state.update {
                 it.copy(
-                    params = p, savedParams = p, selectedModel = settings.modelDir.first(),
+                    params = p, savedParams = p, selectedLive = settings.liveModelDir.first(), selectedFull = settings.fullModelDir.first(),
                     mapSource = settings.mapSource.first(), vworldLabels = settings.vworldLabels.first(),
                 )
             }
@@ -108,9 +114,16 @@ class SettingsViewModel(
         _state.update { it.copy(vworldLabels = on) }
     }
 
-    fun selectModel(dir: String) = viewModelScope.launch {
-        settings.setModelDir(dir)
-        _state.update { it.copy(selectedModel = dir, message = "다음 비행부터 모델 $dir 을(를) 씁니다.") }
+    fun selectLive(dir: String) = viewModelScope.launch {
+        OpLog.log("setting", "liveModel", mapOf("dir" to dir))
+        settings.setLiveModelDir(dir)
+        _state.update { it.copy(selectedLive = dir, message = "다음 비행부터 비행 중 탐지에 $dir 을(를) 씁니다.") }
+    }
+
+    fun selectFull(dir: String) = viewModelScope.launch {
+        OpLog.log("setting", "fullModel", mapOf("dir" to dir))
+        settings.setFullModelDir(dir)
+        _state.update { it.copy(selectedFull = dir, message = "다음 정밀 탐지부터 $dir 을(를) 씁니다.") }
     }
 
     fun onModelFolderPicked(tree: Uri) = runFileJob("모델을 검사하는 중입니다") {
@@ -133,9 +146,13 @@ class SettingsViewModel(
             when (target) {
                 is PendingDelete.Model -> {
                     File(modelsDir, target.name).deleteRecursively()
-                    if (_state.value.selectedModel == target.name) {
-                        settings.setModelDir(null)
-                        _state.update { it.copy(selectedModel = null) }
+                    if (_state.value.selectedLive == target.name) {
+                        settings.setLiveModelDir(null)
+                        _state.update { it.copy(selectedLive = null) }
+                    }
+                    if (_state.value.selectedFull == target.name) {
+                        settings.setFullModelDir(null)
+                        _state.update { it.copy(selectedFull = null) }
                     }
                 }
                 is PendingDelete.Map -> File(mapsDir, target.name).delete()

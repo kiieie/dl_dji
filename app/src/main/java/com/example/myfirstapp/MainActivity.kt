@@ -2,6 +2,7 @@ package com.example.myfirstapp
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
 import android.view.KeyEvent
@@ -32,6 +33,7 @@ import androidx.navigation.navArgument
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.ProjectDao
+import com.example.myfirstapp.detect.ModelBench
 import com.example.myfirstapp.drone.DjiPoc
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
@@ -95,6 +97,7 @@ class MainActivity : ComponentActivity() {
             locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
         val dao = (application as InspectionApp).database.projectDao()
+        startBenchIfAsked(intent)
         setContent {
             MyFirstAppTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -102,6 +105,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** 앱이 이미 떠 있을 때 adb로 다시 연 경우(launchMode singleTop). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        startBenchIfAsked(intent)
+    }
+
+    /**
+     * 모델 속도 측정(9.6)을 adb로 시작: `adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`.
+     * 기체가 꺼져 있어도 된다. 결과는 `files/logs/bench-<시각>.txt`와 운용 로그(`bench`), 진행은 검증 화면에 보인다.
+     */
+    private fun startBenchIfAsked(intent: Intent?) {
+        if (intent?.getStringExtra("bench") == null) return
+        OpLog.log("bench", "adb", mapOf("arg" to intent.getStringExtra("bench")))
+        (application as InspectionApp).startBench()
     }
 
     /**
@@ -262,6 +281,13 @@ class MainActivity : ComponentActivity() {
             Text(text = rcStatus, style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(10.dp))
             Text(text = telemetry, style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(10.dp))
+            // 모델 속도 측정(9.6): models/의 모든 모델 CPU·GPU, 비행 중 모델 연속 30회. adb로도 시작한다(--es bench all)
+            val bench by ModelBench.status.collectAsState()
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                OutlinedButton(onClick = { app.startBench() }) { Text("모델 속도 측정") }
+                Text(text = bench, style = MaterialTheme.typography.bodyMedium)
+            }
             Spacer(modifier = Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { poc("기체 상태") { DjiPoc.aircraft() } }) { Text("기체 상태") }

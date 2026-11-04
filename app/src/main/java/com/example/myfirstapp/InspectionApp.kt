@@ -1,6 +1,8 @@
 package com.example.myfirstapp
 
 import com.example.myfirstapp.drone.startDjiInputLog
+import com.example.myfirstapp.detect.ModelBench
+import com.example.myfirstapp.detect.PreciseDetection
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -67,8 +69,15 @@ class InspectionApp : Application() {
     lateinit var rcBattery: StateFlow<RcBattery?>
         private set
 
-    /** 앱 전체 수명의 작업(운용 로그용 RC 버튼 감시). */
+    /** 앱 전체 수명의 작업(운용 로그용 RC 버튼 감시, 정밀 탐지, 모델 속도 측정). */
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** 착륙 뒤 정밀 탐지 일꾼(9.6). 앱이 켜져 있는 동안 남은 사진을 처리한다. */
+    lateinit var precise: PreciseDetection
+        private set
+
+    /** 모델 속도 측정(9.6): 검증 화면 버튼, 또는 `adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`. */
+    fun startBench() = ModelBench.start(this, appScope, settings, precise)
 
     override fun onCreate() {
         super.onCreate()
@@ -76,6 +85,7 @@ class InspectionApp : Application() {
         savedSatelliteTilesFile = File(filesDir, "satellite-tiles.txt")
         OpLog.log("app", "start")
         rcBattery = RcBattery.watch(this)
+        precise = PreciseDetection(this, database.projectDao(), settings, appScope, rcBattery)
         initDjiSdk()
         appScope.launch { rcButtons.collect { OpLog.log("rc", it.name) } }
     }

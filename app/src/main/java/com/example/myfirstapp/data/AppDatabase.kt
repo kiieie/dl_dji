@@ -151,6 +151,8 @@ data class CaptureEntity(
     val viewpoint: Int? = null,
     /** 설비 조준 사진(5.6): 설치기기 쪽으로 짐벌을 내려 찍은 것. */
     val equipmentShot: Boolean = false,
+    /** 착륙 뒤 정밀 탐지(9.6)를 한 모델 버전. null이면 아직 안 했다(탐지 결과가 0개인 사진과 구별). */
+    val detectModel: String? = null,
 )
 
 @Entity(
@@ -294,6 +296,8 @@ data class ResultRow(
     val photoCount: Int,
     /** 검출 대상(경고 라벨) 탐지 수. */
     val detectCount: Int,
+    /** 경고 라벨이 아닌 탐지(설비, 9.6) 수. 표시만 하고 검출로 세지 않는다. */
+    val facilityCount: Int = 0,
 ) {
     val displayName get() = poleDisplayName(poleId, lineName, lineNo)
 }
@@ -310,6 +314,8 @@ data class AlbumPhoto(
     val equipment: String?,
     val voltage: String?,
     val alertCount: Int,
+    /** 경고 라벨이 아닌 탐지(설비) 수. */
+    val facilityCount: Int = 0,
 ) {
     val displayName get() = poleDisplayName(poleId, lineName, lineNo)
 }
@@ -462,13 +468,46 @@ interface ProjectDao {
     @Insert
     suspend fun insertDetections(detections: List<DetectionEntity>)
 
+    /**
+     * 정밀 탐지(9.6)가 남은 사진: [since] 뒤에 계획한 미션의 이미지가 있는 사진 중 [version]으로 탐지하지 않은 것.
+     * 최근 미션부터, 미션 안에서는 찍은 순서대로.
+     */
+    @Query(
+        "SELECT c.id FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId JOIN mission m ON m.id = s.missionId " +
+            "WHERE c.filePath IS NOT NULL AND (c.detectModel IS NULL OR c.detectModel != :version) AND m.createdAt >= :since " +
+            "ORDER BY m.id DESC, c.id",
+    )
+    suspend fun capturesWithoutDetection(version: String, since: Long): List<Long>
+
+    @Query("DELETE FROM detection WHERE captureId = :captureId")
+    suspend fun deleteDetections(captureId: Long)
+
+    @Query("UPDATE capture SET detectModel = :version WHERE id = :captureId")
+    suspend fun setDetectModel(captureId: Long, version: String)
+
+    @Query(
+        "UPDATE mission SET modelVersion = :version WHERE id = (SELECT s.missionId FROM capture c JOIN visit v ON v.id = c.visitId " +
+            "JOIN sortie s ON s.id = v.sortieId WHERE c.id = :captureId)",
+    )
+    suspend fun setModelVersionOfCapture(captureId: Long, version: String)
+
+    /** 정밀 탐지 결과로 그 사진의 탐지를 바꾼다(전에 있던 결과는 지움). 사진과 미션에 모델 버전을 남긴다. */
+    @Transaction
+    suspend fun savePreciseDetections(captureId: Long, version: String, detections: List<DetectionEntity>) {
+        deleteDetections(captureId)
+        insertDetections(detections)
+        setDetectModel(captureId, version)
+        setModelVersionOfCapture(captureId, version)
+    }
+
     @Query("SELECT name FROM project WHERE id = :projectId")
     suspend fun projectName(projectId: Long): String?
 
     @Query(
         "SELECT s.seq, v.`order`, v.id AS visitId, p.poleId, p.lat, p.lon, p.lineName, p.lineNo, p.lengthM, p.equipment, p.voltage, v.status, v.skipReason, v.arrivedAt, " +
             "(SELECT COUNT(*) FROM capture c WHERE c.visitId = v.id) AS photoCount, " +
-            "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert) AS detectCount " +
+            "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND d.alert) AS detectCount, " +
+            "(SELECT COUNT(*) FROM detection d JOIN capture c ON c.id = d.captureId WHERE c.visitId = v.id AND NOT d.alert) AS facilityCount " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
             "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`",
     )
@@ -491,7 +530,8 @@ interface ProjectDao {
     /** 앨범 사진: 방문 순서대로, 전주 이름·설비와 경고 탐지 수. */
     @Query(
         "SELECT c.*, po.poleId, po.lineName, po.lineNo, po.equipment, po.voltage, " +
-            "(SELECT COUNT(*) FROM detection d WHERE d.captureId = c.id AND d.alert) AS alertCount " +
+            "(SELECT COUNT(*) FROM detection d WHERE d.captureId = c.id AND d.alert) AS alertCount, " +
+            "(SELECT COUNT(*) FROM detection d WHERE d.captureId = c.id AND NOT d.alert) AS facilityCount " +
             "FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId JOIN pole po ON po.id = v.poleRowId " +
             "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`, c.id",
     )
@@ -568,7 +608,7 @@ interface ProjectDao {
         ProjectEntity::class, PoleEntity::class, MissionEntity::class, SortieEntity::class, VisitEntity::class,
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -576,7 +616,12 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8).build()
+
+        /** 7 → 8(2026-11-04): 사진별 정밀 탐지 모델 버전(9.6). 옛 사진은 비어 있어 최근 미션이면 정밀 탐지가 다시 한다. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) = db.execSQL("ALTER TABLE `capture` ADD COLUMN `detectModel` TEXT")
+        }
 
         /** 6 → 7(2026-10-31): 설비 조준 사진 표시(5.6). */
         val MIGRATION_6_7 = object : Migration(6, 7) {
