@@ -101,6 +101,10 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.poleDisplayName
 import com.example.myfirstapp.core.route.RoutePlan
+import com.example.myfirstapp.core.route.RouteSummary
+import com.example.myfirstapp.ui.theme.Inactive
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import com.example.myfirstapp.core.route.UnreachablePole
 import org.maplibre.android.MapLibre
 import org.maplibre.android.offline.OfflineManager
@@ -225,8 +229,9 @@ fun MapScreen(
                         }
                     }
                 }
-                Column(Modifier.align(Alignment.TopCenter).padding(top = 8.dp, start = 52.dp, end = 52.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    RouteInfoBand(s, inArea.size)
+                // 경로 열기 칩(Pilot 2, 10.5.8): 왼쪽 그리기 도구 옆. 할 일 안내는 그 아래
+                Column(Modifier.align(Alignment.TopStart).padding(top = 8.dp, start = 52.dp, end = 52.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RouteChip(s, inArea.size, replanFrom, copyFrom, onPlay = { vm.savePlan(fly = true) }, onSave = { vm.savePlan() }, onLibrary = onBack)
                     HintChip(s, inArea.size, vm)
                 }
                 // 오른쪽 지도 도구(10.5.4): 검색 · 전체 보기 · 레이어(배경 지도 고르기, 배경 끄기) · 지우기(영역) · 과녁(기체·조종기 위치로)
@@ -267,30 +272,62 @@ private fun PlanHeader(s: PlanUiState, replanFrom: Long?, copyFrom: Long?, onBac
     }
 }
 
-/** 지도 위 가운데 경로 정보 띠(Pilot 2 74쪽): 경로 길이, 예상 시간, 전주, 사진, 소티. */
+/**
+ * 경로 열기 칩(Pilot 2 p2s_2, 10.5.8): [경로 ▶ 이름 ˅] 아래 요약(거리 · 예상 시간 · 웨이포인트 · 사진, 우리 것 전주 · 소티).
+ * ▶는 저장(필요하면)하고 비행 화면의 비행 전 점검 → 체크리스트로 간다. ˅는 저장 · 라이브러리.
+ */
 @Composable
-private fun RouteInfoBand(s: PlanUiState, inAreaCount: Int) {
+private fun RouteChip(s: PlanUiState, inAreaCount: Int, replanFrom: Long?, copyFrom: Long?, onPlay: () -> Unit, onSave: () -> Unit, onLibrary: () -> Unit) {
     val plan = s.plan
-    val poles = plan?.sorties?.sumOf { it.poles.size }
-    val cells = listOf(
-        "경로 길이" to (plan?.let { distance(it.sorties.sumOf { so -> so.estDistanceM }) } ?: "-"),
-        "예상 시간" to (plan?.let { mmss(it.sorties.sumOf { so -> so.estDurationSec }) } ?: "-"),
-        "전주" to (poles?.toString() ?: if (s.vertices.size >= 3) "${inAreaCount - s.excluded.size}" else "-"),
-        "사진" to (plan?.let { "${it.sorties.sumOf { so -> so.poles.sumOf(s.params::photosPerPole) }}" } ?: "-"),
-        "소티" to (plan?.let { "${it.sorties.size}" } ?: "-"),
-    )
-    Row(Modifier.clip(RoundedCornerShape(4.dp)).background(Color.Black.copy(alpha = 0.75f)).height(IntrinsicSize.Min)) {
-        cells.forEachIndexed { i, (label, value) ->
-            if (i > 0) VerticalDivider(color = SurfaceContainerHighest)
-            Column(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(label, fontSize = FontSize.Caption, color = TextSoft, maxLines = 1)
-                Text(value, style = numberStyle(FontSize.Number), maxLines = 1)
+    val sum = plan?.let { RouteSummary.of(it.sorties, s.params) }
+    val ready = plan != null && plan.sorties.isNotEmpty() && !s.saving
+    var menu by remember { mutableStateOf(false) }
+    Column(Modifier.widthIn(max = 380.dp)) {
+        Row(
+            Modifier.height(44.dp).clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)).background(Color.White).padding(start = 10.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(painterResource(R.drawable.ic_route), contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
+            Box(
+                Modifier.size(Dimens.TouchSmall).clip(CircleShape).background(if (ready) Accent else Inactive)
+                    .clickable(enabled = ready, onClickLabel = "비행 전 점검으로", onClick = onPlay),
+                contentAlignment = Alignment.Center,
+            ) { Icon(painterResource(R.drawable.ic_play), contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp)) }
+            Text(
+                s.savedMissionId?.let { "${s.projectName} #$it" }
+                    ?: listOf(s.projectName, replanFrom?.let { "#$it 남은 전주" } ?: copyFrom?.let { "#$it 다시 날기" } ?: "새 계획").joinToString(" · "),
+                Modifier.weight(1f, fill = false), fontSize = FontSize.Title, color = Color.Black, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(Dimens.TouchSmall).semantics { contentDescription = "경로 메뉴" }) {
+                    Icon(painterResource(R.drawable.ic_arrow_down), contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
+                }
+                DropdownMenu(menu, onDismissRequest = { menu = false }, properties = MENU_PROPERTIES) {
+                    DropdownMenuItem(text = { Text(if (s.savedMissionId != null) "저장됨" else "저장") }, enabled = ready && s.savedMissionId == null, onClick = { menu = false; onSave() })
+                    DropdownMenuItem(text = { Text("라이브러리") }, onClick = { menu = false; onLibrary() })
+                }
+            }
+        }
+        val cells = listOf(
+            "거리" to (sum?.let { "${it.distanceM.toInt()} m" } ?: "-"),
+            "예상 시간" to (sum?.let { mmss(it.durationSec) } ?: "-"),
+            "웨이포인트" to (sum?.waypoints?.toString() ?: "-"),
+            "사진" to (sum?.photos?.toString() ?: "-"),
+            "전주" to (plan?.sorties?.sumOf { it.poles.size }?.toString() ?: if (s.vertices.size >= 3) "${inAreaCount - s.excluded.size}" else "-"),
+            "소티" to (plan?.let { "${it.sorties.size}" } ?: "-"),
+        )
+        Row(Modifier.clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)).background(Color.Black.copy(alpha = 0.75f)).height(IntrinsicSize.Min)) {
+            cells.forEachIndexed { i, (label, value) ->
+                if (i > 0) VerticalDivider(color = SurfaceContainerHighest)
+                Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    Text(label, fontSize = FontSize.Caption, color = TextSoft, maxLines = 1)
+                    Text(value, style = numberStyle(FontSize.Number), maxLines = 1)
+                }
             }
         }
     }
 }
 
-private fun distance(m: Double) = if (m < 1000) "${m.toInt()} m" else "${fmt(m / 1000)} km"
 private fun mmss(sec: Double) = sec.toInt().let { String.format(Locale.ROOT, "%d:%02d", it / 60, it % 60) }
 
 /** 띠 아래 안내: 지금 할 일 한 줄(10.0 순서 안내)과 그리는 중의 [되돌리기]·[완료]·[취소]. */

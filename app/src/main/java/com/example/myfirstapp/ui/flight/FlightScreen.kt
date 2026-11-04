@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -98,6 +99,8 @@ fun FlightScreen(
     onAlbum: () -> Unit = {},
     /** 큰 지도 [라이브러리](10.5.4): 비행경로 화면. 떠날 수 있을 때만 켠다. */
     onLibrary: () -> Unit = {},
+    /** 계획 화면 ▶에서 왔으면 미션을 읽은 뒤 비행 전 점검을 한 번 연다(10.5.8 → 10.5.5). */
+    openPreflight: Boolean = false,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
@@ -105,6 +108,13 @@ fun FlightScreen(
             dao, projectId, missionId, context.getExternalFilesDir(null), app.settings, app.rcButtons, app.djiReady, app.djiInitialized,
         ))
     val s by vm.state.collectAsStateWithLifecycle()
+    var preOpened by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(s.loading) {
+        if (openPreflight && !preOpened && !s.loading && s.error == null) {
+            preOpened = true
+            vm.openPreflight()
+        }
+    }
     // 비행 중에는 뒤로 가기로 화면을 떠나지 못하게 한다(떠나면 실행기가 멈춘다).
     BackHandler { if (s.canExit || s.error != null) onExit() }
 

@@ -198,16 +198,17 @@ class MainActivity : ComponentActivity() {
                 val pid = e.arguments!!.getLong("pid")
                 val replan = e.arguments!!.getLong("replan").takeIf { it > 0 }
                 val copy = e.arguments!!.getLong("copy").takeIf { it > 0 }
-                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") { launchSingleTop = true } }, replanFrom = replan, copyFrom = copy)
+                // ▶·[저장하고 수행]: 비행 화면을 비행 전 점검을 연 채로(10.5.5 → 체크리스트)
+                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it?pre=true") { launchSingleTop = true } }, replanFrom = replan, copyFrom = copy)
             }
-            composable("flight/{pid}/{mid}", ids) { e ->
+            composable("flight/{pid}/{mid}?pre={pre}", ids + navArgument("pre") { type = NavType.BoolType; defaultValue = false }) { e ->
                 val pid = e.arguments!!.getLong("pid")
                 val mid = e.arguments!!.getLong("mid")
                 FlightScreen(
-                    pid, mid, dao,
+                    pid, mid, dao, openPreflight = e.arguments!!.getBoolean("pre"),
                     onExit = { nav.popBackStack() },
                     // 미션이 끝나면 비행 화면을 스택에서 빼고 결과로 간다(뒤로 가면 계획 화면)
-                    onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}") { inclusive = true } } },
+                    onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}?pre={pre}") { inclusive = true } } },
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                     // 지도 [라이브러리]: 비행 화면을 닫고 그 프로젝트의 비행경로로(떠 있을 때는 버튼이 꺼짐)
