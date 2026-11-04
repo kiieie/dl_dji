@@ -190,7 +190,7 @@ private fun FlightContent(
         else {
             fpv(Modifier.fillMaxSize())
             // 탭 초점·초점 모드는 자동 비행 구간이 아닐 때만(지점 사진 초점을 건드리지 않게)
-            CameraOverlay(s.lens, s.zoomRatio, focusEnabled = s.cameraFree, onFocus = vm::focusAt, Modifier.fillMaxSize(), stream)
+            CameraOverlay(s.lens, s.zoomRatio, focusEnabled = s.cameraFree, onFocus = vm::focusAt, Modifier.fillMaxSize(), stream, s.camera.ev, vm::setEv)
         }
         Column(Modifier.align(Alignment.BottomStart)) {
             // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
@@ -210,9 +210,10 @@ private fun FlightContent(
                 s = s, shutterEnabled = s.shutterFree, onShutter = vm::shutter,
                 cameraEnabled = s.cameraFree, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 6.dp), onAlbum = onAlbum,
+                onOpenMenu = vm::openShootMenu, onCloseMenu = vm::closeShootMenu, onShootMode = vm::setShootMode, onTimer = vm::setTimer,
             )
         }
-        val notices = listOfNotNull(ui.message?.let { it to Color.White }) + ui.preflightFailures.map { "점검 실패: $it" to Error }
+        val notices = listOfNotNull(ui.message?.let { it to Color.White }, s.shotMessage?.let { it to Color.White }) + ui.preflightFailures.map { "점검 실패: $it" to Error }
         NoticeLines(notices, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 48.dp).widthIn(max = 300.dp))
         if (ui.state != ExecState.SortieDone) {
             val summary = remember(ui.state, ui.sortieIndex, s.params) { vm.checklistSummary() }
@@ -230,6 +231,7 @@ private fun FlightContent(
         }
         if (mapMain) Box(Modifier.align(LibraryButtonAlignment).padding(8.dp)) { LibraryButton(enabled = s.canExit, onLibrary) }
 
+        if (!mapMain) CameraNoticeView(s.notice)
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
         // 절차 화면(10.5.5): 비행 전 점검 → 체크리스트. 화면 전체를 덮는다
         // HMS 칸을 누르면 기체 점검(⋯ 설정)

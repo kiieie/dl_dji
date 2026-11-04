@@ -29,6 +29,8 @@ data class WaypointFile(val shot: Int, val ordinal: Int, val action: Int = 0, va
 class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
     private var screenActive = false
     private var screenGot = false
+    /** 타이머(인터벌) 촬영: 끝날 때까지 오는 파일이 모두 앱 촬영 것이다(미션 일시정지 중 지점이 바뀌어 보여도). */
+    private var screenContinuous = false
     private var screenUntil = Long.MIN_VALUE / 2
     /** 앱 촬영이 사진 알림 없이 끝났다(시간 초과): 늦게 오는 그 파일을 지점 사진으로 넘기지 않는다. 미션을 재개하면 버린다. */
     private var screenOwed = false
@@ -38,9 +40,11 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
     private var reachedShot: Int? = null
     private var reachedAt = Long.MIN_VALUE / 2
 
-    @Synchronized fun screenStarted() {
+    /** 앱 촬영 시작. [continuous]면 타이머 촬영(끝날 때까지 여러 장). */
+    @Synchronized fun screenStarted(continuous: Boolean = false) {
         screenActive = true
         screenGot = false
+        screenContinuous = continuous
     }
 
     /** [owed]: 카메라가 촬영을 거절하지 않았다(사진이 늦게 올 수 있음). */
@@ -82,7 +86,7 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
 
     /** [classify]와 같고, 지점 사진이면 어느 지점의 몇 번째 파일인지도 돌려준다. [lens]는 파일 종류로 안 렌즈(모르면 null). */
     @Synchronized fun classifyFile(now: Long, shot: Int?, lens: Lens? = null): Pair<MediaOwner, WaypointFile?> = when {
-        screenActive && !screenGot -> (MediaOwner.SCREEN to null).also { screenGot = true }
+        screenActive && (screenContinuous || !screenGot) -> (MediaOwner.SCREEN to null).also { screenGot = true }
         screenOwed -> (MediaOwner.SCREEN to null).also { screenOwed = false }
         shot != null && shot != lastShot -> MediaOwner.WAYPOINT to waypointFile(now, shot, lens)
         screenActive || now < screenUntil -> MediaOwner.SCREEN to null

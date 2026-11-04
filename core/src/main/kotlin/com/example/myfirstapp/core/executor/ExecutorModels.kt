@@ -58,7 +58,7 @@ sealed interface Command {
 
     /**
      * RC 셔터(6.4, 2026-11-04 앱이 찍음): 일시정지·수동 조종 중이면 앱이 [lens]로 찍어 20m 안의 가장 가까운 남은 전주에 수동 사진으로 붙인다.
-     * 미션 비행 중(자동 촬영 중)·땅에서는 받지 않는다.
+     * 미션 비행 중(자동 촬영 중)·땅에서는 받지 않는다(땅 위 셔터는 화면이 수동 사진 경로로 찍는다, [shutterRoute]).
      */
     data class RcShutter(val lens: Lens) : Command
 
@@ -103,6 +103,25 @@ data class ExecutorUiState(
  */
 fun recoveredCaptures(arrivedAtMs: Long?, sdMedia: List<CaptureInfo>, dbMediaIds: Set<String>): List<CaptureInfo> =
     if (arrivedAtMs == null) emptyList() else sdMedia.filter { it.takenAtMs >= arrivedAtMs && it.mediaId !in dbMediaIds }
+
+/** 미션 화면 셔터(화면·RC, 사진 모드)가 갈 곳(10.4.3). */
+enum class ShutterRoute {
+    /** 실행기가 찍는다: 일시정지 중, 또는 실행기는 쉬는데 기체가 떠 있음(수동 비행에서 넘어옴·소티 완료 뒤). */
+    EXECUTOR,
+
+    /** 수동 사진 경로(수동 비행 셔터와 같음): 땅 위(Pilot 2처럼 찍음)와 RTH 중. 실행기의 지점 사진 가르기에 넣지 않는다. */
+    MANUAL,
+
+    /** 자동 비행 중: 지점 사진(KMZ)과 섞이므로 막는다(10.5.2 "다름"). */
+    BLOCKED,
+}
+
+fun shutterRoute(state: ExecState, flying: Boolean): ShutterRoute = when {
+    state == ExecState.Paused -> ShutterRoute.EXECUTOR
+    state.airborne -> ShutterRoute.BLOCKED
+    flying && state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone) -> ShutterRoute.EXECUTOR
+    else -> ShutterRoute.MANUAL
+}
 
 /** 셔터 사진을 붙일 전주: 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 후보. 위치가 없거나 20m 안에 없으면 null(SD에만 남김). */
 fun <T> shutterLinkTarget(position: GeoPoint?, candidates: List<T>, pos: (T) -> GeoPoint): T? =

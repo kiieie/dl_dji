@@ -29,6 +29,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.core.executor.Command
 import com.example.myfirstapp.core.executor.ExecState
+import com.example.myfirstapp.core.executor.ShutterRoute
+import com.example.myfirstapp.core.executor.shutterRoute
+import com.example.myfirstapp.core.model.PhotoModes
+import com.example.myfirstapp.core.model.ShootMode
+import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.executor.ExecutorUiState
 import com.example.myfirstapp.core.executor.InspectionExecutor
 import com.example.myfirstapp.core.executor.recoveredCaptures
@@ -139,6 +144,18 @@ data class FlightUiState(
     val sortieTotal: Int = 0,
     /** 경로 이름(Pilot 2 미션 칸 이름): "<프로젝트> #<미션>". */
     val routeName: String = "",
+    /** 촬영 모드 메뉴(10.5.7): 열림, 고른 사진 모드, 타이머 간격(초), 타이머 촬영 중, 기체가 받는 모드(메뉴를 처음 열 때 읽음). */
+    val shootMenu: Boolean = false,
+    val shootMode: ShootMode = ShootMode.SINGLE,
+    val timerSec: Double = AppConfig.CameraView.TIMER_DEFAULT_SEC,
+    val timerRunning: Boolean = false,
+    val photoModes: PhotoModes = PhotoModes.BASIC,
+    /** 앱이 한 장 찍는 중(사진 알림 전, SMART는 몇 초): 다른 카메라 조작은 "촬영 중" 안내문. */
+    val capturing: Boolean = false,
+    /** Pilot 2 안내문(10.5.7). */
+    val notice: CameraNotice? = null,
+    /** 땅 위·타이머 수동 사진(수동 사진 경로)을 저장한 곳 또는 실패(미션 화면 안내 줄). */
+    val shotMessage: String? = null,
 ) {
     /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
@@ -148,8 +165,8 @@ data class FlightUiState(
     /** 줌·사진/영상·초점을 바꿔도 되는 때: 일시정지 중, 또는 자동 비행 구간이 아닐 때(땅·RTH, Pilot 2처럼 언제든). 지점 사진 중에는 막는다. */
     val cameraFree get() = exec.state == ExecState.Paused || !exec.state.airborne
 
-    /** 화면 셔터를 누를 수 있는 때: 일시정지 중, 녹화 중(멈추기), 또는 실행기는 쉬는데 기체가 떠 있을 때(RC 셔터와 같은 경로). */
-    val shutterFree get() = exec.state == ExecState.Paused || recordingSinceMs != null || (!exec.state.airborne && telemetry?.isFlying == true)
+    /** 화면 셔터를 누를 수 있는 때: 자동 비행 중이 아닐 때(일시정지·땅·RTH, [shutterRoute]), 녹화·타이머 중(멈추기). */
+    val shutterFree get() = recordingSinceMs != null || timerRunning || shutterRoute(exec.state, telemetry?.isFlying == true) != ShutterRoute.BLOCKED
 }
 
 /**
@@ -172,13 +189,18 @@ class FlightViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(FlightUiState())
     val state: StateFlow<FlightUiState> = _state.asStateFlow()
-    private val camera = CameraControl(viewModelScope, { drone }, { _state.value }, { f -> _state.update(f) }, "flight")
+    private val camera = CameraControl(
+        viewModelScope, { drone }, { _state.value }, { f -> _state.update(f) }, "flight",
+        onTimerPhoto = { info -> drone?.let { d -> manualSaved(info, photos.keep(d, info, _state.value.lens)) } },
+    )
 
     private val notifier = ToneNotifier()
     /** 비행 중 최근 1장 탐지(9.6). 실행기는 사진을 저장만 하고, 저장한 사진을 여기에 넘긴다. */
     private val live = LiveDetection(viewModelScope, File(appFilesDir, "models"), settings, precise?.gpuCache, precise?.thermal) { p ->
         _state.update { it.copy(lastPhoto = p) }
     }
+    /** 땅 위 셔터·타이머 사진(수동 사진 경로, 10.4.3): 이 미션의 전주가 20m 안이면 그 전주, 아니면 기타. 실행기를 거치지 않는다. */
+    private val photos = ManualPhotos(dao, appFilesDir, { dao.mission(missionId) }, live, precise)
     private var executor: InspectionExecutor? = null
     private var drone: DroneGateway? = null
     private var energy: EnergyModel? = null
@@ -211,8 +233,8 @@ class FlightViewModel(
             // 5D·○ 누름은 다른 화면(앨범·설정)에서도 오므로 이 화면이 맨 위이고 절차 화면이 없을 때만 재개로 받는다
             RcButton.FIVE_D_CENTER -> if (paused && active && _state.value.page == null) resume()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
-            // RC 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04). 실행기가 일시정지·수동 조종 중에만 받는다
-            RcButton.SHUTTER -> if (_state.value.videoMode) toggleRecording() else send(Command.RcShutter(_state.value.lens))
+            // RC 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04). 화면 셔터와 같은 자리로 간다(자동 비행 중만 막음, [shutterRoute])
+            RcButton.SHUTTER -> if (active) shutter(rc = true)
             RcButton.RECORD -> if (paused || _state.value.recordingSinceMs != null) camera.recordButton()
             else -> Unit // 5D 방향은 비행 명령에 쓰지 않는다(10장)
         }
@@ -332,7 +354,7 @@ class FlightViewModel(
         dao.setVisitStatus(v.id, if (done) "DONE" else "PENDING", null)
     }
 
-    fun start() = send(Command.Start)
+    fun start() = afterPhotoReady { send(Command.Start) }
 
     /** [비행 시작]·상단 바 비행 상태 글자: Pilot 2처럼 비행 전 점검 화면을 연다(판정은 실행기도 다시 한다, 6.7). */
     fun openPreflight() = _state.update { it.copy(page = ProcedurePage.PREFLIGHT) }
@@ -373,11 +395,11 @@ class FlightViewModel(
         viewModelScope.launch { dao.setMissionParams(missionId, p.toJson()) }
     }
 
-    /** 체크리스트 [비행 임무 업로드]: 점검 → 업로드까지(실행기 [ExecState.Uploaded]). */
-    fun upload() = send(Command.Upload(flightParams, warned))
+    /** 체크리스트 [비행 임무 업로드]: 점검 → 업로드까지(실행기 [ExecState.Uploaded]). 땅에서 고른 타이머·SMART·영상은 먼저 단일 사진으로(KMZ 촬영 동작). */
+    fun upload() = afterPhotoReady { send(Command.Upload(flightParams, warned)) }
 
     /** 체크리스트 [시작]: 올린 미션을 이륙·시작. */
-    fun startUploaded() = send(Command.Start)
+    fun startUploaded() = afterPhotoReady { send(Command.Start) }
 
     /** 체크리스트 [업로드 취소]: 시작하지 않고 대기로(값을 다시 고칠 수 있음). */
     fun cancelUpload() = send(Command.CancelUpload)
@@ -407,15 +429,21 @@ class FlightViewModel(
      * 재개(미션 칸 ▶·일시정지 중 RC 5D 누름): 영상 모드였으면 사진 모드로 돌린 뒤 재개한다(지점 사진을 놓치지 않게).
      * 카메라가 답하지 않아도 [AppConfig.Timeouts.RESUME_CAMERA_MS] 뒤에는 재개한다. 기다리는 동안 다시 누른 것은 무시한다.
      */
-    fun resume() {
+    fun resume() = afterPhotoReady(restoreZoom = true) { send(Command.Resume) }
+
+    /**
+     * 카메라를 미션 사진 상태(타이머·녹화 정지, 사진, 단일, 재개면 미션 망원 배율)로 돌린 뒤 [then]. 카메라가 답하지 않아도
+     * [AppConfig.Timeouts.RESUME_CAMERA_MS] 뒤에는 [then]. 기다리는 동안 다시 누른 것은 무시한다.
+     */
+    private fun afterPhotoReady(restoreZoom: Boolean = false, then: () -> Unit) {
         if (resuming?.isActive == true) return
         resuming = viewModelScope.launch {
             withTimeoutOrNull(AppConfig.Timeouts.RESUME_CAMERA_MS) {
                 camera.backToPhotoAndWait()
-                flightParams?.takeIf { Lens.ZOOM in it.lenses }?.let { camera.restoreZoom(it.zoomRatio) }
+                if (restoreZoom) flightParams?.takeIf { Lens.ZOOM in it.lenses }?.let { camera.restoreZoom(it.zoomRatio) }
                 true
             } ?: OpLog.log("flight", "resumeCameraTimeout")
-            send(Command.Resume)
+            then()
         }
     }
 
@@ -423,14 +451,47 @@ class FlightViewModel(
     fun pause() = send(Command.Pause)
     fun manualCapture() = send(Command.ManualCapture)
 
-    /** 화면 셔터: 영상 모드면 녹화 시작·정지, 사진이면 수동 촬영(일시정지 중), 실행기가 쉬고 기체가 떠 있으면 RC 셔터와 같은 촬영. */
-    fun shutter() {
+    /** 화면 셔터. */
+    fun shutter() = shutter(rc = false)
+
+    /**
+     * 셔터(10.4.3, Pilot 2처럼 자동 비행 중이 아니면 언제나): 영상 모드면 녹화, 타이머면 시작·멈춤(수동 사진 경로), 사진이면 [shutterRoute]대로 —
+     * 일시정지 중 화면 셔터는 수동 촬영(목표 전주 완료), RC 셔터와 떠 있는 대기는 실행기 셔터 사진, 땅 위·RTH 중은 수동 사진 경로([manualShot]).
+     */
+    private fun shutter(rc: Boolean) {
         val st = _state.value
+        if (!st.shutterFree) return
         when {
             st.videoMode -> toggleRecording()
-            paused -> manualCapture()
-            else -> send(Command.RcShutter(st.lens))
+            st.shootMode == ShootMode.TIMER -> camera.toggleTimer()
+            else -> when (shutterRoute(st.exec.state, st.telemetry?.isFlying == true)) {
+                ShutterRoute.EXECUTOR -> if (paused && !rc) manualCapture() else send(Command.RcShutter(st.lens))
+                ShutterRoute.MANUAL -> manualShot()
+                ShutterRoute.BLOCKED -> Unit
+            }
         }
+    }
+
+    /** 수동 사진 한 장(땅 위·RTH 중): 찍고 받아 가까운 전주 또는 기타로. 실행기의 지점 사진 가르기에 넣지 않는다. */
+    private fun manualShot() {
+        val d = drone ?: return
+        if (_state.value.capturing) return
+        val lens = _state.value.lens
+        OpLog.log("flight", "manualShot", mapOf("lens" to lens.name, "state" to _state.value.exec.state.name))
+        _state.update { it.copy(capturing = true) }
+        viewModelScope.launch {
+            val shot = d.capture(lens, 0.0, 1.0)
+            _state.update { it.copy(capturing = false) }
+            val info = shot.getOrNull()
+            manualSaved(info, if (info == null) Result.failure(shot.exceptionOrNull() ?: IllegalStateException("촬영 실패")) else photos.keep(d, info, lens))
+        }
+    }
+
+    /** 수동 사진 경로 결과: 안내 줄, 위치가 없으면 Pilot 2 "위치 레코딩 실패". */
+    private fun manualSaved(info: CaptureInfo?, result: Result<String>) {
+        OpLog.log("flight", "manualSaved", mapOf("ok" to result.isSuccess, "saved" to result.getOrNull(), "error" to result.exceptionOrNull()?.message))
+        if (info != null && info.position == null) camera.noPosition()
+        _state.update { it.copy(shotMessage = result.fold({ w -> "저장했습니다: $w" }, { e -> "촬영 실패: ${e.message}" })) }
     }
     fun skip() = send(Command.Skip())
     /** 지형 추적 시작 거절 창(5.6): [이륙 기준으로 시작] / [취소]. */
@@ -471,6 +532,15 @@ class FlightViewModel(
     fun zoom(up: Boolean) { if (_state.value.cameraFree) camera.zoom(up) }
     fun setVideoMode(on: Boolean) { if (_state.value.cameraFree) camera.setVideoMode(on) }
     fun toggleRecording() { if (_state.value.cameraFree || _state.value.recordingSinceMs != null) camera.toggleRecording() }
+
+    /** 촬영 모드 메뉴(10.5.7): 다른 카메라 조작처럼 자동 비행 구간이 아닐 때만. */
+    fun openShootMenu() { if (_state.value.cameraFree) camera.openShootMenu() }
+    fun closeShootMenu() = camera.closeShootMenu()
+    fun setShootMode(mode: ShootMode) { if (_state.value.cameraFree) camera.setShootMode(mode) }
+    fun setTimer(sec: Double) { if (_state.value.cameraFree) camera.setTimer(sec) }
+
+    /** ☀ 노출 손잡이(탭 초점 옆, 10.5.7): 탭 초점과 같은 때만. */
+    fun setEv(ev: Double) { if (_state.value.cameraFree) camera.setEv(ev) }
 
     /** 짐벌 메뉴(10.5.7): 짐벌 중앙 / 아래(-90°). */
     fun setGimbal(down: Boolean) {
