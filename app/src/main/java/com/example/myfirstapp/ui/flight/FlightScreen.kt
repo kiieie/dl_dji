@@ -202,6 +202,7 @@ private fun FlightContent(
         val fpv: @Composable (Modifier) -> Unit = { m -> FpvView(s.simulated, m) { stream = it } }
         if (mapMain) FlightMap(
             s, interactive = true, pad = listOf(220.dp, 90.dp, 60.dp, 120.dp), Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack, preview = ls?.previewRoute.orEmpty(),
+            onSetHome = vm::setHome,
         )
         else {
             fpv(Modifier.fillMaxSize())

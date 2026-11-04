@@ -1,6 +1,7 @@
 package com.example.myfirstapp
 
 import com.example.myfirstapp.core.config.Tuning
+import com.example.myfirstapp.core.model.GeoCategory
 import com.example.myfirstapp.core.model.GeoSummary
 import com.example.myfirstapp.core.model.HmsIssue
 import com.example.myfirstapp.core.model.HmsLevel
@@ -180,6 +181,21 @@ object AppConfig {
         const val IMPORT_MAX_BYTES = 10L * 1024 * 1024
     }
 
+    /** 앨범 기체 앨범 탭(10.4.9). */
+    object Album {
+        /** 한 번에 읽는 SD 최신 파일 수(렌즈별 파일 포함). 더 오래된 것은 Pilot 2에서 본다. */
+        const val SD_LIST_COUNT = 300
+
+        /** 썸네일·미리보기 하나를 기다리는 시간. */
+        const val SD_THUMB_MS = 8_000L
+
+        /** 원본 하나를 받는 시간 상한(약 20MB JPEG). */
+        const val SD_DOWNLOAD_MS = 120_000L
+
+        /** 안내문(받음·지움·막힘)을 보이는 시간. */
+        const val NOTICE_MS = 3_000L
+    }
+
     object Checks {
         /** 이보다 낮으면 배터리 경고(%). */
         const val BATTERY_MIN_PCT = 30
@@ -357,6 +373,20 @@ object AppConfig {
     object Health {
         val FAKE_ISSUE = HmsIssue("0x16100001", "[모의] 나침반 간섭", "모의 기체 HMS 항목입니다. 비행 화면 모의 RC 줄 [HMS]로 끕니다.", HmsLevel.CAUTION)
         val FAKE_GEO = GeoSummary(120, 1, "[모의] 비행장", 3200.0)
+
+        /**
+         * 모의 GEO 지도 구역(지도 레이어 GEO 구역, 10.4.9): (이름, 종류, 기준점에서 동·북 m, 반지름 m, 높이 제한 m). 기준점은 기체 → H → 지도 대체 위치.
+         * 종류마다 하나씩이라 색을 한눈에 대조한다.
+         */
+        val FAKE_ZONES = listOf(
+            FakeZone("[모의] 비행장", GeoCategory.RESTRICTED, 900.0, 600.0, 300.0, 0),
+            FakeZone("[모의] 비행장 고도", GeoCategory.RESTRICTED, 900.0, 600.0, 700.0, 120),
+            FakeZone("[모의] 승인 구역", GeoCategory.AUTHORIZATION, -800.0, 500.0, 350.0, 0),
+            FakeZone("[모의] 강화 경고", GeoCategory.ENHANCED_WARNING, -700.0, -600.0, 300.0, 0),
+            FakeZone("[모의] 경고 구역", GeoCategory.WARNING, 700.0, -700.0, 400.0, 0),
+        )
+
+        data class FakeZone(val name: String, val category: GeoCategory, val eastM: Double, val northM: Double, val radiusM: Double, val limitM: Int)
     }
 
     /** 카메라 뷰(10.5.2). */

@@ -110,6 +110,15 @@ const val MAP_RC = "#4DABF7"
 /** 기체 화살표·조종기 점 테두리. */
 const val MAP_STROKE_LIGHT = "#FFFFFF"
 
+// GEO 구역 지도 레이어(10.4.9): DJI Fly Safe·Pilot 2 지도 색. 면은 반투명, 테두리는 같은 색
+const val MAP_GEO_RESTRICTED = "#DE4329"
+const val MAP_GEO_AUTHORIZATION = "#1088F2"
+const val MAP_GEO_ENHANCED_WARNING = "#EE8815"
+const val MAP_GEO_WARNING = "#FFCC00"
+const val MAP_GEO_ALTITUDE = "#979797"
+const val MAP_GEO_REGULATORY = "#37C4DB"
+const val MAP_GEO_APPROVED = "#1BAB5A"
+
 /** 홈 기체 그림(우리 선 그림, DJI 그림은 쓰지 않음): 몸체·팔 짙은 회색, 프로펠러 끝 주황(Pilot 2 홈 그림의 색). */
 val AircraftBody = Color(0xFF3A3D42)
 val AircraftPropTip = Color(0xFFFF7A2F)

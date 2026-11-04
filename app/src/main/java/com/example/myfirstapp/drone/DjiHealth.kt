@@ -6,12 +6,15 @@ import android.content.res.Configuration
 import android.content.res.Resources
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.model.GeoArea
+import com.example.myfirstapp.core.model.GeoCategory
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.GeoSummary
 import com.example.myfirstapp.core.model.GeoZone
 import com.example.myfirstapp.core.model.HmsIssue
 import com.example.myfirstapp.core.model.HmsLevel
 import com.example.myfirstapp.core.model.geoSummary
+import com.example.myfirstapp.core.route.Enu
+import com.example.myfirstapp.core.route.LocalProjection
 import dji.sdk.keyvalue.key.HmsKey
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.key.RemoteControllerKey
@@ -19,6 +22,7 @@ import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.hms.HMSMaintainRecordState
 import dji.v5.manager.aircraft.flysafe.FlySafeNotificationListener
 import dji.v5.manager.aircraft.flysafe.FlyZoneManager
+import dji.v5.manager.aircraft.flysafe.info.FlyZoneCategory
 import dji.v5.manager.aircraft.flysafe.info.FlySafeReturnToHomeInformation
 import dji.v5.manager.aircraft.flysafe.info.FlySafeSeriousWarningInformation
 import dji.v5.manager.aircraft.flysafe.info.FlySafeTipInformation
@@ -29,7 +33,9 @@ import dji.v5.manager.aircraft.flysafe.info.MultiPolygonFlyZoneShape
 import dji.v5.manager.diagnostic.DJIDeviceHealthInfo
 import dji.v5.manager.diagnostic.DeviceHealthManager
 import dji.v5.manager.diagnostic.WarningLevel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.text.SimpleDateFormat
@@ -46,6 +52,15 @@ object MockHealth {
     private val active get() = on.value && !djiAircraftConnected()
     internal fun issues() = if (active) listOf(AppConfig.Health.FAKE_ISSUE) else emptyList()
     internal fun geo() = if (active) AppConfig.Health.FAKE_GEO else null
+
+    /** 모의 GEO 지도 구역([AppConfig.Health.FAKE_ZONES]): [anchor] 둘레에 종류마다 하나. 꺼져 있거나 기준점이 없으면 null. */
+    internal fun zones(anchor: GeoPoint?): List<GeoZone>? {
+        if (!active || anchor == null) return null
+        val p = LocalProjection(anchor)
+        return AppConfig.Health.FAKE_ZONES.map { z ->
+            GeoZone(z.name, listOf(GeoArea(p.toGeo(Enu(z.eastM, z.northM)), z.radiusM, limitM = z.limitM)), z.category)
+        }
+    }
 }
 
 /**
@@ -128,6 +143,12 @@ object DjiFlySafe {
 
     /** SDK 등록 뒤 한 번(InspectionApp). */
     fun watch() = runCatching { FlyZoneManager.getInstance().addFlySafeNotificationListener(listener) }
+
+    /**
+     * 지도 GEO 구역 레이어(10.4.9) 값: SDK가 알린 구역(받기 전은 빈 목록). 모의 HMS·GEO가 켜져 있으면(기체 연결 안 됨) [anchor] 둘레 모의 구역.
+     * 조회·받기·잠금 해제는 하지 않는다(알림만, 7.2).
+     */
+    fun mapZones(anchor: () -> GeoPoint?): Flow<List<GeoZone>> = combine(zones, MockHealth.on) { z, _ -> MockHealth.zones(anchor()) ?: z.orEmpty() }
 }
 
 private fun LocationCoordinate2D.geo() = GeoPoint(latitude, longitude)
@@ -141,6 +162,15 @@ private fun FlyZoneInformation.zone() = GeoZone(
             if (p.shape == MultiPolygonFlyZoneShape.CYLINDER) GeoArea(p.cylinderCenter?.geo(), p.cylinderRadius, limitM = p.limitedHeight)
             else GeoArea(points = p.polygonPoints.orEmpty().map { it.geo() }, limitM = p.limitedHeight)
         }
+    },
+    when (category) {
+        FlyZoneCategory.RESTRICTED -> GeoCategory.RESTRICTED
+        FlyZoneCategory.AUTHORIZATION -> GeoCategory.AUTHORIZATION
+        FlyZoneCategory.ENHANCED_WARNING -> GeoCategory.ENHANCED_WARNING
+        FlyZoneCategory.WARNING -> GeoCategory.WARNING
+        FlyZoneCategory.UTMISS_REGULATION -> GeoCategory.REGULATORY
+        FlyZoneCategory.UTMISS_LAW_ALLOW -> GeoCategory.APPROVED
+        else -> GeoCategory.UNKNOWN
     },
 )
 

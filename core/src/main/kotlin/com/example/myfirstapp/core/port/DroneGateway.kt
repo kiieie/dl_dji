@@ -74,6 +74,9 @@ interface DroneGateway {
 
     suspend fun returnHome(): Result<Unit>
 
+    /** 지도 기체·조종기 카드 [H 지정](10.5.7): 홈포인트(RTH 목적지)를 지금 기체 위치([toRc]면 조종기 GPS 위치)로 바꾼다. */
+    suspend fun setHome(toRc: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException("홈포인트 지정 미지원"))
+
     /** 착륙 보호 확인: [Telemetry.landingConfirmNeeded]일 때 마저 내려앉는다. */
     suspend fun confirmLanding(): Result<Unit> = Result.failure(UnsupportedOperationException("착륙 확인 미지원"))
 

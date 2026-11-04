@@ -447,6 +447,10 @@ interface ProjectDao {
     @Query("SELECT * FROM pole WHERE projectId = :projectId")
     suspend fun polesOf(projectId: Long): List<PoleEntity>
 
+    /** 앨범 뷰어 정보(10.4.9): 전주에 붙지 않은 사진의 가까운 전주를 모든 프로젝트에서 찾는다. */
+    @Query("SELECT * FROM pole")
+    suspend fun allPoles(): List<PoleEntity>
+
     @Update
     suspend fun updatePoles(poles: List<PoleEntity>)
 

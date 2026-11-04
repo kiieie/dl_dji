@@ -48,6 +48,8 @@ import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.R
 import com.example.myfirstapp.core.model.Annotation
 import com.example.myfirstapp.core.model.Annotations
+import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.parseCoordinate
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.PoleSearch
 import com.example.myfirstapp.data.MapSource
@@ -124,10 +126,13 @@ internal fun MapAttribution(text: String, modifier: Modifier) {
 
 /**
  * 레이어(10.5.7): 배경 지도 Bing 위성 / VWorld 위성 / VWorld 일반(7.4, 설정과 같은 값). VWorld 키가 없는 빌드는 VWorld를 끈다.
- * [background]가 있으면(계획 지도) 배경 끄기·켜기도 메뉴에 둔다.
+ * [background]가 있으면(계획 지도) 배경 끄기·켜기도 메뉴에 둔다. [geo]가 있으면(비행 지도) GEO 구역 보기 켬·끔(10.4.9, Pilot 2 레이어 → GEO 구역).
  */
 @Composable
-internal fun MapLayerButton(current: MapSource, size: Dp, onPick: (MapSource) -> Unit, background: Boolean? = null, onToggleBackground: () -> Unit = {}) {
+internal fun MapLayerButton(
+    current: MapSource, size: Dp, onPick: (MapSource) -> Unit, background: Boolean? = null, onToggleBackground: () -> Unit = {},
+    geo: Boolean? = null, onToggleGeo: () -> Unit = {},
+) {
     var open by remember { mutableStateOf(false) }
     Box {
         MapTool("레이어", active = open || background == false, size = size, onClick = { open = true }) { tint ->
@@ -142,6 +147,7 @@ internal fun MapLayerButton(current: MapSource, size: Dp, onPick: (MapSource) ->
                 )
             }
             if (background != null) DropdownMenuItem(text = { Text(if (background) "배경 끄기" else "배경 켜기", fontSize = FontSize.Body) }, onClick = { open = false; onToggleBackground() })
+            if (geo != null) DropdownMenuItem(text = { Text((if (geo) "✓ " else "    ") + "GEO 구역", fontSize = FontSize.Body) }, onClick = { open = false; onToggleGeo() })
         }
     }
 }
@@ -163,12 +169,16 @@ internal fun MapTargetButton(size: Dp, aircraftKnown: Boolean, rcKnown: Boolean,
 
 /**
  * 검색(10.5.7): 이 지도의 전주를 전주번호·선로번호로([PoleSearch]), 핀포인트·선·영역을 이름으로([Annotations.search]) 찾아(앱 DB만)
- * 고르면 [onPick]·[onPickNote]. 둘 다 없으면 끈다.
+ * 고르면 [onPick]·[onPickNote]. [onPickPoint]가 있으면 좌표("36.48, 127.33", [parseCoordinate])도 받아 그 자리로 간다(주소 검색은 온라인이라 없음).
+ * 찾을 것이 없으면 끈다.
  */
 @Composable
-internal fun MapSearchButton(poles: List<Pole>, size: Dp, notes: List<Annotation> = emptyList(), onPickNote: (Annotation) -> Unit = {}, onPick: (Pole) -> Unit) {
+internal fun MapSearchButton(
+    poles: List<Pole>, size: Dp, notes: List<Annotation> = emptyList(), onPickNote: (Annotation) -> Unit = {},
+    onPickPoint: ((GeoPoint) -> Unit)? = null, onPick: (Pole) -> Unit,
+) {
     var open by rememberSaveable { mutableStateOf(false) }
-    val any = poles.isNotEmpty() || notes.isNotEmpty()
+    val any = poles.isNotEmpty() || notes.isNotEmpty() || onPickPoint != null
     MapTool(if (any) "검색" else "검색(전주·주석 없음)", active = open, enabled = any, size = size, onClick = { open = true }) { tint ->
         Icon(painterResource(R.drawable.ic_search), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
     }
@@ -177,6 +187,7 @@ internal fun MapSearchButton(poles: List<Pole>, size: Dp, notes: List<Annotation
     val found = remember(poles, query) { PoleSearch.search(poles, query, AppConfig.Map.SEARCH_LIMIT) }
     // 전주와 합쳐 [AppConfig.Map.SEARCH_LIMIT]개까지(대화상자 높이)
     val foundNotes = remember(notes, query, found) { Annotations.search(notes, query, AppConfig.Map.SEARCH_LIMIT - found.size) }
+    val point = remember(query) { onPickPoint?.let { parseCoordinate(query) } }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     FullscreenAlertDialog(
@@ -186,9 +197,19 @@ internal fun MapSearchButton(poles: List<Pole>, size: Dp, notes: List<Annotation
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 OutlinedTextField(
                     query, { query = it }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
-                    label = { Text("전주번호·선로번호 또는 핀포인트·선·영역 이름") },
+                    label = { Text(if (onPickPoint != null) "전주번호·선로번호, 주석 이름 또는 좌표(36.48, 127.33)" else "전주번호·선로번호 또는 핀포인트·선·영역 이름") },
                 )
-                if (query.isNotBlank() && found.isEmpty() && foundNotes.isEmpty()) Text("찾는 전주·주석이 없습니다", fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (query.isNotBlank() && found.isEmpty() && foundNotes.isEmpty() && point == null) Text("찾는 전주·주석이 없습니다", fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                point?.let { p ->
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = Dimens.RowList).clickable(onClickLabel = "좌표로 이동") { open = false; onPickPoint?.invoke(p) }.padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(painterResource(R.drawable.ic_target), contentDescription = null, modifier = Modifier.size(14.dp))
+                        Text("%.6f, %.6f".format(java.util.Locale.ROOT, p.lat, p.lon), Modifier.weight(1f), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text("좌표로 이동", fontSize = FontSize.Caption, color = TextSoft, maxLines = 1)
+                    }
+                }
                 found.forEach { p ->
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = Dimens.RowList).clickable(onClickLabel = "${p.displayName}로 이동") { open = false; onPick(p) }.padding(horizontal = 4.dp),

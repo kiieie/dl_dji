@@ -285,9 +285,13 @@ private fun action(label: String, info: DJIActionKeyInfo<EmptyMsg, EmptyMsg>, co
         djiValue<EmptyMsg> { keys.performAction(k, it) }
     })
 
-private suspend fun homeToAircraft() = djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(FlightControllerKey.KeyHomeLocationUsingCurrentAircraftLocation), it) }
+/** 홈포인트를 기체 위치로(비행 전 점검·기체 설정·지도 기체 카드 [H 지정]이 같이 쓴다). */
+internal suspend fun homeToAircraft() {
+    djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(FlightControllerKey.KeyHomeLocationUsingCurrentAircraftLocation), it) }
+}
 
-private suspend fun homeToRc() {
+/** 홈포인트를 조종기 GPS 위치로(지도 조종기 카드 [H 지정]도 같음). */
+internal suspend fun homeToRc() {
     val g = read(RemoteControllerKey.KeyRcGPSInfo)?.takeIf { it.isValid == true } ?: error("조종기 GPS 없음")
     djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(FlightControllerKey.KeyHomeLocationUsingCurrentRemoteControllerLocation), LocationCoordinate2D(g.location.latitude, g.location.longitude), it) }
 }

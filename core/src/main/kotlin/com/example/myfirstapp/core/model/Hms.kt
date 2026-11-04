@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.model
 
+import com.example.myfirstapp.core.route.Enu
 import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.route.Polygon
 
@@ -36,8 +37,29 @@ fun hmsModule(code: String): String = when (code.drop(2).take(2).uppercase()) {
 /** GEO 구역의 영역 하나: 원([center]·[radiusM]) 또는 다각형([points]). [limitM]은 그 영역 높이 제한(m, 0이면 없음). */
 data class GeoArea(val center: GeoPoint? = null, val radiusM: Double = 0.0, val points: List<GeoPoint> = emptyList(), val limitM: Int = 0)
 
+/**
+ * GEO 구역 종류(DJI Fly Safe, SDK `FlyZoneCategory`). [ALTITUDE]는 SDK 종류가 아니라 제한 구역 안 높이 제한 영역(지도에서 회색)이다.
+ * [REGULATORY]는 SDK `UTMISS_REGULATION`(규제 제한), [APPROVED]는 `UTMISS_LAW_ALLOW`(허가 구역).
+ */
+enum class GeoCategory(val title: String) {
+    RESTRICTED("제한 구역"), AUTHORIZATION("승인 구역"), ENHANCED_WARNING("강화 경고 구역"), WARNING("경고 구역"),
+    ALTITUDE("고도 제한 구역"), REGULATORY("규제 제한 구역"), APPROVED("허가 구역"), UNKNOWN("기타 구역"),
+}
+
 /** GEO 구역(DJI 비행 제한 구역) 하나. */
-data class GeoZone(val name: String, val areas: List<GeoArea>)
+data class GeoZone(val name: String, val areas: List<GeoArea>, val category: GeoCategory = GeoCategory.UNKNOWN) {
+    /** 지도에 그릴 종류: 제한 구역 안 높이 제한 영역(높이 > 0)은 Pilot 2처럼 고도 제한 구역으로 본다. */
+    fun displayCategory(area: GeoArea): GeoCategory = if (category == GeoCategory.RESTRICTED && area.limitM > 0) GeoCategory.ALTITUDE else category
+}
+
+/** 원 영역을 지도에 그릴 [n]각형 꼭짓점(닫지 않음, 정북에서 시계 방향). 평면 근사(5.2)라 수 km 원도 충분하다. */
+fun circleRing(center: GeoPoint, radiusM: Double, n: Int = 48): List<GeoPoint> {
+    val p = LocalProjection(center)
+    return List(n) { i ->
+        val a = 2 * Math.PI * i / n
+        p.toGeo(Enu(radiusM * Math.sin(a), radiusM * Math.cos(a)))
+    }
+}
 
 /** 홈 GEO 구역 카드: 지금 자리의 최고 고도(m), 주변 구역 수, 가장 가까운 구역 이름과 거리(m, 안이면 0). */
 data class GeoSummary(val maxAltitudeM: Int, val zones: Int, val nearest: String?, val nearestM: Double?)

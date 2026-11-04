@@ -21,6 +21,7 @@ import com.example.myfirstapp.core.route.RouteSummary
 import com.example.myfirstapp.ui.procedure.ProcedurePage
 import com.example.myfirstapp.data.TelemetrySampleEntity
 import com.example.myfirstapp.drone.DjiDroneGateway
+import com.example.myfirstapp.drone.DjiFlySafe
 import com.example.myfirstapp.drone.djiAircraftConnected
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -42,6 +43,7 @@ import com.example.myfirstapp.core.executor.recoveredCaptures
 import com.example.myfirstapp.core.fake.FakeDroneGateway
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.GeoZone
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.port.DroneGateway
@@ -130,6 +132,8 @@ data class FlightUiState(
     val nextWaypoint: NextWaypoint? = null,
     /** 기체·홈·조종기 위치를 모를 때(실내 수동 비행) 지도를 맞출 곳: 지난 비행 마지막 위치 또는 최근 미션 이륙 지점. */
     val mapFallback: GeoPoint? = null,
+    /** 지도 GEO 구역 레이어(10.4.9): SDK가 알린 기체 둘레 구역(로컬만), 모의 HMS·GEO면 모의 구역. */
+    val geoZones: List<GeoZone> = emptyList(),
     /**
      * 미션 칸 수(10.5.2, 홈·라이브러리와 같은 정의): 미션의 모든 방문 전주 수, 이 화면을 열 때 이미 끝난(완료·건너뜀·실패) 전주 수,
      * 이미 찍은 사진 수(CAPTURE 행), 예상 사진 수(전주마다 [FlightParams.photosPerPole] 합). 실행기는 남은 전주만 가지므로 여기에 더해 보인다.
@@ -217,6 +221,9 @@ class FlightViewModel(
         viewModelScope.launch { load() }
         viewModelScope.launch { rcButtons.collect(::onRcButton) }
         viewModelScope.launch { settings.arEnabled.collect { on -> _state.update { it.copy(ar = on) } } }
+        viewModelScope.launch {
+            DjiFlySafe.mapZones { _state.value.let { it.telemetry?.position ?: it.home ?: it.mapFallback } }.collect { z -> _state.update { it.copy(geoZones = z) } }
+        }
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
             _state.update { it.copy(mapFiles = files) }
@@ -513,6 +520,15 @@ class FlightViewModel(
 
     /** 지도 지우개(10.5.4): 비행 궤적을 지운다(기록 TELEMETRY_SAMPLE은 그대로). */
     fun clearTrack() = _state.update { it.copy(track = emptyList()) }
+
+    /** 지도 기체·조종기 카드 [H 지정](10.5.7): 홈포인트를 기체([toRc]면 조종기) 위치로. 결과는 안내 글로. */
+    fun setHome(toRc: Boolean) {
+        val d = drone ?: return
+        viewModelScope.launch {
+            val r = d.setHome(toRc)
+            _state.update { it.copy(shotMessage = r.fold({ homeSetMessage(toRc) }, { e -> "홈포인트 지정 실패: ${e.message}" })) }
+        }
+    }
 
     /** 지도 레이어(10.5.7): 배경을 바꾸고 설정에도 남긴다. */
     fun setMapSource(source: MapSource) { viewModelScope.launch { settings.pickMapSource(source).let { bg -> _state.update { it.copy(background = bg) } } } }
