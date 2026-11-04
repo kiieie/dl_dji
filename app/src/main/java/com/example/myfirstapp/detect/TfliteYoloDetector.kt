@@ -11,6 +11,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Build
 import android.util.Log
+import com.example.myfirstapp.core.detect.GpuCacheNames
 import com.example.myfirstapp.core.detect.Letterbox
 import com.example.myfirstapp.core.detect.Region
 import com.example.myfirstapp.core.detect.YoloDecoder
@@ -23,10 +24,15 @@ import com.example.myfirstapp.core.port.Detector
 import com.example.myfirstapp.data.OpLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.TensorFlowLite
 import org.tensorflow.lite.gpu.CompatibilityList
 import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.gpu.GpuDelegateFactory
@@ -44,6 +50,8 @@ class TfliteYoloDetector private constructor(
     val spec: ModelSpec,
     private val interpreter: Interpreter,
     private val gpu: GpuDelegate?,
+    /** GPU 선호("FAST"/"SUSTAINED", 9.7 두 단계 열기). CPU면 null. */
+    val preference: String?,
     private val decoder: YoloDecoder,
     private val outSize: Int,
     private val n: Int,
@@ -178,12 +186,18 @@ class TfliteYoloDetector private constructor(
         }
     }
 
+    /** 추론 스레드에서만 바꾼다(두 번 닫아도 열린 GPU 탐지기 수는 한 번만 준다). */
+    private var closed = false
+
     /** 진행 중인 추론이 끝난 뒤 같은 스레드에서 닫는다(GPU delegate는 인터프리터 뒤에). */
     override fun close() {
         CoroutineScope(worker).launch {
+            if (closed) return@launch
+            closed = true
             interpreter.close()
             gpu?.close()
             dst.recycle()
+            if (gpu != null) openGpu.update { it - 1 }
         }
     }
 
@@ -194,22 +208,97 @@ class TfliteYoloDetector private constructor(
         private const val PAD_GREY = 114
         private const val INV255 = 1f / 255
 
-        /** GPU를 같은 모델로 되풀이해 돌린다(비행 중 1장·정밀 모두, 9.7 O3). 열기는 느려지고 추론이 고르다. 캐시(O2)가 열기 시간을 메운다. */
-        private const val GPU_PREFERENCE = GpuDelegateFactory.Options.INFERENCE_PREFERENCE_SUSTAINED_SPEED
+        /**
+         * 지속 성능(9.7 O3): 추론이 빠르고 고르지만(1280 976→892ms) 캐시 없이 처음 열 때 커널 맞추기가 640 60초·960 331초·1280 429초다.
+         * 그래서 캐시가 있을 때만 이 선호로 열고, 캐시는 [GpuCachePrep]이 땅 위에서 쉴 때 [buildSustainedCache]로 만든다.
+         */
+        private const val SUSTAINED = GpuDelegateFactory.Options.INFERENCE_PREFERENCE_SUSTAINED_SPEED
 
-        /** GPU 직렬화 캐시 이름(9.7 O2). 모델 파일·입력·선호·기기 펌웨어가 바뀌면 다른 이름이 되어 옛 캐시를 쓰지 않는다. */
-        private fun gpuToken(spec: ModelSpec, file: File) =
-            "%08x".format("${spec.version}|${file.length()}|${file.lastModified()}|${spec.inputSize}|$GPU_PREFERENCE|${Build.FINGERPRINT}".hashCode())
+        /** 기본 선호. 지속 성능 캐시가 없을 때 바로 열어 탐지를 쓸 수 있게 한다(자기 토큰으로 캐시도 남긴다). */
+        private const val FAST = GpuDelegateFactory.Options.INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER
+
+        private val runtime by lazy { runCatching { TensorFlowLite.runtimeVersion() }.getOrDefault("?") }
+
+        /**
+         * GPU 직렬화 캐시 토큰(9.7 O2). LiteRT 런타임·기기 펌웨어·모델 파일(크기·수정 시각)·입력·선호가 바뀌면 토큰이 바뀌어 옛 캐시를 쓰지 않는다.
+         * 모델 몫은 폴더 이름이라 같은 모델의 옛 캐시를 골라 지울 수 있다([GpuCacheNames.stale]).
+         */
+        private fun gpuToken(dir: File, spec: ModelSpec, file: File, preference: Int) = GpuCacheNames.token(
+            dir.name, listOf(runtime, Build.FINGERPRINT, spec.version, file.length(), file.lastModified(), spec.inputSize, preference).joinToString("|"),
+        )
+
+        /** 열린 GPU 탐지기 수(비행 중 1장·정밀·속도 측정). 0이고 쉴 이유가 없을 때만 [GpuCachePrep]이 캐시를 만든다. */
+        private val openGpu = MutableStateFlow(0)
+        val gpuOpen: StateFlow<Int> = openGpu.asStateFlow()
+
+        /** 이 모델의 지속 성능 캐시가 [gpuCache]에 있는지(다음 열기가 SUSTAINED인지). */
+        fun hasSustainedCache(dir: File, gpuCache: File): Boolean = runCatching {
+            GpuCacheNames.has(gpuCache.list().orEmpty().toList(), gpuToken(dir, ModelSpec.read(dir), File(dir, "model.tflite"), SUSTAINED))
+        }.getOrDefault(false)
+
+        /** GPU 선호와 캐시 토큰(캐시 폴더가 없으면 null), 열기 전에 캐시가 있었는지. */
+        private class GpuPlan(val preference: Int, val token: String?, val cached: Boolean) {
+            val name get() = if (preference == SUSTAINED) "SUSTAINED" else "FAST"
+        }
+
+        /**
+         * 두 단계 열기(9.7): 지속 성능 캐시가 있으면(또는 [sustained]면) SUSTAINED, 없으면 FAST. 캐시 폴더가 없으면 캐시 없이 FAST.
+         * 같은 모델의 옛 토큰 캐시(모델·런타임·펌웨어가 바뀌기 전 것)는 지운다.
+         */
+        private fun gpuPlan(dir: File, spec: ModelSpec, file: File, gpuCache: File?, sustained: Boolean): GpuPlan {
+            if (gpuCache == null) return GpuPlan(FAST, null, false)
+            val fast = gpuToken(dir, spec, file, FAST)
+            val slow = gpuToken(dir, spec, file, SUSTAINED)
+            val names = gpuCache.apply { mkdirs() }.list().orEmpty().toList()
+            GpuCacheNames.stale(names, listOf(fast, slow)).takeIf { it.isNotEmpty() }?.let { old ->
+                old.forEach { File(gpuCache, it).delete() }
+                OpLog.log("detect", "gpuCache", mapOf("step" to "stale", "model" to dir.name, "deleted" to old.size))
+            }
+            val useSlow = sustained || GpuCacheNames.has(names, slow)
+            val token = if (useSlow) slow else fast
+            return GpuPlan(if (useSlow) SUSTAINED else FAST, token, GpuCacheNames.has(names, token))
+        }
+
+        private fun gpuDelegate(plan: GpuPlan, gpuCache: File?) = CompatibilityList().use { c ->
+            check(c.isDelegateSupportedOnThisDevice) { "이 기기는 GPU delegate를 지원하지 않습니다" }
+            GpuDelegate(
+                c.bestOptionsForThisDevice.apply {
+                    setInferencePreference(plan.preference)
+                    if (gpuCache != null && plan.token != null) setSerializationParams(gpuCache.path, plan.token)
+                },
+            )
+        }
+
+        /**
+         * 지속 성능 캐시만 만든다(9.7, [GpuCachePrep]의 자기 스레드에서. 추론 스레드를 막지 않는다). 열고 바로 닫는다. 걸린 시간(ms).
+         * 네이티브 열기라 도중에 멈출 수 없다. 캐시 파일이 생기지 않으면(OpenCL이 아니면) 예외를 던진다.
+         */
+        fun buildSustainedCache(dir: File, gpuCache: File): Long {
+            val spec = ModelSpec.read(dir)
+            val file = File(dir, "model.tflite")
+            val plan = gpuPlan(dir, spec, file, gpuCache, sustained = true)
+            val t0 = System.nanoTime()
+            val d = gpuDelegate(plan, gpuCache)
+            try {
+                Interpreter(file, Interpreter.Options().addDelegate(d)).close()
+            } finally {
+                d.close()
+            }
+            check(hasSustainedCache(dir, gpuCache)) { "캐시 파일이 생기지 않았습니다(OpenCL이 아님)" }
+            return (System.nanoTime() - t0) / 1_000_000
+        }
 
         /** 모든 탐지기가 함께 쓰는 추론 스레드 하나(비행 중 1장·정밀·속도 측정이 차례로). */
         private val worker = Executors.newSingleThreadExecutor { Thread(it, "detector") }.asCoroutineDispatcher()
 
         /**
          * 모델 폴더 하나를 연다. [gpu]면 GPU delegate를 먼저 해 보고 안 되면 CPU([AppConfig.Detector.THREADS] 스레드)로 간다.
-         * [gpuCache]가 있으면 GPU 프로그램을 그 폴더에 저장해 두 번째부터 빨리 연다(9.7 O2, OpenCL만).
+         * [gpuCache]가 있으면 GPU 프로그램을 그 폴더에 저장해 두 번째부터 빨리 연다(9.7 O2, OpenCL만). 지속 성능 캐시가 있으면 SUSTAINED,
+         * 없으면 FAST로 바로 연다(두 단계 열기). [sustained]면 캐시가 없어도 SUSTAINED로 연다(속도 측정 `full`, 수 분 걸림).
          * 규격이 맞지 않으면 이유를 담은 예외를 던진다. 추론 스레드에서 연다(GPU delegate 규칙).
          */
-        suspend fun open(dir: File, gpu: Boolean, gpuCache: File? = null): TfliteYoloDetector = withContext(worker) { load(dir, gpu, gpuCache) }
+        suspend fun open(dir: File, gpu: Boolean, gpuCache: File? = null, sustained: Boolean = false): TfliteYoloDetector =
+            withContext(worker) { load(dir, gpu, gpuCache, sustained) }
 
         /** 순서대로 열어 보고 처음 열린 모델(9.6 [com.example.myfirstapp.core.detect.ModelPick] 순서). 없으면 null. 거부한 폴더는 로그에 이유를 남긴다. */
         suspend fun openFirst(root: File, order: List<String>, gpu: Boolean, gpuCache: File? = null): TfliteYoloDetector? =
@@ -220,29 +309,33 @@ class TfliteYoloDetector private constructor(
             }
 
         /** 규격 검사·CPU 열기(설정 화면 검사, 가져오기). 쓰고 나면 닫는다. */
-        fun load(dir: File, gpu: Boolean = false, gpuCache: File? = null): TfliteYoloDetector {
+        fun load(dir: File, gpu: Boolean = false, gpuCache: File? = null, sustained: Boolean = false): TfliteYoloDetector {
             val spec = ModelSpec.read(dir)
             val labels = File(dir, "labels.txt").readLines().map { it.trim() }.filter { it.isNotEmpty() }
             val file = File(dir, "model.tflite")
             var delegate: GpuDelegate? = null
             var gpuError: String? = null
+            var plan: GpuPlan? = null
             val interpreter = (if (gpu) {
                 runCatching {
-                    val d = CompatibilityList().use { c ->
-                        check(c.isDelegateSupportedOnThisDevice) { "이 기기는 GPU delegate를 지원하지 않습니다" }
-                        GpuDelegate(
-                            c.bestOptionsForThisDevice.apply {
-                                setInferencePreference(GPU_PREFERENCE)
-                                gpuCache?.let { setSerializationParams(it.apply { mkdirs() }.path, gpuToken(spec, file)) }
-                            },
+                    val t0 = System.nanoTime()
+                    val p = gpuPlan(dir, spec, file, gpuCache, sustained).also { plan = it }
+                    val d = gpuDelegate(p, gpuCache)
+                    delegate = d
+                    Interpreter(file, Interpreter.Options().addDelegate(d)).also {
+                        OpLog.log(
+                            "detect", "gpuCache",
+                            mapOf(
+                                "step" to "open", "model" to dir.name, "preference" to p.name, "cached" to p.cached,
+                                "serialize" to (p.token != null), "ms" to (System.nanoTime() - t0) / 1_000_000,
+                            ),
                         )
                     }
-                    delegate = d
-                    Interpreter(file, Interpreter.Options().addDelegate(d))
                 }.onFailure {
                     // NoClassDefFoundError 등도 잡아 CPU로 간다
                     delegate?.close()
                     delegate = null
+                    plan = null
                     gpuError = it.message ?: it::class.simpleName
                 }.getOrNull()
             } else null) ?: Interpreter(file, Interpreter.Options().setNumThreads(AppConfig.Detector.THREADS))
@@ -258,7 +351,8 @@ class TfliteYoloDetector private constructor(
                     "출력 텐서 ${shape.contentToString()} ${ot.dataType()} ≠ [1, ${4 + labels.size}, N] FLOAT32 (라벨 ${labels.size}개)"
                 }
                 val decoder = YoloDecoder(labels, spec.alertLabels, spec.score, spec.iou, spec.pixelBoxes)
-                return TfliteYoloDetector(spec, interpreter, delegate, decoder, shape[1] * shape[2], shape[2]).also { d ->
+                return TfliteYoloDetector(spec, interpreter, delegate, plan?.name, decoder, shape[1] * shape[2], shape[2]).also { d ->
+                    if (delegate != null) openGpu.update { it + 1 }
                     if (gpu) OpLog.log("detect", "open", mapOf("model" to spec.version, "dir" to dir.name, "delegate" to d.delegate, "gpuError" to gpuError))
                 }
             } catch (e: Throwable) {

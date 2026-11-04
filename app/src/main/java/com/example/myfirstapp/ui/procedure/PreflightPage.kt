@@ -133,7 +133,9 @@ private fun m(v: Double) = String.format(Locale.ROOT, "%.1f", v)
 @Composable
 private fun StatusBlock(s: PreflightUiState) {
     val r = s.report
-    val rc by (LocalContext.current.applicationContext as InspectionApp).rcBattery.collectAsStateWithLifecycle()
+    val app = LocalContext.current.applicationContext as InspectionApp
+    val rc by app.rcBattery.collectAsStateWithLifecycle()
+    val gpu by app.gpuPrep.status.collectAsStateWithLifecycle()
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         val ok = s.warnings == 0
         Row(
@@ -155,6 +157,8 @@ private fun StatusBlock(s: PreflightUiState) {
                 StatusCell("홈포인트", if (r == null) "--" else if (home) "기록됨" else "미설정", color = if (home) Color.White else Warning)
                 StatusCell("SD", r?.let { "${m(it.sdFreeMb / 1024.0)}G" } ?: "--")
                 StatusCell("GNSS", r?.let { "${it.gpsSatellites}" } ?: "--", color = if (r != null && r.gpsSatellites == 0) Error else Color.White)
+                // 9.7 두 단계 열기: 지속 성능 GPU 캐시. 만드는 중이면 이륙 전에 끝나기를 기다리는 편이 낫다(멈출 수 없음)
+                gpu.text?.let { StatusCell("모델 GPU", it.removePrefix("모델 GPU "), color = if (gpu.ready) Color.White else Warning) }
             }
         }
     }

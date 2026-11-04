@@ -48,8 +48,11 @@ class PreciseDetection(
     /** 조종기 발열 상태(앱 수명 동안 하나, 비행 중 1장 탐지도 본다, 9.7 C). */
     val thermal: StateFlow<Int> = watchThermal(context)
 
-    /** GPU 프로그램 캐시 폴더(9.7 O2). 앱을 새로 깔면 시스템이 비운다(`codeCacheDir`). */
-    val gpuCache = File(context.codeCacheDir, "gpu")
+    /**
+     * GPU 프로그램 캐시 폴더(9.7 O2). `codeCacheDir`는 앱을 고쳐 깔 때마다 시스템이 비워 다음 첫 열기가 수 분 걸렸다(커널 맞추기).
+     * `filesDir`는 업데이트 뒤에도 남는다. 옛 캐시는 토큰(런타임·펌웨어·모델 파일)이 바뀔 때 지운다.
+     */
+    val gpuCache = File(context.filesDir, "gpu-cache")
 
     /** 쉬는 이유. null이면 돌린다. */
     val pauseReason: StateFlow<String?> = combine(flyingBy, benchRunning, thermal, rcBattery) { flying, bench, thermal, battery ->
@@ -97,7 +100,7 @@ class PreciseDetection(
         if (dao.capturesWithoutDetection(specs.getValue(first).version, since).isEmpty()) return emptyList()
         val m = TfliteYoloDetector.openFirst(modelsDir, order, gpu = true, gpuCache) ?: return emptyList()
         model = m
-        OpLog.log("precise", "open", mapOf("model" to m.modelVersion, "delegate" to (m as? TfliteYoloDetector)?.delegate))
+        OpLog.log("precise", "open", mapOf("model" to m.modelVersion, "delegate" to m.delegate, "gpu" to m.preference))
         return dao.capturesWithoutDetection(m.modelVersion, since)
     }
 

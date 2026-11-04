@@ -212,6 +212,12 @@ object AppConfig {
          * (11-03 사진 80장 PC 대조: 640+가운데 0.5 재현율 0.88, 640 전체 0.05). 1이면 자르지 않는다.
          */
         const val LIVE_CROP_FRACTION = 0.5f
+
+        /**
+         * 지속 성능 GPU 캐시 만들기(9.7 두 단계 열기, `GpuCachePrep`)를 시작하기 전에 쉴 이유·열린 탐지기 없이 그대로여야 하는 시간(ms).
+         * 착륙·화면 닫기 직후 정밀 탐지·비행 중 모델이 먼저 열 틈을 준다. 시작하면 멈출 수 없다(640 60초·1280 7분).
+         */
+        const val GPU_BUILD_SETTLE_MS = 30_000L
     }
 
     /** 착륙 뒤 정밀 탐지(9.6, `PreciseDetection`). */
