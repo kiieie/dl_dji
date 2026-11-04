@@ -66,6 +66,8 @@ import com.example.myfirstapp.ui.NOTE_LAYERS
 import com.example.myfirstapp.ui.NOTE_VERTEX
 import com.example.myfirstapp.ui.PinCard
 import com.example.myfirstapp.ui.addAnnotationLayers
+import com.example.myfirstapp.ui.addGeoZoneLayers
+import com.example.myfirstapp.ui.setGeoZones
 import com.example.myfirstapp.ui.annotationViewModel
 import com.example.myfirstapp.ui.setAnnotations
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -149,6 +151,8 @@ internal fun FlightMap(
     clockMs: Long? = null,
     /** 라이브러리 패널에서 누른 경로(10.5.8): 소티마다 이륙 지점 → 전주 → 이륙 지점. 파란 점선으로 그리고 바뀌면 그 경로에 맞춘다. */
     preview: List<List<GeoPoint>> = emptyList(),
+    /** 기체·조종기 카드 [H 지정](10.5.7): 홈포인트를 기체(true면 조종기) 위치로. null이면 버튼 없음(다시 보기). */
+    onSetHome: ((toRc: Boolean) -> Unit)? = null,
 ) {
     val mapView = rememberMapView()
     val density = LocalDensity.current
@@ -159,6 +163,8 @@ internal fun FlightMap(
     // N 잠금(Pilot 2): 북쪽 위 고정 ↔ 기수 방향이 위
     var northUp by rememberSaveable { mutableStateOf(true) }
     var card by remember { mutableStateOf<MarkerCard?>(null) }
+    // 레이어 → GEO 구역(10.4.9): 처음은 켬(Pilot 2 맞춤 설정 비행 영역 기본 켬)
+    var geoOn by rememberSaveable { mutableStateOf(true) }
     var labels by remember { mutableStateOf<List<Pair<Pole, Offset>>>(emptyList()) }
     var wpLabels by remember { mutableStateOf<List<Pair<Waypoint, Offset>>>(emptyList()) }
     val latest by rememberUpdatedState(s)
@@ -248,6 +254,8 @@ internal fun FlightMap(
     LaunchedEffect(s.mapFiles, s.background) {
         mapView.getMapAsync { map ->
             map.setStyle(Style.Builder().fromJson(styleJson(s.mapFiles, s.background))) { style ->
+                // GEO 구역은 맨 아래(경로·전주·표지가 위)
+                style.addGeoZoneLayers(scale = if (interactive) 1f else 0.75f)
                 listOf("route", "track", "rth", "poles", "preview").forEach { style.addSource(GeoJsonSource(it)) }
                 style.addLayer(LineLayer("route-line", "route").withProperties(lineColor(MAP_ROUTE), lineWidth(2f)))
                 style.addLayer(LineLayer("preview-line", "preview").withProperties(lineColor(Accent.toArgb()), lineWidth(3f), lineDasharray(arrayOf(2f, 1f))))
@@ -287,11 +295,13 @@ internal fun FlightMap(
     // 셋 다 모르면(실내) 지난 비행 마지막 위치·최근 미션 이륙 지점([FlightUiState.mapFallback], 11-04 RC)
     val t = s.telemetry
     val rth = s.exec.state == ExecState.ReturningHome || t?.flightMode == FlightMode.GO_HOME
-    LaunchedEffect(styleGen, t?.position, t?.headingDeg, t?.rcPosition, t?.isFlying, s.home, s.mapFallback, northUp, rth) {
+    LaunchedEffect(styleGen, t?.position, t?.headingDeg, t?.rcPosition, t?.isFlying, t?.home, s.home, s.mapFallback, northUp, rth) {
         mapView.getMapAsync { map ->
             val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
-            style.setMarkers(MapMarkers(home = s.home, aircraft = t?.position, headingDeg = t?.headingDeg ?: 0.0, rc = t?.rcPosition))
-            val back = t?.position?.takeIf { rth }?.let { a -> s.home?.let { h -> LineString.fromLngLats(listOf(a.toPoint(), h.toPoint())) } }
+            // H는 기체가 알린 홈포인트([H 지정]으로 바뀜), 모르면 계획 이륙 지점
+            val home = t?.home ?: s.home
+            style.setMarkers(MapMarkers(home = home, aircraft = t?.position, headingDeg = t?.headingDeg ?: 0.0, rc = t?.rcPosition))
+            val back = t?.position?.takeIf { rth }?.let { a -> home?.let { h -> LineString.fromLngLats(listOf(a.toPoint(), h.toPoint())) } }
             style.getSourceAs<GeoJsonSource>("rth")?.setGeoJson(FeatureCollection.fromFeatures(listOfNotNull(back?.let { Feature.fromGeometry(it) })))
             val points = if (s.poles.isNotEmpty()) s.poles.map { it.position } + listOfNotNull(s.home)
             else listOfNotNull(t?.position ?: s.home ?: t?.rcPosition ?: s.mapFallback)
@@ -321,6 +331,9 @@ internal fun FlightMap(
                 !northUp -> map.moveCamera(CameraUpdateFactory.bearingTo(bearing))
             }
         }
+    }
+    LaunchedEffect(styleGen, s.geoZones, geoOn) {
+        mapView.getMapAsync { map -> map.style?.takeIf { it.isFullyLoaded }?.setGeoZones(if (geoOn) s.geoZones else emptyList()) }
     }
     LaunchedEffect(styleGen, ns.items, ns.draft, ns.vertex) {
         mapView.getMapAsync { map -> map.style?.takeIf { it.isFullyLoaded }?.setAnnotations(ns.items, ns.draft, ns.vertex) }
@@ -421,12 +434,12 @@ internal fun FlightMap(
         // 오른쪽 도구(10.5.4, 위에서 아래로): 검색 · N 잠금 · 레이어 · 지우개 · 과녁. 카메라 뷰의 오른쪽 열 자리
         Column(Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 37.dp, end = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val size = Dimens.TouchSmall
-            MapSearchButton(s.poles, size, notes = ns.items, onPickNote = { jump(it.points[0]) }) { jump(it.position) }
+            MapSearchButton(s.poles, size, notes = ns.items, onPickNote = { jump(it.points[0]) }, onPickPoint = { jump(it) }) { jump(it.position) }
             // Pilot 2: 북쪽 고정이면 검은 칸에 N·화살촉·노란 자물쇠, 기수 방향이면 흰 칸에 자물쇠 없이
             MapTool(if (northUp) "북쪽 고정(누르면 기수 방향)" else "기수 방향(누르면 북쪽 고정)", size = size, dark = northUp, onClick = { northUp = !northUp }) { tint ->
                 NorthLockGlyph(locked = northUp, tint)
             }
-            MapLayerButton(s.background.source, size, onMapSource)
+            MapLayerButton(s.background.source, size, onMapSource, geo = geoOn, onToggleGeo = { geoOn = !geoOn })
             MapTool("비행 궤적 지우기", enabled = s.track.isNotEmpty(), size = size, onClick = onClearTrack) { tint ->
                 Icon(painterResource(R.drawable.ic_erase), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
             }
@@ -436,7 +449,10 @@ internal fun FlightMap(
             )
         }
         card?.let { c ->
-            MarkerInfoCard(c, t, clockMs, onClose = { card = null }, onPin = { notes.pinAircraft(t); card = null }, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp))
+            MarkerInfoCard(
+                c, t, clockMs, onClose = { card = null }, onPin = { notes.pinAircraft(t); card = null },
+                onSetHome = onSetHome?.let { f -> { f(c == MarkerCard.RC); card = null } }, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp),
+            )
         }
         if (annotate) {
             ns.items.firstOrNull { it.id == ns.selected }?.let { PinCard(it, t?.position, notes, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 8.dp)) }
@@ -446,11 +462,12 @@ internal fun FlightMap(
 }
 
 /**
- * 기체·내 조종기 카드(10.5.7, Pilot 2 지도에서 표지를 누름): 시각([clockMs], 없으면 지금), 기체는 ALT(이륙 지점 기준), 위도·경도.
- * ASL은 텔레메트리에 없어 빼고, 기체 카드 [핀포인트]는 지금 기체 위치에 핀포인트를 남긴다(10.4.7, 위성이 모자라면 실패).
+ * 기체·내 조종기 카드(10.5.7, Pilot 2 지도에서 표지를 누름): 시각([clockMs], 없으면 지금), 기체는 ALT(이륙 지점 기준)·ASL(해발, `KeyHeightAboveSeaLevel`),
+ * 위도·경도. 조종기 ASL은 SDK 조종기 GPS(`RcGPSInfo`)에 고도가 없어 뺀다. [H 지정]([onSetHome], null이면 없음)은 홈포인트를 그 표지 위치로,
+ * 기체 카드 [핀포인트]는 지금 기체 위치에 핀포인트를 남긴다(10.4.7, 위성이 모자라면 실패). 편집은 핀포인트 카드에 있다(10.4.7).
  */
 @Composable
-private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, clockMs: Long?, onClose: () -> Unit, onPin: () -> Unit, modifier: Modifier) {
+private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, clockMs: Long?, onClose: () -> Unit, onPin: () -> Unit, onSetHome: (() -> Unit)?, modifier: Modifier) {
     val at = if (c == MarkerCard.AIRCRAFT) t?.position else t?.rcPosition
     Column(modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -460,6 +477,7 @@ private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, clockMs: Long?, onClose
         val rows = listOfNotNull(
             "시각" to SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(Date(clockMs ?: System.currentTimeMillis())),
             t?.takeIf { c == MarkerCard.AIRCRAFT }?.let { "ALT" to "%.1f m".format(it.altitudeM) },
+            t?.takeIf { c == MarkerCard.AIRCRAFT }?.let { "ASL" to (it.altitudeAslM?.let { a -> "%.1f m".format(a) } ?: "--") },
             "위도" to (at?.let { "%.6f".format(it.lat) } ?: "위치 모름"),
             "경도" to (at?.let { "%.6f".format(it.lon) } ?: "-"),
         )
@@ -469,9 +487,16 @@ private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, clockMs: Long?, onClose
                 Text(value, style = numberStyle(FontSize.Body), color = Color.White)
             }
         }
-        if (c == MarkerCard.AIRCRAFT) OutlinedButton(onClick = onPin, enabled = t?.position != null, modifier = Modifier.height(Dimens.ButtonChip)) { Text("핀포인트", fontSize = FontSize.Caption) }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // [H 지정]: 떠 있어도 된다(Pilot 2). 위치를 모르면 끈다
+            onSetHome?.let { OutlinedButton(onClick = it, enabled = at != null, modifier = Modifier.height(Dimens.ButtonChip)) { Text("H 지정", fontSize = FontSize.Caption) } }
+            if (c == MarkerCard.AIRCRAFT) OutlinedButton(onClick = onPin, enabled = t?.position != null, modifier = Modifier.height(Dimens.ButtonChip)) { Text("핀포인트", fontSize = FontSize.Caption) }
+        }
     }
 }
+
+/** [H 지정] 결과 안내(자동·수동 비행 화면 공통). */
+internal fun homeSetMessage(toRc: Boolean) = if (toRc) "홈포인트를 조종기 위치로 바꿨습니다" else "홈포인트를 기체 위치로 바꿨습니다"
 
 /**
  * 아래 라이브러리(10.5.4, Pilot 2 경로 라이브러리 바로가기 p2s_7): 검은 칸에 경로 아이콘만. 비행 화면 안 라이브러리 패널(10.5.8)을 열고 닫는다.

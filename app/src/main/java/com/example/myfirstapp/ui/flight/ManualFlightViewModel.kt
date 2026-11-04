@@ -27,6 +27,7 @@ import com.example.myfirstapp.data.pickMapSource
 import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.drone.DjiDroneGateway
+import com.example.myfirstapp.drone.DjiFlySafe
 import com.example.myfirstapp.detect.LiveDetection
 import com.example.myfirstapp.detect.PreciseDetection
 import com.example.myfirstapp.drone.djiAircraftConnected
@@ -87,6 +88,10 @@ class ManualFlightViewModel(
 
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))
+        viewModelScope.launch {
+            DjiFlySafe.mapZones { _state.value.flight.let { it.telemetry?.position ?: it.home ?: it.mapFallback } }
+                .collect { z -> _state.update { it.copy(flight = it.flight.copy(geoZones = z)) } }
+        }
         _state.update { it.copy(connected = drone != null, message = if (drone == null) "기체가 연결되지 않았습니다" else null) }
         drone?.let { d ->
             viewModelScope.launch {
@@ -200,6 +205,16 @@ class ManualFlightViewModel(
 
     /** 지도 지우개(10.5.4): 비행 궤적을 지운다. */
     fun clearTrack() = _state.update { it.copy(flight = it.flight.copy(track = emptyList())) }
+
+    /** 지도 기체·조종기 카드 [H 지정](10.5.7): 홈포인트를 기체([toRc]면 조종기) 위치로. */
+    fun setHome(toRc: Boolean) {
+        val d = drone ?: return
+        viewModelScope.launch {
+            val r = d.setHome(toRc)
+            OpLog.log("manual", "setHome", mapOf("rc" to toRc, "ok" to r.isSuccess, "error" to r.exceptionOrNull()?.message))
+            _state.update { it.copy(message = r.fold({ homeSetMessage(toRc) }, { e -> "홈포인트 지정 실패: ${e.message}" })) }
+        }
+    }
 
     /** 지도 레이어(10.5.7): 배경을 바꾸고 설정에도 남긴다. */
     fun setMapSource(source: MapSource) {

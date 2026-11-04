@@ -327,6 +327,15 @@ class FakeDroneGateway(
         return Result.success(Unit)
     }
 
+    /** 홈포인트를 기체(또는 조종기) 지금 위치로. 위치를 모르면 실패. 그 뒤 RTH는 바뀐 텔레메트리 홈으로 간다. */
+    override suspend fun setHome(toRc: Boolean): Result<Unit> {
+        val t = _telemetry.value
+        val at = (if (toRc) t.rcPosition else t.position) ?: return Result.failure(IllegalStateException(if (toRc) "조종기 위치 모름" else "기체 위치 모름"))
+        calls += "setHome:${if (toRc) "rc" else "aircraft"}"
+        _telemetry.update { it.copy(home = at) }
+        return Result.success(Unit)
+    }
+
     // ---------------------------------------------------------------- 시뮬레이션 조작
 
     /** RC 하드웨어 일시정지 버튼: 미션을 일시정지(종료하지 않음)하고 호버한다. */
@@ -386,7 +395,7 @@ class FakeDroneGateway(
         motionJob = scope.launch {
             val speed = 10.0
             climbTo(maxOf(_telemetry.value.altitudeM, preflightReport.rthAltitudeM), speed)
-            moveTo(Enu(0.0, 0.0), speed)
+            moveTo(proj.toEnu(_telemetry.value.home ?: homePoint), speed)
             _telemetry.update { it.copy(flightMode = FlightMode.LANDING) }
             climbTo(0.0, speed)
             _telemetry.update { it.copy(flightMode = FlightMode.ON_GROUND, speedMps = 0.0, altitudeM = 0.0) }

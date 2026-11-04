@@ -94,7 +94,7 @@ fun ManualFlightScreen(
                 Text("기체 연결을 기다립니다", color = Color.White.copy(alpha = 0.5f), fontSize = FontSize.Body)
             }
         }
-        if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack, preview = ls?.previewRoute.orEmpty())
+        if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack, preview = ls?.previewRoute.orEmpty(), onSetHome = vm::setHome)
         else {
             fpv(Modifier.fillMaxSize())
             CameraOverlay(f.lens, f.zoomRatio, focusEnabled = s.connected, onFocus = vm::focusAt, Modifier.fillMaxSize(), stream, f.camera.ev, vm::setEv)

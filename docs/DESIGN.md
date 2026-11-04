@@ -27,7 +27,7 @@
 | 9 | 탐지(YOLO) 모델 규격과 파이프라인 | [design/05-detection.md](design/05-detection.md) |
 | 10–11 | 화면 설계, 알림음 | [design/06-ui-sound.md](design/06-ui-sound.md) |
 | 10.2–10.3 | 화면 디자인 규칙(수치), UI 상태머신 | [design/08-ui-rules-states.md](design/08-ui-rules-states.md) |
-| 10.4 | Pilot 2 시안 확정(토큰, 화면 배치, RC 키, 비행 다시 보기 10.4.6, 핀포인트·지도 주석 10.4.7, AR 표시·비행 화면 라이브러리 패널 10.4.8) | [design/10-ui-pilot2.md](design/10-ui-pilot2.md) |
+| 10.4 | Pilot 2 시안 확정(토큰, 화면 배치, RC 키, 비행 다시 보기 10.4.6, 핀포인트·지도 주석 10.4.7, AR 표시·비행 화면 라이브러리 패널 10.4.8, 앨범 출처·뷰어·GEO 구역 레이어·좌표 검색 10.4.9) | [design/10-ui-pilot2.md](design/10-ui-pilot2.md) |
 | 10.5 | Pilot 2 대응표(화면 요소별 같게·추가·제외, 반복 검토) | [design/11-pilot2-parity.md](design/11-pilot2-parity.md) |
 | 4.5 | 전주 설비 엑셀 활용(선로번호, 전주 길이, 설치기기, 지선주) | [design/09-pole-data.md](design/09-pole-data.md) |
 | 12–13 | 테스트 전략, 개발 로드맵과 진행 순서 | [design/07-test-roadmap.md](design/07-test-roadmap.md) |

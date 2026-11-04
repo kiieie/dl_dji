@@ -2,6 +2,9 @@ package com.example.myfirstapp.ui.album
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import com.example.myfirstapp.core.model.storageUsedLabel
+import com.example.myfirstapp.core.executor.sdFreeLabel
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,7 +40,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +65,6 @@ import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.AlbumPhoto
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.ui.AppBadge
-import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.PoleSymbol
 import com.example.myfirstapp.ui.PoleSymbolIcon
 import com.example.myfirstapp.ui.PoleSymbolRow
@@ -90,7 +91,8 @@ private val Detected = Color(0xFFFF3B30)
  * 앨범(10.4.3 ⑦, 사진 모아 보기). 위 [선로별 | 미션별] 보기(마지막 것을 기억), 필터 전체/탐지만/수동 촬영, 아래 범례.
  * 선로별(기본, Finder식): 왼쪽 나무 선로명 → 전주(선로번호 순) → 촬영 날짜, 맨 아래 "기타"(전주에 붙지 않은 수동 사진, 날짜별).
  * 미션별: 왼쪽 미션 목록(최신순, 수동 비행 하루치 포함). 오른쪽 4열 썸네일은 선로번호를 크게(없으면 전산화번호), 방향·설비·망원 표시와 설비 탐지 수.
- * 미션 사진을 누르면 그 미션의 판독 화면으로, 수동 비행 사진은 크게 본다. 판독은 판독 화면에서만 한다.
+ * 미션 사진을 누르면 그 미션의 판독 화면으로, 수동 비행 사진은 뷰어([PhotoViewer])로 크게 본다. 판독은 판독 화면에서만 한다.
+ * 위 왼쪽 출처 탭 [기체 앨범 | 다운로드 완료](10.4.9): 기체 앨범은 기체 SD 사진([SdAlbumPane]), 다운로드 완료는 위 앨범.
  */
 @Composable
 fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long, missionId: Long) -> Unit) {
@@ -98,12 +100,17 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
     val app = context.applicationContext as InspectionApp
     val vm: AlbumViewModel = viewModel(factory = AlbumViewModel.factory(dao, context.getExternalFilesDir(null), app.settings))
     val s by vm.state.collectAsStateWithLifecycle()
-    var viewing by remember { mutableStateOf<File?>(null) }
+    val sdVm: SdAlbumViewModel = viewModel(factory = SdAlbumViewModel.factory(context.getExternalFilesDir(null)))
+    val sd by sdVm.state.collectAsStateWithLifecycle()
+    // Pilot 2 [기체 앨범 | 다운로드 완료](10.4.9). 처음은 다운로드 완료(우리 앨범)
+    var aircraftTab by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(sd.savedCount) { if (sd.savedCount > 0) vm.reload() }
     val group = s.group
     // RC 5D(10.4.3): ↕ 줄 고르기, ● 미션은 판독으로·수동 하루치는 첫 사진 크게, 나무는 펼치기·접기(날짜 칸은 열기).
-    // 사진을 크게 보는 동안은 받지 않는다(← 뒤로는 MainActivity 몫)
-    LaunchedEffect(vm, viewing == null) {
-        if (viewing == null) app.rcButtons.fiveD().collect { r ->
+    // 사진을 크게 보는 동안·기체 앨범 탭에서는 받지 않는다(← 뒤로는 MainActivity 몫)
+    val listening = s.viewer == null && !aircraftTab
+    LaunchedEffect(vm, listening) {
+        if (listening) app.rcButtons.fiveD().collect { r ->
             r.actions.forEach { b ->
                 when (b) {
                     RcButton.FIVE_D_UP -> vm.move(-1)
@@ -115,10 +122,10 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
                             n == null -> Unit
                             n.children.isNotEmpty() -> vm.tapNode(n.key)
                             n.photos.isNotEmpty() -> n.photos.first().let { onReview(it.projectId, it.missionId) }
-                            else -> viewing = n.files.firstOrNull()
+                            else -> n.files.firstOrNull()?.let(vm::open)
                         } else when (val g = st.group) {
                             is AlbumGroup.Mission -> onReview(g.m.projectId, g.m.missionId)
-                            is AlbumGroup.ManualDay -> viewing = g.files.firstOrNull()
+                            is AlbumGroup.ManualDay -> g.files.firstOrNull()?.let(vm::open)
                             null -> Unit
                         }
                     }
@@ -135,18 +142,34 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
                     Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(16.dp))
                 }
                 AppBadge()
-            }
-            Text("앨범", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
-            Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip("선로별", s.byLine) { vm.setByLine(true) }
-                Chip("미션별", !s.byLine) { vm.setByLine(false) }
+                // Pilot 2 앨범 위 탭(기체 폴더는 두지 않음: SD 폴더 = 같은 사진, 10.4.9)
                 Box(Modifier.width(12.dp))
-                AlbumFilter.entries.forEach { f ->
-                    Chip(f.title, s.filter == f, if (f == AlbumFilter.DETECTED) DetectedText else null) { vm.setFilter(f) }
+                SourceTab("기체 앨범", aircraftTab) { aircraftTab = true; sdVm.refresh() }
+                SourceTab("다운로드 완료", !aircraftTab) { aircraftTab = false }
+            }
+            Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (aircraftTab) {
+                    // 기체 SD 저장소(Pilot 2 "M3E 사용됨 26.6GB / 238.0GB")와 남은 사진
+                    val st = sd.storage
+                    Text(
+                        listOfNotNull(storageUsedLabel(st.totalMb, st.freeMb), st.photosLeft?.let { "남은 사진 ${it}장" }).joinToString(" · ").ifEmpty { "SD --" },
+                        Modifier.padding(end = 8.dp), style = numberStyle(FontSize.Caption), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Chip("신형-구형", sd.newestFirst) { sdVm.setNewestFirst(true) }
+                    Chip("구형-신형", !sd.newestFirst) { sdVm.setNewestFirst(false) }
+                    Chip("새로 읽기", false) { sdVm.refresh() }
+                } else {
+                    Chip("선로별", s.byLine) { vm.setByLine(true) }
+                    Chip("미션별", !s.byLine) { vm.setByLine(false) }
+                    Box(Modifier.width(12.dp))
+                    AlbumFilter.entries.forEach { f ->
+                        Chip(f.title, s.filter == f, if (f == AlbumFilter.DETECTED) DetectedText else null) { vm.setFilter(f) }
+                    }
                 }
             }
         }
-        Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (aircraftTab) SdAlbumPane(sd, sdVm, Modifier.weight(1f).fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 10.dp))
+        else Row(Modifier.weight(1f).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.width(Dimens.AlbumTree).fillMaxHeight().clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)) {
                 Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(start = 12.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (s.byLine) "선로 · 전주 · 날짜" else "미션 · 최신순", Modifier.weight(1f), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -203,26 +226,59 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
                 ) {
                     if (s.byLine) {
                         items(s.nodePhotos, key = { it.capture.id }) { p -> PhotoThumb(p, showLine = false) { onReview(p.projectId, p.missionId) } }
-                        items(s.nodeFiles, key = { it.path }) { f -> FileThumb(f) { viewing = f } }
+                        items(s.nodeFiles, key = { it.path }) { f -> FileThumb(f) { vm.open(f) } }
                     } else when (group) {
                         is AlbumGroup.Mission -> items(s.shown, key = { it.capture.id }) { p -> PhotoThumb(p, showLine = true) { onReview(group.m.projectId, group.m.missionId) } }
-                        is AlbumGroup.ManualDay -> if (s.filter != AlbumFilter.DETECTED) items(group.files, key = { it.path }) { f -> FileThumb(f) { viewing = f } }
+                        is AlbumGroup.ManualDay -> if (s.filter != AlbumFilter.DETECTED) items(group.files, key = { it.path }) { f -> FileThumb(f) { vm.open(f) } }
                         null -> Unit
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Legend()
+                Legend(s.freeBytes)
             }
         }
     }
 
-    viewing?.let { f ->
-        FullscreenAlertDialog(
-            onDismissRequest = { viewing = null },
-            title = { Text(f.name, fontSize = FontSize.Label) },
-            text = { Photo(f.path, Modifier.fillMaxWidth().height(280.dp)) },
-            confirmButton = { androidx.compose.material3.TextButton(onClick = { viewing = null }) { Text("닫기") } },
+    // 뷰어(10.4.9): 파일 사진은 앱 사본만 지운다. 미션 사진은 판독 화면에서 본다(판독 기록이라 앨범에서 지우지 않음)
+    s.viewer?.let { v ->
+        PhotoViewer(
+            v.file.path, viewerTime(v.takenAtMs), v.rows, lensTitle(lensOfAppFile(v.file.name)) + " · 단일 촬영",
+            load = { withContext(Dispatchers.IO) { BitmapFactory.decodeFile(v.file.path, BitmapFactory.Options().apply { inSampleSize = 2 })?.asImageBitmap() } },
+            onBack = vm::closeViewer, deleteText = "조종기에 받은 이 사진(${v.file.name})을 지웁니다. 기체 SD의 원본은 그대로 남습니다.", onDelete = vm::deleteViewing,
         )
+    }
+    sd.viewing?.let { p ->
+        val have = p.name in sd.downloaded
+        PhotoViewer(
+            p.name, viewerTime(p.takenAtMs),
+            listOf(
+                "렌즈" to lensTitle(p.lens), "파일" to p.name, "크기" to "%.1f MB".format(Locale.ROOT, p.sizeBytes / 1_048_576.0),
+                "앱에 받음" to if (have) "예(다운로드 완료 › 기타)" else "아니오", "위치·전주" to "받은 뒤 다운로드 완료에서(EXIF)",
+            ),
+            lensTitle(p.lens) + " · 단일 촬영", load = { sdVm.preview(p) }, onBack = sdVm::close,
+            deleteText = "기체 SD 카드에서 이 사진(${p.name})을 지웁니다. 되돌릴 수 없습니다.", onDelete = { sdVm.delete(p) },
+            onDownload = if (have || p.name in sd.busy) null else ({ sdVm.download(listOf(p)) }),
+        )
+    }
+    sd.notice?.let { n ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+            Text(
+                n, Modifier.padding(bottom = 48.dp).background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(4.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+                fontSize = FontSize.Body, color = Color.White,
+            )
+        }
+    }
+}
+
+/** 위 출처 탭(Pilot 2 [기체 앨범 | 다운로드 완료]): 고른 탭은 굵은 글자와 파랑 밑줄. */
+@Composable
+private fun SourceTab(title: String, on: Boolean, onClick: () -> Unit) {
+    Column(Modifier.height(Dimens.HeaderList).clickable(onClick = onClick).padding(horizontal = 8.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            title, fontSize = FontSize.Label, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+            color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box(Modifier.padding(top = 3.dp).width(28.dp).height(2.dp).background(if (on) Accent else Color.Transparent))
     }
 }
 
@@ -343,9 +399,9 @@ internal fun Photo(path: String?, modifier: Modifier, sample: Int = 4) {
     bitmap?.let { Image(it, contentDescription = null, modifier, contentScale = ContentScale.Crop) }
 }
 
-/** 아래 범례 26dp(10.4.3): 탐지 점과 설비 기호. */
+/** 아래 범례 26dp(10.4.3): 탐지 점과 설비 기호, 오른쪽 끝 조종기 남은 공간([freeBytes], 다운로드 완료 저장소). */
 @Composable
-private fun Legend() {
+private fun Legend(freeBytes: Long?) {
     Row(Modifier.fillMaxWidth().height(26.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(Detected))
@@ -356,6 +412,10 @@ private fun Legend() {
                 PoleSymbolIcon(sym, 11.dp)
                 Text(sym.title, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        freeBytes?.let {
+            Box(Modifier.weight(1f))
+            Text("조종기 남은 공간 ${sdFreeLabel(it shr 20)}", style = numberStyle(FontSize.Caption), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -461,7 +461,7 @@ interface ProjectDao {
     @Query("SELECT * FROM pole WHERE projectId = :projectId")
     suspend fun polesOf(projectId: Long): List<PoleEntity>
 
-    /** 모든 프로젝트의 전주(가져온 Pilot 2 경로를 어느 프로젝트에 맞출지 고를 때, 5.7). */
+    /** 모든 프로젝트의 전주: 가져온 Pilot 2 경로를 어느 프로젝트에 맞출지 고를 때(5.7), 앨범 뷰어에서 전주에 붙지 않은 사진의 가까운 전주를 찾을 때(10.4.9). */
     @Query("SELECT * FROM pole")
     suspend fun allPoles(): List<PoleEntity>
 

@@ -65,7 +65,6 @@ import dji.v5.manager.datacenter.MediaDataCenter
 import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.manager.datacenter.media.MediaFileDownloadListener
 import dji.v5.manager.datacenter.media.MediaFileListDataSource
-import dji.v5.manager.datacenter.media.PullMediaFileListParam
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -134,7 +133,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     /** 다시 붙었지만 비행 모드를 아직 몰라 재연결 알림을 미룬 중(실행기가 모드로 상태를 정하므로, 6.4). */
     private var restorePending = false
     private val newPhotos = MutableSharedFlow<CaptureInfo>(extraBufferCapacity = 16)
-    private val mediaLock = Mutex()
+    /** SD 목록·받기는 앨범 기체 앨범과 같은 잠금(SDK 목록이 하나뿐, [DjiMedia]). */
+    private val mediaLock = DjiMedia.lock
     /** 앱 촬영은 하나씩(화면 셔터와 RC 셔터가 겹치면 둘 다 같은 첫 새 사진 알림을 받아 하나는 잃음). */
     private val captureLock = Mutex()
     /** 기체가 FINISHED를 마지막 사진보다 먼저 알린다(2026-10-30 확인). 그 뒤 잠깐 들어온 사진도 미션 사진으로 넘긴다. */
@@ -142,7 +142,6 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     /** 소티 미션의 촬영 렌즈(KMZ 순서). 파일 렌즈 글자 `_T`를 열화상·망원 중 무엇으로 볼지 정할 때 쓴다. */
     @Volatile private var sortieLenses: List<Lens> = listOf(Lens.WIDE)
-    private var mediaEnabled = false
 
     /** 지금 카메라 모드(`KeyCameraMode` 알림, init에서 처음 값을 넣으므로 init보다 앞에 둔다). */
     @Volatile private var cameraMode: CameraMode? = null
@@ -763,22 +762,12 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         Unit
     }
 
-    /**
-     * SD 최신 목록을 받는다. 비행 중에는 미디어 모드 없이 응답이 오지 않을 수 있어(2026-10-30 시뮬레이터), 10초 안에 답이 없으면
-     * 미디어 모드를 켜고 다시 받는다. 어느 쪽으로 됐는지 로그로 남긴다.
-     */
-    private suspend fun pullRecent(count: Int) {
-        val param = PullMediaFileListParam.Builder().mediaFileIndex(-1).count(count).build()
-        if (!mediaEnabled) {
-            val ok = withTimeoutOrNull(AppConfig.Timeouts.SD_LIST_MS) { djiDone { media.pullMediaFileListFromCamera(param, it) } } != null
-            if (ok) return Log.i(TAG, "SD 목록(미디어 모드 없이) ${media.mediaFileListData.data.size}개").let {}
-            Log.w(TAG, "SD 목록 응답 없음 → 미디어 모드 켬")
-            runCatching { djiDone { media.enable(it) } }.onFailure { Log.w(TAG, "미디어 모드 실패: ${it.message}") }
-            mediaEnabled = true
-        }
-        withTimeoutOrNull(AppConfig.Timeouts.SD_LIST_MEDIA_MODE_MS) { djiDone { media.pullMediaFileListFromCamera(param, it) } } ?: error("SD 목록 응답 없음")
-        Log.i(TAG, "SD 목록(미디어 모드) ${media.mediaFileListData.data.size}개")
-    }
+    /** 지도 기체·조종기 카드 [H 지정](10.5.7): 비행 전 점검 홈포인트 버튼과 같은 동작 키. */
+    override suspend fun setHome(toRc: Boolean): Result<Unit> = runCatching { if (toRc) homeToRc() else homeToAircraft() }
+        .onSuccess { OpLog.log("flight", "setHome", mapOf("to" to if (toRc) "rc" else "aircraft")) }
+
+    /** SD 최신 목록(앨범과 같은 [DjiMedia.pullRecent], [mediaLock]을 잡고 부른다). */
+    private suspend fun pullRecent(count: Int) = DjiMedia.pullRecent(count)
 
     override suspend fun setVideoLens(lens: Lens): Result<Unit> = runCatching {
         val source = if (lens == Lens.ZOOM) CameraVideoStreamSourceType.ZOOM_CAMERA else CameraVideoStreamSourceType.WIDE_CAMERA

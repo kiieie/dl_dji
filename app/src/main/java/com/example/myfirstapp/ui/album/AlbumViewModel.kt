@@ -8,6 +8,7 @@ import com.example.myfirstapp.core.input.moveIndex
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.data.AlbumMission
 import com.example.myfirstapp.data.AlbumPhoto
+import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.SettingsStore
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,10 @@ data class AlbumUiState(
     val tree: List<TreeNode> = emptyList(),
     val expanded: Set<String> = emptySet(),
     val nodeKey: String? = null,
+    /** 크게 보는 파일 사진(전주에 붙지 않은 수동 사진·SD에서 받은 사진)과 정보. 없으면 null. */
+    val viewer: PhotoInfo? = null,
+    /** 조종기(앱 폴더) 남은 공간(바이트, 다운로드 완료 탭 저장소). 모르면 null. */
+    val freeBytes: Long? = null,
 ) {
     val group get() = groups.firstOrNull { it.key == selected } ?: groups.firstOrNull()
     val shown get() = filtered(photos)
@@ -71,6 +76,11 @@ class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?
     val state: StateFlow<AlbumUiState> = _state.asStateFlow()
 
     init {
+        reload()
+    }
+
+    /** 목록을 다시 읽는다(처음, 기체 앨범에서 받은 뒤, 사진을 지운 뒤). 고른 칸·펼친 칸은 남아 있으면 그대로 둔다. */
+    fun reload() {
         viewModelScope.launch {
             // 사진이 없는 미션(계획만 한 것)은 앨범에 두지 않는다
             val missions = dao.albumMissions().filter { it.photoCount > 0 }.map { AlbumGroup.Mission(it) }
@@ -86,8 +96,40 @@ class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?
             val tree = lineTree(dao.albumAllPhotos(), days)
             val first = tree.firstOrNull()?.key
             val byLine = settings.albumByLine.first()
-            _state.update { it.copy(loading = false, byLine = byLine, groups = groups, tree = tree, nodeKey = first, expanded = setOfNotNull(first)) }
-            groups.firstOrNull()?.let(::select)
+            val free = appFilesDir?.usableSpace
+            _state.update { s ->
+                val keep = s.nodeKey?.takeIf { nodePath(tree, it).isNotEmpty() }
+                s.copy(
+                    loading = false, byLine = byLine, groups = groups, tree = tree, freeBytes = free,
+                    nodeKey = keep ?: first, expanded = if (keep != null) s.expanded else setOfNotNull(first),
+                )
+            }
+            (groups.firstOrNull { it.key == _state.value.selected } ?: groups.firstOrNull())?.let(::select)
+        }
+    }
+
+    /**
+     * 파일 사진을 크게 본다(10.4.9 뷰어): EXIF 촬영 시각·위치·고도, 파일 이름 렌즈, 20m 안 가까운 전주(모든 프로젝트, 셔터 사진 붙이기와 같은 거리).
+     * EXIF가 없으면 파일 시각.
+     */
+    fun open(f: File) {
+        _state.update { it.copy(viewer = PhotoInfo(f, f.lastModified(), emptyList())) }
+        viewModelScope.launch {
+            val info = photoInfo(f, dao.allPoles())
+            _state.update { if (it.viewer?.file == f) it.copy(viewer = info) else it }
+        }
+    }
+
+    fun closeViewer() = _state.update { it.copy(viewer = null) }
+
+    /** 뷰어 [삭제](확인 뒤): 앱 사본만 지운다. 기체 SD 사진은 기체 앨범 탭에서만 지운다. */
+    fun deleteViewing() {
+        val f = _state.value.viewer?.file ?: return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) { f.delete() }
+            OpLog.log("album", "deleteFile", mapOf("name" to f.name, "ok" to ok))
+            _state.update { it.copy(viewer = null) }
+            reload()
         }
     }
 
