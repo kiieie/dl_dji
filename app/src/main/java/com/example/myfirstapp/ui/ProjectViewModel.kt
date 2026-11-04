@@ -13,7 +13,10 @@ import com.example.myfirstapp.core.csv.CsvImportResult
 import com.example.myfirstapp.core.csv.PoleAttrDiff
 import com.example.myfirstapp.core.csv.PoleCsvParser
 import com.example.myfirstapp.core.csv.diffPoleAttributes
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.route.ImportedRoute
+import com.example.myfirstapp.core.route.RouteImport
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.ProjectSummary
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +49,9 @@ data class ProjectUiState(
     val attrPoles: List<Pole> = emptyList(),
     /** 가져오기를 마친 뒤 알릴 말(같은 이름이라 이름을 바꿨음 등). [확인]으로 닫는다. */
     val notice: String? = null,
+    val noticeTitle: String = "전주 파일 가져오기",
+    /** 가져온 Pilot 2 경로를 열 곳(프로젝트, 파일 주소, 5.7). 화면이 계획 화면을 열고 [ProjectViewModel.onRouteOpened]로 지운다. */
+    val routeImport: Pair<Long, String>? = null,
 ) {
     val canSave get() = (result as? CsvImportResult.Success)?.poles?.isNotEmpty() == true && projectName.isNotBlank()
 
@@ -91,7 +97,31 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
         }
     }
 
-    fun dismissNotice() = _state.update { it.copy(notice = null) }
+    fun dismissNotice() = _state.update { it.copy(notice = null, noticeTitle = ProjectUiState().noticeTitle) }
+
+    /**
+     * 라이브러리 `+` 경로 가져오기(Pilot 2 KMZ/KML, 5.7): 웨이포인트가 가장 많이 맞는 프로젝트의 계획 화면을 연다.
+     * 맞는 전주가 없으면(그 선로 전주 파일을 아직 안 가져옴) 알린다.
+     */
+    fun onRouteFilePicked(uri: Uri) = viewModelScope.launch {
+        runCatching {
+            withContext(Dispatchers.IO) {
+                val route = readRouteFile(resolver, uri)
+                require(route.waypoints.isNotEmpty()) { "웨이포인트가 없습니다" }
+                route to dao.allPoles().groupBy { it.projectId }
+                    .mapValues { (_, list) -> RouteImport.match(route, list.map { it.toPole() }, Tuning.Route.IMPORT_POLE_LINK_M).poles.size }
+                    .maxByOrNull { it.value }
+            }
+        }.onSuccess { (route, best) ->
+            OpLog.log("project", "importRoute", mapOf("waypoints" to route.waypoints.size, "project" to best?.key, "poles" to best?.value))
+            if (best == null || best.value == 0) {
+                val m = Tuning.Route.IMPORT_POLE_LINK_M.toInt()
+                _state.update { it.copy(noticeTitle = "경로 가져오기", notice = "웨이포인트 ${route.waypoints.size}개의 ${m}m 안에 전주가 없습니다. 먼저 그 선로의 전주 파일(엑셀·CSV)을 가져오세요.") }
+            } else _state.update { it.copy(routeImport = best.key to uri.toString()) }
+        }.onFailure { e -> _state.update { it.copy(noticeTitle = "경로 가져오기", notice = "경로 파일을 읽지 못했습니다: ${e.message}") } }
+    }
+
+    fun onRouteOpened() = _state.update { it.copy(routeImport = null) }
 
     fun askDelete(p: ProjectSummary) = _state.update { it.copy(deleting = p) }
     fun dismissDelete() = _state.update { it.copy(deleting = null) }
@@ -137,24 +167,30 @@ class ProjectViewModel(private val dao: ProjectDao, private val resolver: Conten
     }
 
     /** SAF로 고른 파일을 읽어 파싱한다. 파일 이름은 프로젝트 이름 기본값으로 쓴다. */
-    private fun readCsv(uri: Uri): Pair<String, CsvImportResult> {
-        var name = "가져온 전주"
-        var size: Long? = null
-        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use {
-            if (it.moveToFirst()) {
-                if (!it.isNull(0)) name = it.getString(0)
-                if (!it.isNull(1)) size = it.getLong(1)
-            }
-        }
-        require((size ?: 0) <= AppConfig.Storage.IMPORT_MAX_BYTES) { "10MB를 넘는 파일입니다" }
-        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("파일을 열 수 없습니다")
-        return name to PoleCsvParser.parse(bytes)
-    }
+    private fun readCsv(uri: Uri): Pair<String, CsvImportResult> = readPicked(resolver, uri).let { (name, bytes) -> name to PoleCsvParser.parse(bytes) }
 
     companion object {
         fun factory(dao: ProjectDao, resolver: ContentResolver) = viewModelFactory { initializer { ProjectViewModel(dao, resolver) } }
     }
 }
+
+/** SAF로 고른 파일의 (이름, 내용). 10MB([AppConfig.Storage.IMPORT_MAX_BYTES])를 넘으면 거절한다. */
+internal fun readPicked(resolver: ContentResolver, uri: Uri): Pair<String, ByteArray> {
+    var name = "가져온 전주"
+    var size: Long? = null
+    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use {
+        if (it.moveToFirst()) {
+            if (!it.isNull(0)) name = it.getString(0)
+            if (!it.isNull(1)) size = it.getLong(1)
+        }
+    }
+    require((size ?: 0) <= AppConfig.Storage.IMPORT_MAX_BYTES) { "10MB를 넘는 파일입니다" }
+    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("파일을 열 수 없습니다")
+    return name to bytes
+}
+
+/** 고른 Pilot 2 경로 파일(KMZ/KML, 5.7)을 읽는다. KMZ 안 파일도 같은 크기 상한. */
+internal fun readRouteFile(resolver: ContentResolver, uri: Uri): ImportedRoute = RouteImport.read(readPicked(resolver, uri).second, AppConfig.Storage.IMPORT_MAX_BYTES)
 
 /** [name]이 [existing]에 없으면 그대로, 있으면 `-날짜`, 그것도 있으면 `-날짜-2`, `-날짜-3` …. */
 internal fun uniqueProjectName(name: String, existing: Set<String>, yyyymmdd: String): String {

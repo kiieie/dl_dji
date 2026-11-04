@@ -21,7 +21,7 @@
 |----|------|------|
 | 1–2, 14–15 | 개요, 요구사항, 확정·미정 사항, 참고 자료 | 이 문서 |
 | 3–4 | 시스템 구성, 모듈, 기술 스택, 데이터·엔티티 | [design/01-architecture.md](design/01-architecture.md) |
-| 5 | 경로 계획(TSP, 소티 분할, 에너지 모델) | [design/02-route-planning.md](design/02-route-planning.md) |
+| 5 | 경로 계획(TSP, 소티 분할, 에너지 모델, 경로 편집·가져오기) | [design/02-route-planning.md](design/02-route-planning.md) |
 | 6 | 비행 실행(상태머신, 일시정지/재개, 촬영·다운로드) | [design/03-flight-execution.md](design/03-flight-execution.md) |
 | 7–8 | 데이터 보안(LDM), 오프라인 지도, 안전 설계 | [design/04-security-safety.md](design/04-security-safety.md) |
 | 9 | 탐지(YOLO) 모델 규격과 파이프라인 | [design/05-detection.md](design/05-detection.md) |

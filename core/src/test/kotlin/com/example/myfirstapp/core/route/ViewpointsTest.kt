@@ -58,9 +58,10 @@ class ViewpointsTest {
     }
 
     @Test
-    fun `4방향 사선은 이륙 지점에서 가까운 끝부터 시작한다`() {
+    fun `4방향 사선은 받은 방문 순서를 따른다(가까운 끝은 계획이 정함, 5_7)`() {
         val east = LocalProjection(home).toGeo(Enu(300.0, 0.0))
-        assertEquals("P2", Viewpoints.expand(poles, diagonal, east).first().pole.poleId)
+        assertEquals("P0", Viewpoints.expand(poles, diagonal, east).first().pole.poleId)
+        assertEquals("P2", Viewpoints.expand(poles.reversed(), diagonal, east).first().pole.poleId)
     }
 
     @Test

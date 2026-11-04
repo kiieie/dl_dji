@@ -203,6 +203,9 @@ object Tuning {
 
         /** 체크리스트에서 고르는 안전한 이륙 고도 범위(m, Pilot 2 체크리스트·WPML 상한 1500m). */
         val TAKEOFF_SECURITY_RANGE_M = 2.0..1500.0
+
+        /** 짐벌 피치 범위(°, 6.3·전주별 설정 5.7). Pilot 2 슬라이더는 +30°까지지만 위로 확장(카메라 설정)이 켜져야 해서 0°까지. */
+        val GIMBAL_PITCH_RANGE_DEG = -90.0..0.0
     }
 
     /** 경로 계획·전주 가져오기. */
@@ -212,6 +215,9 @@ object Tuning {
 
         /** 선로번호 이웃이 이보다 멀면 실제 이웃이 아니라고 본다(대평선 본선 이웃 7~89m). */
         const val MAX_NEIGHBOR_M = 150.0
+
+        /** 가져온 Pilot 2 경로(KMZ/KML, 5.7)의 웨이포인트를 이 거리(수평 m) 안의 가장 가까운 전주에 맞춘다. 사선 지점은 전주에서 약 10m. */
+        const val IMPORT_POLE_LINK_M = 20.0
 
         /** 전주 좌표 유효 위도 범위(대한민국). */
         val LAT_RANGE = 32.0..39.5
