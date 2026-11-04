@@ -123,4 +123,8 @@ object ModelPick {
         (listOfNotNull(preferredFull?.takeIf { p -> models.any { it.dir == p } }) +
             models.filter { it.role == FULL }.sortedByDescending { it.inputSize }.map { it.dir } +
             liveOrder(models, preferredLive)).distinct()
+
+    /** 지금 쓰는 모델(비행 중 → 정밀 순, 같으면 하나). GPU 캐시를 이 순서로 미리 만든다(9.7). */
+    fun inUse(models: List<ModelChoice>, preferredLive: String?, preferredFull: String?): List<String> =
+        listOfNotNull(liveOrder(models, preferredLive).firstOrNull(), fullOrder(models, preferredFull, preferredLive).firstOrNull()).distinct()
 }

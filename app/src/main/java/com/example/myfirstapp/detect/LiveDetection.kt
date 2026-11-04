@@ -94,7 +94,11 @@ class LiveDetection(
         val det = TfliteYoloDetector.openFirst(modelsDir, order, gpu = true, gpuCache) ?: return FakeDetector()
         val openMs = (System.nanoTime() - t0) / 1e6
         val warmMs = runCatching { det.warmUp() }.getOrNull()
-        OpLog.log("detect", "livePreload", mapOf("model" to det.spec.version, "delegate" to det.delegate, "openMs" to openMs.toInt(), "warmMs" to warmMs?.toInt()))
+        // gpu: SUSTAINED(캐시 있음) 또는 FAST(캐시 없음, 뒤에서 만듦 9.7)
+        OpLog.log(
+            "detect", "livePreload",
+            mapOf("model" to det.spec.version, "delegate" to det.delegate, "gpu" to det.preference, "openMs" to openMs.toInt(), "warmMs" to warmMs?.toInt()),
+        )
         return det
     }
 

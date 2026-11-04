@@ -1,6 +1,7 @@
 package com.example.myfirstapp
 
 import com.example.myfirstapp.drone.startDjiInputLog
+import com.example.myfirstapp.detect.GpuCachePrep
 import com.example.myfirstapp.detect.ModelBench
 import com.example.myfirstapp.detect.PreciseDetection
 import kotlinx.coroutines.launch
@@ -76,8 +77,15 @@ class InspectionApp : Application() {
     lateinit var precise: PreciseDetection
         private set
 
-    /** 모델 속도 측정(9.6): 검증 화면 버튼, 또는 `adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`. */
-    fun startBench() = ModelBench.start(this, appScope, settings, precise)
+    /** 지속 성능 GPU 캐시를 뒤에서 만드는 일꾼(9.7 두 단계 열기). 정밀 탐지가 쉬는 조건을 함께 본다. */
+    lateinit var gpuPrep: GpuCachePrep
+        private set
+
+    /**
+     * 모델 속도 측정(9.6): 검증 화면 버튼, 또는 `adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`.
+     * [full]이면 지속 성능 캐시가 없을 때 만들어 잰다(수 분, `--es bench full`). [photo]는 잴 사진의 절대 경로(`--es benchPhoto`).
+     */
+    fun startBench(full: Boolean = false, photo: String? = null) = ModelBench.start(this, appScope, settings, precise, full, photo)
 
     override fun onCreate() {
         super.onCreate()
@@ -86,6 +94,7 @@ class InspectionApp : Application() {
         OpLog.log("app", "start")
         rcBattery = RcBattery.watch(this)
         precise = PreciseDetection(this, database.projectDao(), settings, appScope, rcBattery)
+        gpuPrep = GpuCachePrep(File(getExternalFilesDir(null), "models"), precise.gpuCache, settings, precise.pauseReason, appScope)
         initDjiSdk()
         appScope.launch { rcButtons.collect { OpLog.log("rc", it.name) } }
     }

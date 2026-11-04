@@ -53,12 +53,12 @@ import com.example.myfirstapp.ui.theme.Dimens
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val app = context.applicationContext as InspectionApp
     val vm: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.factory(
-            (context.applicationContext as InspectionApp).settings, context.getExternalFilesDir(null), context.contentResolver,
-        ),
+        factory = SettingsViewModel.factory(app.settings, context.getExternalFilesDir(null), context.contentResolver, app.gpuPrep::kick),
     )
     val s by vm.state.collectAsStateWithLifecycle()
+    val gpu by app.gpuPrep.status.collectAsStateWithLifecycle()
     val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> uri?.let(vm::onModelFolderPicked) }
     val mapPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::onMapFilePicked) }
 
@@ -77,6 +77,14 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         }
         Section("탐지 모델", "앱 폴더 models/ · 비행 중에는 최근 사진 1장만 가볍게(가운데 자르기), 착륙 뒤 모든 사진을 정밀 모델로 탐지합니다(9.6). 고르지 않으면 model.json의 role로 자동으로 고릅니다.") {
             if (s.models.isEmpty()) Text("모델이 없습니다. 모의 탐지기(fake-1)로 비행합니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 9.7 두 단계 열기: 지속 성능 GPU 캐시는 땅 위에서 쉴 때 뒤에서 만든다(처음 한 번 모델마다 1~7분)
+            gpu.text?.let { t ->
+                Text(
+                    if (gpu.ready) t else "$t · 처음 한 번 모델마다 1~7분 걸립니다. 현장에 가기 전에 켜 두고 끝내세요(그동안 탐지는 기본 GPU 설정으로 됩니다).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (gpu.ready) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                )
+            }
             s.models.forEach { m ->
                 Row(Modifier.heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) {

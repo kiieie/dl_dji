@@ -71,6 +71,8 @@ class SettingsViewModel(
     private val modelsDir: File,
     private val mapsDir: File,
     private val resolver: ContentResolver,
+    /** 모델 파일이 바뀌었다(가져오기·삭제): GPU 캐시 만들기가 할 일을 다시 본다(9.7). */
+    private val onModelsChanged: () -> Unit = {},
 ) : ViewModel() {
     private val _state = MutableStateFlow(SettingsUiState())
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
@@ -176,11 +178,12 @@ class SettingsViewModel(
             inspectModels(modelsDir) to listMbtiles(mapsDir).map { MapFile(it.name, it.length()) }
         }
         _state.update { it.copy(models = models, maps = maps) }
+        onModelsChanged()
     }
 
     companion object {
-        fun factory(settings: SettingsStore, appFilesDir: File?, resolver: ContentResolver) = viewModelFactory {
-            initializer { SettingsViewModel(settings, File(appFilesDir, "models"), File(appFilesDir, "maps"), resolver) }
+        fun factory(settings: SettingsStore, appFilesDir: File?, resolver: ContentResolver, onModelsChanged: () -> Unit) = viewModelFactory {
+            initializer { SettingsViewModel(settings, File(appFilesDir, "models"), File(appFilesDir, "maps"), resolver, onModelsChanged) }
         }
     }
 }
