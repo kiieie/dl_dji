@@ -13,6 +13,8 @@ import com.example.myfirstapp.core.model.currentSortie
 import com.example.myfirstapp.data.MissionVisitRow
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.drone.AircraftStatus
+import com.example.myfirstapp.core.model.GeoSummary
+import com.example.myfirstapp.core.model.HmsIssue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -64,8 +66,15 @@ suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     )
 }
 
-/** [latestPhoto]: 가장 최근 사진 파일(앨범 타일 바탕). */
-data class HomeUiState(val aircraft: AircraftStatus = AircraftStatus(), val latest: LatestMission? = null, val message: String? = null, val latestPhoto: String? = null)
+/** [latestPhoto]: 가장 최근 사진 파일(앨범 타일 바탕). [hms]는 기체 판 HMS 칸, [geo]는 GEO 구역 카드(없으면 "로컬 데이터 없음"). */
+data class HomeUiState(
+    val aircraft: AircraftStatus = AircraftStatus(),
+    val latest: LatestMission? = null,
+    val message: String? = null,
+    val latestPhoto: String? = null,
+    val hms: List<HmsIssue> = emptyList(),
+    val geo: GeoSummary? = null,
+)
 
 /** 홈 화면(Pilot 2 홈페이지, 10장 ①). 기체 상태는 화면이 보이는 동안([active]) 2초마다 다시 읽는다. */
 class HomeViewModel(
@@ -73,6 +82,8 @@ class HomeViewModel(
     private val readAircraft: suspend () -> AircraftStatus,
     /** 데이터 보호 [캐시·로그 삭제]: 지운 파일 수. */
     private val clearCaches: suspend () -> Int = { 0 },
+    private val readHms: () -> List<HmsIssue> = { emptyList() },
+    private val readGeo: suspend () -> GeoSummary? = { null },
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -85,7 +96,9 @@ class HomeViewModel(
         viewModelScope.launch {
             active.collectLatest { on ->
                 while (on) {
-                    _state.update { it.copy(aircraft = readAircraft()) }
+                    val aircraft = readAircraft()
+                    val geo = readGeo()
+                    _state.update { it.copy(aircraft = aircraft, hms = readHms(), geo = geo) }
                     delay(AppConfig.Polling.HOME_AIRCRAFT_MS)
                 }
             }
@@ -114,7 +127,8 @@ class HomeViewModel(
     fun dismissMessage() = _state.update { it.copy(message = null) }
 
     companion object {
-        fun factory(dao: ProjectDao, readAircraft: suspend () -> AircraftStatus, clearCaches: suspend () -> Int) =
-            viewModelFactory { initializer { HomeViewModel(dao, readAircraft, clearCaches) } }
+        fun factory(
+            dao: ProjectDao, readAircraft: suspend () -> AircraftStatus, readHms: () -> List<HmsIssue>, readGeo: suspend () -> GeoSummary?, clearCaches: suspend () -> Int,
+        ) = viewModelFactory { initializer { HomeViewModel(dao, readAircraft, clearCaches, readHms, readGeo) } }
     }
 }

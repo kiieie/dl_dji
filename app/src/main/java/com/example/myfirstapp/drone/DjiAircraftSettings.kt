@@ -20,6 +20,8 @@ import dji.sdk.keyvalue.value.camera.PhotoRatio
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.common.EmptyMsg
+import dji.sdk.keyvalue.value.common.IntValueConfig
+import com.example.myfirstapp.core.model.settingRange
 import dji.sdk.keyvalue.value.flightcontroller.ControlChannelMapping
 import dji.sdk.keyvalue.value.flightcontroller.FailsafeAction
 import dji.sdk.keyvalue.value.flightcontroller.LEDsSettings
@@ -43,6 +45,8 @@ class AircraftSetting(
     internal val write: (suspend (Any) -> Unit)? = null,
     /** 장애물 감지 설정의 방향 칸(수평·상방·하방): 같은 칸끼리 한 화면에 보인다(Pilot 2 [수평|상방|하방]). */
     val group: String? = null,
+    /** [Kind.Number] 범위를 기체에서 읽는다(`KeyGoHomeHeightRange` 등). 없거나 못 읽으면 [Kind.Number.range]. */
+    internal val readRange: suspend () -> IntRange? = { null },
 ) {
     /** 화면 상태·모의 값의 열쇠. 방향 칸마다 이름이 같아("장애물 제동 거리") 칸을 붙인다. */
     val id get() = if (group == null) label else "$group/$label"
@@ -70,6 +74,12 @@ class AircraftSetting(
     }
 
     suspend fun load(): Any? = runCatching { withTimeoutOrNull(AppConfig.Timeouts.SETTINGS_READ_MS) { read() } }.getOrNull()
+
+    /** 숫자 항목의 범위: 기체 값, 못 읽으면 [Kind.Number.range]. 숫자 항목이 아니면 null. */
+    suspend fun loadRange(): IntRange? {
+        val k = kind as? Kind.Number ?: return null
+        return runCatching { withTimeoutOrNull(AppConfig.Timeouts.SETTINGS_READ_MS) { readRange() } }.getOrNull() ?: k.range
+    }
     suspend fun save(value: Any) = write?.invoke(value) ?: Unit
 }
 
@@ -104,10 +114,11 @@ fun djiAircraftSettingTabs(fake: Boolean, general: List<AircraftSetting> = empty
             number(
                 "RTH 고도", FlightControllerKey.KeyGoHomeHeight, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m",
                 "홈포인트에서 50m 이상이면 이 고도까지 올라 홈으로, 5~50m면 지금 고도로 홈으로, 5m 미만이면 바로 착륙합니다. 전주·전선보다 충분히 높게(법정 상한 150m)",
+                rangeKey = FlightControllerKey.KeyGoHomeHeightRange,
             ),
-            number("최고 고도", FlightControllerKey.KeyHeightLimit, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", "법정 상한 150m"),
+            number("최고 고도", FlightControllerKey.KeyHeightLimit, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", "법정 상한 150m", rangeKey = FlightControllerKey.KeyHeightLimitRange),
             toggle("최대 거리", FlightControllerKey.KeyDistanceLimitEnabled),
-            number("최대 거리 값", FlightControllerKey.KeyDistanceLimit, AppConfig.Preflight.DISTANCE_RANGE_M, 100, "m"),
+            number("최대 거리 값", FlightControllerKey.KeyDistanceLimit, AppConfig.Preflight.DISTANCE_RANGE_M, 100, "m", rangeKey = FlightControllerKey.KeyDistanceLimitRange),
             choice("신호 끊김 조치", FlightControllerKey.KeyFailsafeAction, LOST_ACTIONS, dropdown = true),
             action("컴퍼스 캘리브레이션", FlightControllerKey.KeyStartCompassCalibration, "기체를 들고 안내대로 돌려야 합니다. 시작할까요?"),
             action("IMU 캘리브레이션", FlightControllerKey.KeyStartIMUCalibration, "평평한 곳에서 안내대로 기체 방향을 바꿔야 합니다. 시작할까요?"),
@@ -245,8 +256,14 @@ private suspend fun <T> write(info: DJIKeyInfo<T>, value: T, index: ComponentInd
 
 private fun number(
     label: String, info: DJIKeyInfo<Int>, range: IntRange, step: Int, unit: String, note: String? = null, big: Int? = null,
-    slider: Boolean = false, index: ComponentIndexType? = null,
-) = AircraftSetting(label, AircraftSetting.Kind.Number(range, step, unit, big, slider), note, read = { read(info, index) }, write = { v -> write(info, v as Int, index) })
+    slider: Boolean = false, index: ComponentIndexType? = null, rangeKey: DJIKeyInfo<IntValueConfig>? = null,
+) = AircraftSetting(
+    label, AircraftSetting.Kind.Number(range, step, unit, big, slider), note, read = { read(info, index) }, write = { v -> write(info, v as Int, index) },
+    readRange = { rangeKey?.let { read(it) }?.let { settingRange(it.min, it.max, range) } },
+)
+
+/** 화면에 보일 숫자 항목의 범위(항목 `id` → 범위): 기체 범위 키, 모의 기체·실패는 앱 범위([AppConfig.Preflight]). */
+suspend fun List<AircraftSetting>.loadRanges(): Map<String, IntRange> = mapNotNull { a -> a.loadRange()?.let { a.id to it } }.toMap()
 
 private fun toggle(label: String, info: DJIKeyInfo<Boolean>, note: String? = null, index: ComponentIndexType? = null) =
     AircraftSetting(label, AircraftSetting.Kind.Toggle, note, read = { read(info, index) }, write = { v -> write(info, v as Boolean, index) })
@@ -324,13 +341,16 @@ class PreflightSettings(
     }
 }
 
-/** 비행 전 점검 설정(실제 기체). RTH·최고 고도는 [AppConfig.Preflight.ALTITUDE_RANGE_M](Pilot 2 20~1500m), 장애물 거리는 [AppConfig.Preflight.SENSING_RANGE_M]. */
+/**
+ * 비행 전 점검 설정(실제 기체). RTH·최고 고도·최대 비행 거리 범위는 기체 범위 키로 읽고, 못 읽으면 [AppConfig.Preflight.ALTITUDE_RANGE_M](Pilot 2 20~1500m)·
+ * [AppConfig.Preflight.DISTANCE_RANGE_M]. 장애물 거리는 [AppConfig.Preflight.SENSING_RANGE_M].
+ */
 fun djiPreflightSettings() = PreflightSettings(
-    rth = number("RTH 고도", FlightControllerKey.KeyGoHomeHeight, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", big = 100),
-    maxAltitude = number("최고 고도", FlightControllerKey.KeyHeightLimit, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", big = 100),
+    rth = number("RTH 고도", FlightControllerKey.KeyGoHomeHeight, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", big = 100, rangeKey = FlightControllerKey.KeyGoHomeHeightRange),
+    maxAltitude = number("최고 고도", FlightControllerKey.KeyHeightLimit, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", big = 100, rangeKey = FlightControllerKey.KeyHeightLimitRange),
     lostAction = choice("신호 끊김 조치", FlightControllerKey.KeyFailsafeAction, LOST_ACTIONS),
     distanceLimitOn = toggle("최대 비행 거리", FlightControllerKey.KeyDistanceLimitEnabled),
-    distanceLimit = number("최대 비행 거리 값", FlightControllerKey.KeyDistanceLimit, AppConfig.Preflight.DISTANCE_RANGE_M, 100, "m"),
+    distanceLimit = number("최대 비행 거리 값", FlightControllerKey.KeyDistanceLimit, AppConfig.Preflight.DISTANCE_RANGE_M, 100, "m", rangeKey = FlightControllerKey.KeyDistanceLimitRange),
     stickMode = choice("조종 스틱 모드", RemoteControllerKey.KeyControlMode, STICK_MODES),
     homeAircraft = AircraftSetting("홈포인트를 기체 위치로", AircraftSetting.Kind.Action(null), write = { homeToAircraft() }),
     homeRc = AircraftSetting("홈포인트를 조종기 위치로", AircraftSetting.Kind.Action(null), write = { homeToRc() }),

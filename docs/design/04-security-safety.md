@@ -23,6 +23,7 @@
 - **라이선스 적용 순서**: `SDKManager.init()` → `LDMManager.loadLocalLDMLicenseContent(내용)`(라이선스 파일 내용 로드) → `enableLDM` → `isLDMLicenseLoaded()` 확인. 라이선스를 먼저 로드하지 않고 `enableLDM`을 호출하면 SDK가 DJI 서버에 라이선스를 요청하므로 순서를 지킨다. (5.18.0에서 PoC ④로 확인, 2026-10-30)
 - **라이선스 파일 관리**: 앱 assets에 넣어 배포하되 저장소에는 올리지 않는다(`.gitignore`의 `secrets/`). 빌드가 `secrets/license_kr.co.dl_dji.txt`의 내용을 `BuildConfig.DJI_LDM_LICENSE`로 넣는다(assets 폴더 전체 복사는 다른 비밀 파일까지 APK에 들어가므로 쓰지 않음, 2026-10-30). 앱 API 키도 `local.properties`로 옮기는 방안을 구현 단계에서 검토한다.
 - LDM을 켜면 인터넷이 필요한 SDK 기능(비행제한구역 DB 온라인 갱신, 온라인 잠금 해제, 로그 업로드 등)을 쓸 수 없다. 비행제한구역 잠금 해제가 필요한 지역은 사전 절차가 필요하다.
+- **HMS·GEO 구역(2026-11-04, 10.5.5)**: 조종기·기체에 이미 있는 값만 읽는다. HMS는 `DeviceHealthManager.getCurrentDJIDeviceHealthInfos()`(SDK가 등록 때 열고 기체 HMS 푸시로 모은 메모리 목록, 글은 SDK 리소스), 펌웨어 버전·기본 정비 기록(`HmsKey.KeyHMSGetAircraftBasicMaintainData`)·설정 범위(`KeyGoHomeHeightRange` 등)는 키 읽기. GEO는 `FlyZoneManager.addFlySafeNotificationListener`로 SDK가 스스로 알리는 기체 둘레 구역(`onSurroundingFlyZonesUpdate`)을 받기만 한다. **쓰지 않음**: `getFlyZonesInSurroundingArea`(비행 안전 코어에 가짜 GPS를 넣고 구현이 암호화된 네이티브라 네트워크 여부를 확인할 수 없음), GEO DB 받기·가져오기·밀어넣기(`setFlySafeDynamicDatabaseUpgradeMode`·`import*`·`push*`), 잠금 해제·라이선스(`unlock*`·`downloadFlyZoneLicensesFromServer`), 펌웨어 업데이트 확인(`UpgradeManager`·`KeyUpgradeNotifyInfo`), 로그 올리기. 구현 `drone/DjiHealth.kt`.
 - 조종기(RC Pro) 자체도 시스템 설정에서 LDM을 켜고, 현장에서는 Wi-Fi를 끈 채로 운용하도록 운용 지침에 넣는다.
 
 ### 7.3 앱 권한

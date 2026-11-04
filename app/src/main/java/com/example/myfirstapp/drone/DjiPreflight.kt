@@ -49,7 +49,7 @@ internal fun gpsLevelOf(g: GPSSignalLevel?) = when (g) {
     else -> 0
 }
 
-private suspend fun <T> readKey(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(AppConfig.Timeouts.KEY_READ_MS) {
+internal suspend fun <T> readKey(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(AppConfig.Timeouts.KEY_READ_MS) {
     val key = if (index == null) KeyTools.createKey(info) else KeyTools.createKey(info, index)
     runCatching { djiValue<T> { KeyManager.getInstance().getValue(key, it) } }.getOrNull()
 }

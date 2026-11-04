@@ -72,6 +72,13 @@ import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.drone.AircraftStatus
 import com.example.myfirstapp.drone.djiAircraftStatus
+import com.example.myfirstapp.drone.djiGeoSummary
+import com.example.myfirstapp.drone.djiHmsIssues
+import com.example.myfirstapp.core.model.GeoSummary
+import com.example.myfirstapp.core.model.HmsIssue
+import com.example.myfirstapp.core.model.hmsLevel
+import com.example.myfirstapp.ui.procedure.hmsColor
+import com.example.myfirstapp.ui.procedure.hmsWord
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.album.Photo
 import androidx.compose.ui.graphics.Brush
@@ -102,8 +109,8 @@ import com.example.myfirstapp.ui.theme.FontSize
 
 /**
  * 홈(Pilot 2 홈페이지 p2s_1·0225, 10.5.5): 왼쪽 위 우리 표지 · 프로필 · 데이터 보호, 최근 미션 카드(우리 것, [미션 비행 시작]),
- * 타일 비행 경로 · 앨범. 오른쪽 기체 판(HMS 칸, 기체 이름, 페이로드 · 조종기, 연결 상태)과 [카메라 뷰 입력](→ 비행 전 점검 → 카메라 뷰).
- * GEO 구역 카드는 로컬 DB PoC 뒤, 클라우드·아카데미·DJI CARE는 제외(10.5.5). 연동 검증(PoC)은 표지를 길게 누르면 열린다.
+ * GEO 구역 카드 · 타일 비행 경로 · 앨범. 오른쪽 기체 판(HMS 칸 → HMS 목록, 기체 이름, 페이로드 · 조종기, 연결 상태)과 [카메라 뷰 입력](→ 비행 전 점검 → 카메라 뷰).
+ * 클라우드·아카데미·DJI CARE·펌웨어 업데이트 안내는 제외(10.5.5·7.2). 연동 검증(PoC)은 표지를 길게 누르면 열린다.
  */
 @Composable
 fun HomeScreen(
@@ -114,13 +121,16 @@ fun HomeScreen(
     onNewPlan: (projectId: Long) -> Unit,
     onCamera: () -> Unit,
     onSettings: () -> Unit,
-    onAircraftCheck: () -> Unit,
+    /** 기체 판 HMS 칸: HMS 목록(10.5.5). */
+    onHms: () -> Unit,
     onVerification: () -> Unit,
     /** 프로필 → 비행 기록(10.4.6 비행 다시 보기). */
     onFlightRecords: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    val vm: HomeViewModel = viewModel(factory = HomeViewModel.factory(dao, ::djiAircraftStatus) { clearCacheAndLogs(context.applicationContext) })
+    val vm: HomeViewModel = viewModel(
+        factory = HomeViewModel.factory(dao, ::djiAircraftStatus, { djiHmsIssues(context.applicationContext) }, ::djiGeoSummary) { clearCacheAndLogs(context.applicationContext) },
+    )
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refresh() }
     LifecycleResumeEffect(vm) {
@@ -156,6 +166,7 @@ fun HomeScreen(
             }
             MissionCard(latest, Modifier.weight(1f).fillMaxWidth(), onRoutes, onFlight, onNewPlan)
             Row(Modifier.padding(top = 8.dp).height(104.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GeoCard(s.geo, Modifier.weight(1f))
                 // Pilot 2 타일(p2s_1): 바탕 그림 위 흰 제목. 비행 경로는 최근 경로 그림, 앨범은 최근 사진
                 HomeTile("비행 경로", Modifier.weight(1f), onClick = onRoutes) {
                     latest?.takeIf { it.route.isNotEmpty() }?.let { RoutePreview(it.route, it.home, Modifier.fillMaxSize(), labels = false) }
@@ -165,7 +176,7 @@ fun HomeScreen(
                 }
             }
         }
-        AircraftPanel(s.aircraft, Modifier.weight(1f).fillMaxHeight(), onHms = onAircraftCheck, onDetail = { sheet = HomeSheet.AIRCRAFT }, onCamera = onCamera)
+        AircraftPanel(s.aircraft, s.hms, Modifier.weight(1f).fillMaxHeight(), onHms = onHms, onDetail = { sheet = HomeSheet.AIRCRAFT }, onCamera = onCamera)
     }
 
     when (sheet) {
@@ -230,24 +241,22 @@ private fun SheetItem(title: String, subtitle: String, onClick: () -> Unit) {
 }
 
 /**
- * 오른쪽 기체 판(Pilot 2): 위 연결 상태 글과 HMS 칸(표준 녹 / 경고 주황 / 확인 빨강, 누르면 기체 점검), 가운데 기체 이름,
- * 페이로드 · 조종기 두 칸, 아래 [카메라 뷰 입력].
+ * 오른쪽 기체 판(Pilot 2): 위 연결 상태 글과 HMS 칸(HMS 항목 등급: 표준 녹 / 경고 주황 / 심각 빨강, 누르면 HMS 목록. 기체 없이도 조종기 HMS로 보인다),
+ * 가운데 기체 이름, 페이로드 · 조종기 두 칸, 아래 [카메라 뷰 입력].
  */
 @Composable
-private fun AircraftPanel(a: AircraftStatus, modifier: Modifier, onHms: () -> Unit, onDetail: () -> Unit, onCamera: () -> Unit) {
+private fun AircraftPanel(a: AircraftStatus, hms: List<HmsIssue>, modifier: Modifier, onHms: () -> Unit, onDetail: () -> Unit, onCamera: () -> Unit) {
     val (color, label) = statusOf(a)
     Column(modifier.background(MaterialTheme.colorScheme.surfaceContainerLow).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(7.dp).clip(CircleShape).background(color))
             Text(label, Modifier.weight(1f).padding(start = 6.dp), fontSize = FontSize.Body, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val (hms, hmsColor) = when (a.level) {
-                null -> "연결 안 됨" to MaterialTheme.colorScheme.outline
-                AircraftStatus.Level.OK -> "표준" to MaterialTheme.colorScheme.tertiary
-                AircraftStatus.Level.WARN -> "경고" to Warning
-                AircraftStatus.Level.ERROR -> "확인" to MaterialTheme.colorScheme.error
-            }
-            Surface(onClick = onHms, shape = RoundedCornerShape(4.dp), color = hmsColor) {
-                Text("$hms ›", Modifier.padding(horizontal = 12.dp, vertical = 4.dp), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = Color.Black)
+            val level = hmsLevel(hms)
+            Surface(onClick = onHms, shape = RoundedCornerShape(4.dp), color = hmsColor(level)) {
+                Text(
+                    "${hmsWord(level, hms.count { it.level == level })} ›", Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = Color.White,
+                )
             }
         }
         Column(Modifier.weight(1f).fillMaxWidth().clickable(onClickLabel = "기체 세부", onClick = onDetail), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -331,6 +340,29 @@ private fun MissionCard(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * GEO 구역 카드(Pilot 2 홈 "최고 고도: 1500m"): 기체에 있는 비행 안전 데이터로 SDK가 알린 주변 구역만 쓴다(조회·받기 없음, 7.2).
+ * 최고 고도는 품은 높이 제한 구역(없으면 1500m), 아래 줄은 주변 구역 수와 가장 가까운 구역. 받은 적이 없으면 "로컬 데이터 없음".
+ */
+@Composable
+private fun GeoCard(g: GeoSummary?, modifier: Modifier) {
+    Surface(modifier.fillMaxHeight(), shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("GEO 구역", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
+            Text(g?.let { "최고 고도: ${it.maxAltitudeM}m" } ?: "로컬 데이터 없음", fontSize = FontSize.Title, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(
+                when {
+                    g == null -> "기체 연결 뒤 SDK가 알림"
+                    g.zones == 0 -> "주변 구역 없음"
+                    else -> "주변 ${g.zones}곳 · ${g.nearest.orEmpty()} " + g.nearestM?.let { if (it <= 0.0) "안" else if (it < 1000) "${it.toInt()}m" else "%.1fkm".format(java.util.Locale.ROOT, it / 1000) }.orEmpty()
+                },
+                fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

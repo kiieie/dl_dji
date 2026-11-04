@@ -52,12 +52,12 @@ import com.example.myfirstapp.R
 import com.example.myfirstapp.core.executor.PreflightEvaluator
 import com.example.myfirstapp.core.executor.sdFreeLabel
 import com.example.myfirstapp.drone.AircraftSetting
+import com.example.myfirstapp.core.model.hmsLevel
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.Error
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.Inactive
-import com.example.myfirstapp.ui.theme.Tertiary
 import com.example.myfirstapp.ui.theme.Warning
 import com.example.myfirstapp.ui.theme.numberStyle
 import com.example.myfirstapp.InspectionApp
@@ -90,18 +90,18 @@ fun PreflightPage(vm: PreflightViewModel, onClose: () -> Unit, onNext: (warned: 
             s.checks.filter { !it.ok && it.blocking }.forEach { BlockingBanner(it.problem) }
             Column {
                 // 두 열은 줄마다 한 쌍(왼쪽·오른쪽 줄 선이 같은 높이, 11-04 3차)
-                TwoColumns(left = { NumberLine(set.rth, v(set.rth), vm) }, right = { ChoiceLine(set.lostAction, v(set.lostAction), vm) })
+                TwoColumns(left = { NumberLine(set.rth, v(set.rth), s.ranges[set.rth.id], vm) }, right = { ChoiceLine(set.lostAction, v(set.lostAction), vm) })
                 TwoColumns(
-                    left = { NumberLine(set.maxAltitude, v(set.maxAltitude), vm) },
+                    left = { NumberLine(set.maxAltitude, v(set.maxAltitude), s.ranges[set.maxAltitude.id], vm) },
                     right = {
-                        // Pilot 2: 끄면 값 칸 없음, 켜면 값 칸만(누르면 숫자 키보드)
-                        SettingLine(set.distanceLimitOn.label, DISTANCE_HINT, divider = false) {
+                        // Pilot 2: 끄면 값 칸 없음, 켜면 값 칸만(누르면 숫자 키보드). 범위는 기체 값(없으면 15~8000 m)
+                        val range = s.ranges[set.distanceLimit.id] ?: (set.distanceLimit.kind as AircraftSetting.Kind.Number).range
+                        SettingLine(set.distanceLimitOn.label, "(${range.first}~${range.last} m)", divider = false) {
                             val on = v(set.distanceLimitOn) as? Boolean
                             Switch(checked = on == true, enabled = on != null, onCheckedChange = { vm.change(set.distanceLimitOn, it) })
-                            val k = set.distanceLimit.kind as AircraftSetting.Kind.Number
                             val now = v(set.distanceLimit) as? Int
                             if (on == true && now != null) {
-                                DecimalField(now.toDouble(), k.range.first.toDouble()..k.range.last.toDouble(), 1.0, enabled = true, width = 120.dp, decimals = 0) {
+                                DecimalField(now.toDouble(), range.first.toDouble()..range.last.toDouble(), 1.0, enabled = true, width = 120.dp, decimals = 0) {
                                     vm.change(set.distanceLimit, it.toInt())
                                 }
                             } else Box(Modifier.width(120.dp))
@@ -143,13 +143,10 @@ fun PreflightPage(vm: PreflightViewModel, onClose: () -> Unit, onNext: (warned: 
     }
 }
 
-/** 최대 비행 거리 범위 글(Pilot 2 "(15~8000 m)"). */
-private val DISTANCE_HINT = com.example.myfirstapp.AppConfig.Preflight.DISTANCE_RANGE_M.let { "(${it.first}~${it.last} m)" }
-
 private fun m(v: Double) = String.format(Locale.ROOT, "%.1f", v)
 
 /**
- * 맨 위 줄(Pilot 2 0242): 왼쪽 HMS 칸(확인할 항목이 없으면 녹 "표준", 있으면 주황 "경고 n", 누르면 [onHms] 기체 점검), 오른쪽 두 줄 상태(그림 + 값):
+ * 맨 위 줄(Pilot 2 0242): 왼쪽 HMS 칸(HMS 항목 등급: 녹 "표준", 주황 "경고 n", 빨강 "심각 n", 누르면 [onHms] HMS 목록), 오른쪽 두 줄 상태(그림 + 값):
  * 기체 배터리 % V · 조종기 배터리 · 비행 모드 · GNSS / 홈포인트(미설정 주황) · SD 남은 용량 · 모델 GPU(우리 것).
  */
 @Composable
@@ -159,14 +156,15 @@ private fun StatusBlock(s: PreflightUiState, onHms: () -> Unit) {
     val rc by app.rcBattery.collectAsStateWithLifecycle()
     val gpu by app.gpuPrep.status.collectAsStateWithLifecycle()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        val ok = s.warnings == 0
+        val level = hmsLevel(s.hms)
+        val word = hmsWord(level, s.hms.count { it.level == level })
         // 녹색 "표준 HMS ›" 칸(11-04 3차 RC 캡처에 안 보여 Surface로 다시 그림)
         Surface(
-            onClick = onHms, modifier = Modifier.size(180.dp, 52.dp).semantics { contentDescription = "HMS ${if (ok) "표준" else "경고 ${s.warnings}"}, 기체 점검 열기" },
-            shape = RoundedCornerShape(4.dp), color = if (ok) Tertiary else Warning, contentColor = Color.White,
+            onClick = onHms, modifier = Modifier.size(180.dp, 52.dp).semantics { contentDescription = "HMS $word, HMS 목록 열기" },
+            shape = RoundedCornerShape(4.dp), color = hmsColor(level), contentColor = Color.White,
         ) {
             Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (ok) "표준" else "경고 ${s.warnings}", Modifier.weight(1f), fontSize = FontSize.Number, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(word, Modifier.weight(1f), fontSize = FontSize.Number, fontWeight = FontWeight.Bold, color = Color.White)
                 Text("HMS ›", fontSize = FontSize.Label, color = Color.White)
             }
         }
@@ -226,11 +224,13 @@ private fun OurChecks(s: PreflightUiState) {
     }
 }
 
+/** 스테퍼 줄. [range]는 기체가 알려 준 범위(없으면 항목의 앱 범위). */
 @Composable
-private fun NumberLine(a: AircraftSetting, value: Any?, vm: PreflightViewModel) {
+private fun NumberLine(a: AircraftSetting, value: Any?, range: IntRange?, vm: PreflightViewModel) {
     val k = a.kind as AircraftSetting.Kind.Number
-    SettingLine(a.label, "(${k.range.first}~${k.range.last} ${k.unit})", divider = false) {
-        StepperCells(value as? Int, k.step, k.big, k.range) { vm.change(a, it) }
+    val r = range ?: k.range
+    SettingLine(a.label, "(${r.first}~${r.last} ${k.unit})", divider = false) {
+        StepperCells(value as? Int, k.step, k.big, r) { vm.change(a, it) }
     }
 }
 
@@ -317,7 +317,7 @@ private fun RangeHandle(mark: Color) {
 
 /**
  * 홈 [카메라 뷰 입력]·수동 비행 상단 바의 비행 전 점검(10.5.5): 미션 없는 판정([PreflightEvaluator.manual]). [onNext]가 null이면 [다음] 대신 닫기만.
- * HMS 칸을 누르면 [onHms](기체 점검).
+ * HMS 칸을 누르면 [onHms](HMS 목록).
  */
 @Composable
 fun PreflightScreen(onClose: () -> Unit, onNext: (() -> Unit)?, onHms: () -> Unit = {}) {

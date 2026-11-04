@@ -332,17 +332,17 @@ private fun AircraftTab(items: List<AircraftSetting>, s: AircraftSettingsUiState
                     Segmented(groups, groups.indexOf(group)) { group = groups[it] }
                 }
             }
-            if (item.group == null || item.group == group) SettingRow(item, s.values[item.id], connected, vm)
+            if (item.group == null || item.group == group) SettingRow(item, s.values[item.id], s.ranges[item.id], connected, vm)
         }
     }
 }
 
 /**
  * 설정 한 줄(Pilot 2): 위 구분선, 이름 · 오른쪽 조작, 아래 설명 글. 값을 못 읽으면(기체 미연결, 지원 안 함) "--"이고 바꿀 수 없다.
- * 동작은 Pilot 2처럼 가운데 파란 글자 줄, Pilot 2에서만 바꾸는 항목은 흐린 줄.
+ * 동작은 Pilot 2처럼 가운데 파란 글자 줄, Pilot 2에서만 바꾸는 항목은 흐린 줄. 숫자 범위는 기체가 알려 준 [range](없으면 항목의 앱 범위).
  */
 @Composable
-private fun SettingRow(item: AircraftSetting, value: Any?, connected: Boolean, vm: AircraftSettingsViewModel) {
+private fun SettingRow(item: AircraftSetting, value: Any?, range: IntRange?, connected: Boolean, vm: AircraftSettingsViewModel) {
     val k = item.kind
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     if (k is AircraftSetting.Kind.Action) {
@@ -365,12 +365,13 @@ private fun SettingRow(item: AircraftSetting, value: Any?, connected: Boolean, v
         when (k) {
             is AircraftSetting.Kind.Number -> {
                 val v = value as? Int
+                val r = range ?: k.range
                 if (k.slider) {
-                    SliderValue(v?.toDouble(), k.range.first.toDouble()..k.range.last.toDouble(), { "${it.roundToInt()}${k.unit}" }) { vm.change(item, it.roundToInt().coerceIn(k.range)) }
+                    SliderValue(v?.toDouble(), r.first.toDouble()..r.last.toDouble(), { "${it.roundToInt()}${k.unit}" }) { vm.change(item, it.roundToInt().coerceIn(r)) }
                 } else {
-                    Text(rangeText(k.range.first, k.range.last, k.unit), fontSize = FontSize.Caption, color = muted)
+                    Text(rangeText(r.first, r.last, k.unit), fontSize = FontSize.Caption, color = muted)
                     if (v == null) ValueBox("--", 120.dp, enabled = false)
-                    else DecimalField(v.toDouble(), k.range.first.toDouble()..k.range.last.toDouble(), 1.0, enabled = true, decimals = 0) { vm.change(item, it.roundToInt()) }
+                    else DecimalField(v.toDouble(), r.first.toDouble()..r.last.toDouble(), 1.0, enabled = true, decimals = 0) { vm.change(item, it.roundToInt()) }
                 }
             }
             is AircraftSetting.Kind.Decimal -> {

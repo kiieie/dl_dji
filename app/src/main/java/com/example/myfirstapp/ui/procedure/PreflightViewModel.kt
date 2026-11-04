@@ -15,6 +15,10 @@ import com.example.myfirstapp.drone.AircraftSetting
 import com.example.myfirstapp.drone.PreflightExtras
 import com.example.myfirstapp.drone.PreflightSettings
 import com.example.myfirstapp.drone.djiAircraftConnected
+import com.example.myfirstapp.drone.djiHmsIssues
+import com.example.myfirstapp.drone.loadRanges
+import com.example.myfirstapp.core.model.HmsIssue
+import androidx.lifecycle.ViewModelProvider
 import com.example.myfirstapp.drone.djiPreflightExtras
 import com.example.myfirstapp.drone.djiPreflightReport
 import com.example.myfirstapp.drone.djiPreflightSettings
@@ -38,6 +42,10 @@ data class PreflightUiState(
     /** 우리 점검 항목(6.7): 배터리 예상, LDM, GNSS, 첫 전주 거리, SD, 장애물 감지 등. */
     val checks: List<PreflightCheck> = emptyList(),
     val values: Map<String, Any?> = emptyMap(),
+    /** 숫자 설정 범위(이름 → 범위): 기체 범위 키, 모의 기체·실패는 [AppConfig.Preflight] 값. */
+    val ranges: Map<String, IntRange> = emptyMap(),
+    /** HMS 항목(맨 위 "표준 HMS ›" 칸, 10.5.5). */
+    val hms: List<HmsIssue> = emptyList(),
     val message: String? = null,
     /** 기체 없이 모의 값으로 보이는 중. */
     val simulated: Boolean = false,
@@ -45,7 +53,7 @@ data class PreflightUiState(
     /** 확인해도 넘어갈 수 없는 실패(기체 연결, LDM). */
     val blocked get() = PreflightEvaluator.blocked(checks)
 
-    /** HMS 칸(Pilot 2 "표준"): 확인할 항목 수. */
+    /** 우리 점검에서 확인할 항목 수(아래 줄 "▲ n개 항목을 확인하세요"). */
     val warnings get() = checks.count { !it.ok }
 }
 
@@ -59,6 +67,7 @@ class PreflightViewModel(
     val settings: PreflightSettings,
     private val checksOf: (PreflightReport) -> List<PreflightCheck>,
     simulated: Boolean,
+    private val hms: () -> List<HmsIssue> = { emptyList() },
 ) : ViewModel() {
     private val _state = MutableStateFlow(PreflightUiState(simulated = simulated))
     val state: StateFlow<PreflightUiState> = _state.asStateFlow()
@@ -71,7 +80,8 @@ class PreflightViewModel(
     fun reloadValues() {
         viewModelScope.launch {
             val values = settings.all.filter { it.kind !is AircraftSetting.Kind.Action }.associate { it.label to it.load() }
-            _state.update { it.copy(values = values) }
+            val ranges = settings.all.loadRanges()
+            _state.update { it.copy(values = values, ranges = ranges) }
         }
     }
 
@@ -93,7 +103,7 @@ class PreflightViewModel(
         val checks = checksOf(r)
         // 운용 로그(4.4): 처음 읽은 판정만 남긴다(2초마다 다시 읽음)
         if (_state.value.report == null) OpLog.log("preflight", "checklist", checks.associate { it.label to "${if (it.ok) "OK" else "WARN"} ${it.value}" })
-        _state.update { it.copy(report = r, extras = x, checks = checks) }
+        _state.update { it.copy(report = r, extras = x, checks = checks, hms = hms()) }
     }
 
     /** 설정 바꾸기·홈포인트 동작. 쓰고 그 항목을 다시 읽는다(기체가 범위 밖 값을 고칠 수 있음). */
@@ -124,6 +134,7 @@ class PreflightViewModel(
             checksOf: (PreflightReport) -> List<PreflightCheck> = PreflightEvaluator::manual,
         ) = viewModelFactory {
             initializer {
+                val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]!!
                 val real = djiAircraftConnected()
                 // 모의 기체의 점검 값(만들기만 하고 돌리지 않으므로 빈 scope)
                 val fake = FakeDroneGateway(CoroutineScope(EmptyCoroutineContext), GeoPoint(0.0, 0.0)).preflightReport
@@ -131,7 +142,7 @@ class PreflightViewModel(
                     report = report ?: if (real) ({ djiPreflightReport() }) else ({ fake }),
                     extras = if (real) ({ djiPreflightExtras() }) else ({ PreflightExtras('N', FakeDroneGateway.Config().batteryVoltageV) }),
                     settings = djiPreflightSettings().let { if (real) it else it.inMemory() },
-                    checksOf = checksOf, simulated = !real,
+                    checksOf = checksOf, simulated = !real, hms = { djiHmsIssues(app) },
                 )
             }
         }

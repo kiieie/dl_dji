@@ -594,6 +594,9 @@ class FlightViewModel(
         d.setObstacles(front?.let { Obstacles(mapOf(ObstacleDirection.FRONT to it)) })
     }
 
+    /** 모의 HMS·GEO(10.5.5): 주의 항목 하나와 GEO 카드 값을 켜고 끈다(기체 연결 안 됨일 때만 보임). */
+    fun toggleMockHealth() = com.example.myfirstapp.drone.MockHealth.toggle()
+
     private fun send(c: Command) = executor?.send(c).also { OpLog.log("flight", c.toString(), mapOf("mission" to missionId)) }
 
     override fun onCleared() {
