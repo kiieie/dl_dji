@@ -15,7 +15,10 @@ data class UnreachablePole(val pole: Pole, val reason: Reason) {
     enum class Reason { VLOS_EXCEEDED, BATTERY_EXCEEDED }
 }
 
-data class RoutePlan(val home: GeoPoint, val sorties: List<SortiePlan>, val unreachable: List<UnreachablePole>)
+data class RoutePlan(val home: GeoPoint, val sorties: List<SortiePlan>, val unreachable: List<UnreachablePole>) {
+    /** 소티 [i]의 방문 순서를 뒤집는다(Pilot 2 경로 역전, 5.7). 거리·배터리·시간은 [energy]로 다시 센다(왕복 경로라 같지만 지점 배치가 달라질 수 있음). */
+    fun reverse(i: Int, energy: EnergyModel) = copy(sorties = sorties.mapIndexed { j, s -> if (j == i) energy.sortiePlan(home, s.poles.reversed()) else s })
+}
 
 /** 경로 계획(5.1): 도달 불가 분류 → TSP → Split 소티 분할. */
 class RoutePlanner(
@@ -25,7 +28,11 @@ class RoutePlanner(
 
     fun selectInArea(poles: List<Pole>, area: Polygon): List<Pole> = poles.filter { area.contains(it.position) }
 
-    fun plan(home: GeoPoint, poles: List<Pole>, startBatteryPct: Double = 100.0): RoutePlan {
+    /**
+     * [keepOrder]면 [poles] 순서 그대로 나눈다(가져온 Pilot 2 경로, 5.7): TSP·소티 재최적화·끝 맞추기를 하지 않는다.
+     * 아니면 소티마다 이륙 지점에서 가까운 끝부터 돈다(5.4, 경로 역전으로 바꿀 수 있음).
+     */
+    fun plan(home: GeoPoint, poles: List<Pole>, startBatteryPct: Double = 100.0, keepOrder: Boolean = false): RoutePlan {
         val proj = LocalProjection(home)
         val origin = Enu(0.0, 0.0)
         val budget = energy.budget(startBatteryPct)
@@ -47,7 +54,7 @@ class RoutePlanner(
 
         // 2) 전체 순회 경로
         val points = listOf(origin) + reachable.map { proj.toEnu(it.position) }
-        val order = tsp.solve(points).map { it - 1 }
+        val order = if (keepOrder) reachable.indices.toList() else tsp.solve(points).map { it - 1 }
         val ordered = order.map { reachable[it] }
         val enu = order.map { points[it + 1] }
 
@@ -96,7 +103,8 @@ class RoutePlanner(
         var j = n
         for (back in from.asReversed()) {
             val i = back[j]
-            val (seq, dist) = reoptimize((i - 1 until j).toList(), enu, origin)
+            val seg = (i - 1 until j).toList()
+            val (seq, dist) = if (keepOrder) seg to length(seg, enu, origin) else reoptimize(seg, enu, origin)
             val count = j - i + 1
             val jumps = energy.longJumps(seq.zipWithNext { a, b -> enu[a].distanceTo(enu[b]) })
             val shots = extra[j] - extra[i - 1]
@@ -113,14 +121,20 @@ class RoutePlanner(
         return RoutePlan(home, sorties.toList(), unreachable)
     }
 
-    /** 소티 재최적화(5.4): 이륙 지점 + 소티 전주로 TSP를 다시 풀어 더 짧으면 그 순서를 쓴다. (순서, 경로 길이 [EnergyModel.pathM])를 돌려준다. */
+    /** 경로 길이 [EnergyModel.pathM]: 이륙 지점 왕복 + 전주 사이 + 전주 둘레. */
+    private fun length(s: List<Int>, enu: List<Enu>, origin: Enu) = energy.pathM(
+        enu[s.first()].distanceTo(origin) + enu[s.last()].distanceTo(origin),
+        s.zipWithNext { a, b -> enu[a].distanceTo(enu[b]) }.sum(),
+        s.size,
+    )
+
+    /**
+     * 소티 재최적화(5.4): 이륙 지점 + 소티 전주로 TSP를 다시 풀어 더 짧으면 그 순서를 쓴다. (순서, 경로 길이)를 돌려준다.
+     * 왕복 경로라 방향은 길이와 상관없으므로 이륙 지점에서 가까운 끝부터 돌게 맞춘다(전에는 사선 지점 펼치기가 했음, 5.7).
+     */
     private fun reoptimize(seg: List<Int>, enu: List<Enu>, origin: Enu): Pair<List<Int>, Double> {
-        fun length(s: List<Int>) = energy.pathM(
-            enu[s.first()].distanceTo(origin) + enu[s.last()].distanceTo(origin),
-            s.zipWithNext { a, b -> enu[a].distanceTo(enu[b]) }.sum(),
-            s.size,
-        )
         val solved = tsp.solve(listOf(origin) + seg.map { enu[it] }).map { seg[it - 1] }
-        return listOf(seg, solved).map { it to length(it) }.minBy { it.second }
+        val (best, dist) = listOf(seg, solved).map { it to length(it, enu, origin) }.minBy { it.second }
+        return (if (enu[best.last()].distanceTo(origin) < enu[best.first()].distanceTo(origin)) best.reversed() else best) to dist
     }
 }

@@ -82,7 +82,7 @@ import com.example.myfirstapp.ui.theme.FontSize
 /**
  * 라이브러리(10.5.8, Pilot 2 비행 경로 라이브러리 p2s_lib·0164): 머리글(`<` 표지 · 라이브러리 · + 🔍 ☑), 필터 줄(프로젝트(선로) · 상태 · 정렬),
  * 경로 카드 2열(경로 그림·이름·기체·시간, 우리 배지와 주 버튼, ⋯ 결과·다시 날기·즐겨찾기·삭제). ☑ 다중 선택: 전체 선택, 즐겨찾기·삭제·내보내기.
- * `+`: 새 계획 · 전주 파일 가져오기, 프로젝트를 거르고 있으면 그 프로젝트의 속성 갱신 · 삭제.
+ * `+`: 새 계획 · 전주 파일 가져오기 · 경로 가져오기(KMZ/KML, 5.7), 프로젝트를 거르고 있으면 그 프로젝트의 속성 갱신 · 삭제.
  */
 @Composable
 fun ProjectScreen(
@@ -98,6 +98,8 @@ fun ProjectScreen(
     onCopy: (projectId: Long, missionId: Long) -> Unit = { _, _ -> },
     /** ⋯ [비행 다시 보기](10.4.6). */
     onReplay: (missionId: Long) -> Unit = {},
+    /** `+` 경로 가져오기(5.7): 맞은 프로젝트의 계획 화면을 그 파일로. */
+    onImportRoute: (projectId: Long, uri: String) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val resolver = context.contentResolver
@@ -113,6 +115,8 @@ fun ProjectScreen(
     val s by vm.state.collectAsStateWithLifecycle()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(pvm::onCsvPicked) }
     val attrPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(pvm::onAttrFilePicked) }
+    val routePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(pvm::onRouteFilePicked) }
+    LaunchedEffect(ps.routeImport) { ps.routeImport?.let { (pid, uri) -> pvm.onRouteOpened(); onImportRoute(pid, uri) } }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> vm.onExportFolder(uri) }
     LaunchedEffect(s.exported) { if (s.exported.isNotEmpty()) folderPicker.launch(null) }
     LaunchedEffect(vm) {
@@ -173,6 +177,8 @@ fun ProjectScreen(
                                 onClick = { addMenu = false; filtered?.let { onNewPlan(it.id) } ?: run { choosePlan = true } },
                             )
                             DropdownMenuItem(text = { Text("전주 파일 가져오기(엑셀·CSV)") }, onClick = { addMenu = false; pvm.openImport() })
+                            // Pilot 2 경로 가져오기(KMZ/KML, 5.7): MIME이 제각각이라 모든 파일에서 고른다
+                            DropdownMenuItem(text = { Text("경로 가져오기(KMZ/KML)") }, enabled = ps.projects.isNotEmpty(), onClick = { addMenu = false; routePicker.launch(arrayOf("*/*")) })
                             filtered?.let { p ->
                                 HorizontalDivider()
                                 DropdownMenuItem(text = { Text("${p.name} 속성 갱신") }, onClick = { addMenu = false; pvm.openAttrUpdate(p) })
@@ -219,7 +225,7 @@ fun ProjectScreen(
     ps.notice?.let { notice ->
         FullscreenAlertDialog(
             onDismissRequest = pvm::dismissNotice,
-            title = { Text("전주 파일 가져오기") },
+            title = { Text(ps.noticeTitle) },
             text = { Text(notice) },
             confirmButton = { TextButton(onClick = pvm::dismissNotice) { Text("확인") } },
         )

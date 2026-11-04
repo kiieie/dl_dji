@@ -28,6 +28,7 @@ import com.example.myfirstapp.core.model.RcLostAction
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.PoleOverride
 import com.example.myfirstapp.core.model.poleDisplayName
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
@@ -135,6 +136,12 @@ fun FlightParams.toJson(): String = JSONObject()
     .put("climbToStart", climbToStart).put("finishAction", finishAction.name).put("rcLostAction", rcLostAction.name)
     .apply { takeoffSecurityM?.let { put("takeoffSecurityM", it) } }
     .apply { photoFolder?.let { put("photoFolder", it) } }
+    // 전주별 설정(5.7): {"전주번호": {"altitudeM": 35.0, "gimbalPitchDeg": -60.0}}, 경로 팔로우(null)는 넣지 않는다
+    .apply {
+        if (poleOverrides.isNotEmpty()) put("poleOverrides", JSONObject().also { m ->
+            poleOverrides.forEach { (id, o) -> m.put(id, JSONObject().apply { o.altitudeM?.let { put("altitudeM", it) }; o.gimbalPitchDeg?.let { put("gimbalPitchDeg", it) } }) }
+        })
+    }
     .toString()
 
 @Entity(
@@ -333,6 +340,13 @@ fun flightParamsFromJson(json: String, legacyTerrainFollow: Boolean = false): Fl
         finishAction = o.optString("finishAction").let { m -> FinishAction.entries.firstOrNull { it.name == m } } ?: d.finishAction,
         rcLostAction = o.optString("rcLostAction").let { m -> RcLostAction.entries.firstOrNull { it.name == m } } ?: d.rcLostAction,
         photoFolder = if (o.has("photoFolder")) o.getString("photoFolder") else d.photoFolder,
+        poleOverrides = o.optJSONObject("poleOverrides")?.let { m ->
+            m.keys().asSequence().associateWith { id ->
+                m.getJSONObject(id).let { v ->
+                    PoleOverride(v.takeIf { it.has("altitudeM") }?.getDouble("altitudeM"), v.takeIf { it.has("gimbalPitchDeg") }?.getDouble("gimbalPitchDeg"))
+                }
+            }
+        } ?: d.poleOverrides,
     )
 }
 
@@ -446,6 +460,10 @@ interface ProjectDao {
 
     @Query("SELECT * FROM pole WHERE projectId = :projectId")
     suspend fun polesOf(projectId: Long): List<PoleEntity>
+
+    /** 모든 프로젝트의 전주(가져온 Pilot 2 경로를 어느 프로젝트에 맞출지 고를 때, 5.7). */
+    @Query("SELECT * FROM pole")
+    suspend fun allPoles(): List<PoleEntity>
 
     @Update
     suspend fun updatePoles(poles: List<PoleEntity>)

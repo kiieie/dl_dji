@@ -17,9 +17,14 @@ import com.example.myfirstapp.core.model.moveItem
 import com.example.myfirstapp.core.model.step
 import com.example.myfirstapp.core.input.FiveDGate
 import com.example.myfirstapp.core.port.RcButton
+import com.example.myfirstapp.core.config.Tuning
+import com.example.myfirstapp.core.model.PoleOverride
 import com.example.myfirstapp.core.route.EnergyModel
 import com.example.myfirstapp.core.route.EnergyParams
+import com.example.myfirstapp.core.route.ImportedRoute
 import com.example.myfirstapp.core.route.LineNumbers
+import com.example.myfirstapp.core.route.RouteImport
+import com.example.myfirstapp.core.route.SortiePlan
 import com.example.myfirstapp.core.route.Polygon
 import com.example.myfirstapp.core.route.RoutePlan
 import com.example.myfirstapp.core.route.RoutePlanner
@@ -90,8 +95,22 @@ data class PlanUiState(
     val simulator: Boolean = false,
     /** 5D로 고른 미션 설정 항목(10.4.3). 처음 ↕를 누르기 전에는 null. */
     val paramFocus: ParamItem? = null,
+    /** 경로 역전(5.7)한 소티(전주번호 묶음). 다시 계산해도 같은 전주 묶음이면 뒤집어 둔다. */
+    val reversed: Set<Set<String>> = emptySet(),
+    /** 가져온 Pilot 2 경로(5.7)의 전주 차례(그대로 나눔). 영역을 새로 그리면 지운다. */
+    val importOrder: List<String>? = null,
+    /** 가져온 경로에서 전주에 맞지 않은 웨이포인트(지도에 회색 점). */
+    val importUnmatched: List<GeoPoint> = emptyList(),
+    /** 저장하지 않고 나가려 함: Pilot 2 "임무 저장 안 됨. 종료하기 전에 저장할까요?"(5.7). */
+    val leaveAsked: Boolean = false,
+    /** 나가도 됨. 화면이 받아 뒤로 간다. */
+    val leave: Boolean = false,
 ) {
     val paramErrors: List<String> get() = params.validate()
+    /** 저장할 수 있는 경로가 있음(전주별 설정 오류가 있으면 막음). */
+    val canSave get() = plan != null && plan.sorties.isNotEmpty() && !saving && paramErrors.isEmpty()
+    /** 저장하지 않은 경로가 있음(나갈 때 묻는다). */
+    val unsaved get() = plan != null && plan.sorties.isNotEmpty() && savedMissionId == null
     /** 영역 안 전주. 상태 하나에 한 번만 계산한다(화면·canPlan·경로 계산이 여러 번 읽음, 전주 1,000개 이상). */
     val inArea: List<PoleEntity> by lazy {
         if (vertices.size < 3) emptyList() else Polygon(vertices).let { area -> poles.orEmpty().filter { area.contains(GeoPoint(it.lat, it.lon)) } }
@@ -104,6 +123,8 @@ data class PlanUiState(
  * 계획 화면 ③(10장): 영역, 이륙 지점, 파라미터, 전주 제외, 경로 계산과 계획 저장.
  * [replanFrom]이 있으면 그 미션의 남은 전주만 골라 연다(F-20 [남은 전주로 새 계획]). 저장하면 그 미션은 대체됨(REPLACED)으로 닫힌다.
  * [copyFrom]이 있으면 그 미션의 영역·이륙 지점·전주·파라미터로 연다(라이브러리 [다시 날기], 10.5.8). 저장하면 새 미션이고 옛 미션은 그대로다.
+ * [importUri]가 있으면 그 Pilot 2 경로(KMZ/KML)의 웨이포인트를 이 프로젝트 전주에 맞춰 그 차례로 연다(라이브러리 경로 가져오기, 5.7).
+ * 경로 편집(5.7): 경로 역전, 전주별 고도·짐벌 피치, 저장하지 않고 나가면 저장 확인.
  */
 class PlanViewModel(
     private val dao: ProjectDao,
@@ -120,6 +141,9 @@ class PlanViewModel(
     /** 계획을 저장하면 미션 영역의 위성 타일을 미리 받는다(7.4, 현장은 인터넷 없음). 점들과 이름을 넘긴다. */
     private val prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit = { _, _, _ -> },
     private val copyFrom: Long? = null,
+    private val importUri: String? = null,
+    /** 고른 경로 파일(SAF 주소)을 읽는다. */
+    private val readRoute: suspend (String) -> ImportedRoute = { error("경로 파일을 읽을 수 없습니다") },
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlanUiState(mapFiles = listMbtiles(mapsDir)))
     val state: StateFlow<PlanUiState> = _state.asStateFlow()
@@ -141,6 +165,7 @@ class PlanViewModel(
             dao.observePoles(projectId).collect { list -> _state.update { it.copy(poles = list) } }
         }
         replanFrom?.let { viewModelScope.launch { seedReplan(it) } }
+        importUri?.let { viewModelScope.launch { seedImport(it) } }
         // 화면이 보이는 동안 지금 위치를 계속 읽는다(10.5.5): 기체 화살표·버튼을 갱신하고, 이륙 지점이 없으면 기체 → DJI 조종기 → 안드로이드 GPS 순으로 정한다.
         // 한 번 읽고 끝내지 않는다(11-03 현장: 화면을 열 때 GPS가 없으면 손으로 찍어야 했음). 자동으로 정한 지점은 더 믿을 만한 위치가 생기면 올린다
         viewModelScope.launch {
@@ -158,9 +183,10 @@ class PlanViewModel(
         viewModelScope.launch { mapBackgroundRetrying(settings).let { bg -> _state.update { it.copy(background = bg) } } }
         // Pilot 2처럼 영역·이륙 지점·설정·제외가 바뀌면 경로를 바로 다시 계산한다. 연달아 바꾸면 마지막 것만 계산한다.
         // 영역·이륙 지점을 찍는 동안은 계산하지 않고, 도구만 바꾼 것(이륙 → 취소)은 입력이 같아 저장한 계획을 그대로 둔다.
+        // 전주별 설정(5.7)은 촬영 지점의 고도·피치만 바꾸므로 다시 계산하지 않는다(역전한 순서가 그대로 남게).
         viewModelScope.launch {
             _state.filter { it.tool == Tool.NONE }
-                .map { PlanInput(it.poles, it.vertices, it.home, it.params, it.excluded) }
+                .map { PlanInput(it.poles, it.vertices, it.home, it.params.copy(poleOverrides = emptyMap()), it.excluded, it.importOrder) }
                 .distinctUntilChanged()
                 .collectLatest {
                     // 기다리는 동안 안내가 "전주가 없습니다"로 깜박이지 않게 먼저 "계산 중"으로 둔다
@@ -172,7 +198,7 @@ class PlanViewModel(
     }
 
     private data class PlanInput(
-        val poles: List<PoleEntity>?, val vertices: List<GeoPoint>, val home: GeoPoint?, val params: FlightParams, val excluded: Set<String>,
+        val poles: List<PoleEntity>?, val vertices: List<GeoPoint>, val home: GeoPoint?, val params: FlightParams, val excluded: Set<String>, val order: List<String>?,
     )
 
     /**
@@ -207,17 +233,40 @@ class PlanViewModel(
     private suspend fun seedReplan(old: Long) {
         val all = dao.observePoles(projectId).first()
         val remaining = dao.missionVisits(old).filter { it.status == "PENDING" || it.status == "IN_PROGRESS" }.map { it.poleId }.toSet()
-        val targets = all.filter { it.poleId in remaining }
-        if (targets.isEmpty()) return
+        if (remaining.isEmpty()) return
+        val (vertices, excluded) = boxAround(remaining, all)
+        _state.update {
+            it.copy(vertices = vertices, focus = vertices, excluded = excluded, message = "미션 #$old 의 남은 전주 ${all.count { p -> p.poleId in remaining }}개를 골랐습니다. 이륙 지점을 정하세요.")
+        }
+    }
+
+    /** [ids] 전주를 감싸는 사각형(약 30m 여유)과 그 안의 다른 전주(제외할 것). */
+    private fun boxAround(ids: Set<String>, all: List<PoleEntity>): Pair<List<GeoPoint>, Set<String>> {
+        val targets = all.filter { it.poleId in ids }
         val pad = 0.0003 // 약 30m
         val (s, n) = targets.minOf { it.lat } - pad to targets.maxOf { it.lat } + pad
         val (w, e) = targets.minOf { it.lon } - pad to targets.maxOf { it.lon } + pad
-        val vertices = listOf(GeoPoint(s, w), GeoPoint(s, e), GeoPoint(n, e), GeoPoint(n, w))
+        return listOf(GeoPoint(s, w), GeoPoint(s, e), GeoPoint(n, e), GeoPoint(n, w)) to
+            all.filter { p -> p.lat in s..n && p.lon in w..e && p.poleId !in ids }.map { p -> p.poleId }.toSet()
+    }
+
+    /**
+     * 가져온 Pilot 2 경로(5.7): 웨이포인트를 이 프로젝트 전주에 맞추고, 맞은 전주를 감싸는 영역·그 차례로 연다. 맞지 않은 웨이포인트는 회색 점.
+     * 파일에 이륙 기준점(`takeOffRefPoint`)이 있으면 이륙 지점으로 둔다. 높이·짐벌·동작은 버리고 우리 촬영 방식(5.6)으로 다시 만든다.
+     */
+    private suspend fun seedImport(uri: String) {
+        val all = dao.observePoles(projectId).first()
+        val route = runCatching { readRoute(uri) }.getOrElse { e -> return _state.update { it.copy(message = "경로 파일을 읽지 못했습니다: ${e.message}") } }
+        val m = RouteImport.match(route, all.map { it.toPole() }, Tuning.Route.IMPORT_POLE_LINK_M)
+        if (m.poles.isEmpty()) return _state.update { it.copy(message = "가져온 경로가 이 프로젝트의 전주와 맞지 않습니다.") }
+        val ids = m.poles.map { it.poleId }
+        val (vertices, excluded) = boxAround(ids.toSet(), all)
+        OpLog.log("plan", "importRoute", mapOf("waypoints" to route.waypoints.size, "used" to m.used, "poles" to ids.size, "unmatched" to m.unmatched.size, "takeoff" to (route.takeoff != null)))
         _state.update {
             it.copy(
-                vertices = vertices, focus = vertices,
-                excluded = all.filter { p -> p.lat in s..n && p.lon in w..e && p.poleId !in remaining }.map { p -> p.poleId }.toSet(),
-                message = "미션 #$old 의 남은 전주 ${targets.size}개를 골랐습니다. 이륙 지점을 정하세요.",
+                vertices = vertices, focus = vertices, excluded = excluded, importOrder = ids, importUnmatched = m.unmatched.map { w -> w.position },
+                home = route.takeoff ?: it.home, homeSource = if (route.takeoff != null) "kmz" else it.homeSource, homeAuto = route.takeoff == null && it.homeAuto,
+                message = "웨이포인트 ${m.used}개 → 전주 ${ids.size}개(파일 차례). 맞지 않은 ${m.unmatched.size}개(회색)는 뺐고, 높이·짐벌·동작은 촬영 방식대로 다시 만듭니다.",
             )
         }
     }
@@ -263,14 +312,18 @@ class PlanViewModel(
         }
     }
 
-    fun startArea() = OpLog.log("plan", "startArea").let { _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, selected = null, tool = Tool.AREA) } }
+    fun startArea() = OpLog.log("plan", "startArea").let {
+        _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, selected = null, tool = Tool.AREA, importOrder = null, importUnmatched = emptyList()) }
+    }
     /** 영역을 다 그리면 그 안의 지선주는 기본으로 뺀다(4.5). 전주를 눌러 다시 넣을 수 있다. */
     fun finishArea() = _state.update { s ->
         s.copy(tool = Tool.NONE, focus = s.vertices).let { it.copy(excluded = it.excluded + it.inArea.filter { p -> p.guy }.map { p -> p.poleId }) }
     }.also { OpLog.log("plan", "finishArea", mapOf("vertices" to _state.value.vertices.size)) }
     fun undoVertex() = _state.update { it.copy(vertices = it.vertices.dropLast(1), plan = null) }
     /** 영역과 제외를 모두 지운다(Pilot 2 웨이포인트 지우기). */
-    fun clearArea() = OpLog.log("plan", "clearArea").let { _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, tool = Tool.NONE) } }
+    fun clearArea() = OpLog.log("plan", "clearArea").let {
+        _state.update { it.copy(vertices = emptyList(), excluded = emptySet(), plan = null, tool = Tool.NONE, importOrder = null, importUnmatched = emptyList()) }
+    }
     fun startHome() = OpLog.log("plan", "startHome").let { _state.update { it.copy(selected = null, tool = Tool.HOME) } }
     fun cancelTool() = _state.update { it.copy(tool = Tool.NONE) }
     fun updateParams(p: FlightParams) = _state.update { it.copy(params = p, plan = null) }.also { OpLog.log("plan", "params", mapOf("params" to p.toJson())) }
@@ -298,6 +351,46 @@ class PlanViewModel(
         it.copy(excluded = if (poleId in it.excluded) it.excluded - poleId else it.excluded + poleId, plan = null)
     }
 
+    /** 전주별 설정(5.7, Pilot 2 웨이포인트 ALT·짐벌 피치). 경로는 그대로 두고 다시 저장하게 한다. */
+    fun setOverride(poleId: String, o: PoleOverride) {
+        OpLog.log("plan", "override", mapOf("pole" to poleId, "alt" to o.altitudeM, "pitch" to o.gimbalPitchDeg))
+        _state.update { it.copy(params = it.params.withOverride(poleId, o), savedMissionId = null) }
+    }
+
+    /** 경로 위 전주를 차례로 고른다(Pilot 2 "< 웨이포인트 n >"). [dir]는 −1 또는 +1. */
+    fun stepPole(dir: Int) = _state.update { s ->
+        val route = s.plan?.sorties?.flatMap { it.poles }.orEmpty()
+        val i = route.indexOfFirst { it.poleId == s.selected }
+        route.getOrNull(i + dir)?.let { s.copy(selected = it.poleId) } ?: s
+    }
+
+    /** 경로 역전(Pilot 2 S⇄E, 5.7): 고른 전주가 있는 소티, 고른 것이 없으면 모든 소티의 방문 순서를 뒤집는다. */
+    fun reverseRoute() = _state.update { s ->
+        val plan = s.plan ?: return@update s
+        val energy = EnergyModel(EnergyParams(), s.params)
+        val which = plan.sorties.indexOfFirst { so -> so.poles.any { it.poleId == s.selected } }.let { if (it >= 0) listOf(it) else plan.sorties.indices.toList() }
+        OpLog.log("plan", "reverse", mapOf("sorties" to which.map { it + 1 }))
+        s.copy(
+            plan = which.fold(plan) { r, i -> r.reverse(i, energy) },
+            reversed = which.map { sortieKey(plan.sorties[it]) }.fold(s.reversed) { acc, k -> if (k in acc) acc.minusElement(k) else acc.plusElement(k) },
+            savedMissionId = null,
+            message = if (which.size == 1 && plan.sorties.size > 1) "소티 ${which[0] + 1} 경로를 뒤집었습니다" else "경로를 뒤집었습니다",
+        )
+    }
+
+    private fun sortieKey(s: SortiePlan) = s.poles.map { it.poleId }.toSet()
+
+    /** 화면 나가기(뒤로·라이브러리): 저장하지 않은 경로가 있으면 Pilot 2처럼 묻는다(5.7). */
+    fun requestLeave() = _state.update { if (it.unsaved) it.copy(leaveAsked = true) else it.copy(leave = true) }
+
+    /** 저장 확인 창 답: [save]면 저장한 뒤 나가고(못 하면 남아 사유를 보임), 아니면 저장하지 않고 나간다. */
+    fun answerLeave(save: Boolean) {
+        _state.update { it.copy(leaveAsked = false, leave = !save) }
+        if (save) savePlan(leave = true)
+    }
+
+    fun dismissLeave() = _state.update { it.copy(leaveAsked = false) }
+
     private suspend fun computePlan() {
         val s = _state.value
         val start = s.home
@@ -307,10 +400,16 @@ class PlanViewModel(
         try {
             val t0 = System.nanoTime()
             val inArea = s.inArea
+            // 가져온 경로(5.7)는 파일 차례로 놓는다(나중에 다시 넣은 전주는 뒤에)
+            val rank = s.importOrder?.withIndex()?.associate { it.value to it.index }
+            val chosen = inArea.filter { it.poleId !in s.excluded }.let { l -> rank?.let { r -> l.sortedBy { r[it.poleId] ?: Int.MAX_VALUE } } ?: l }
             // 선로 방향(4방향 사선)은 영역 밖 이웃까지 포함한 전체 전주의 선로번호로 정한다(4.5.6)
-            val targets = LineNumbers.withBearings(inArea.filter { it.poleId !in s.excluded }.map { it.toPole() }, s.poles.orEmpty().map { it.toPole() })
+            val targets = LineNumbers.withBearings(chosen.map { it.toPole() }, s.poles.orEmpty().map { it.toPole() })
             // ponytail: 에너지 모델은 기본값(EnergyParams)이다. 보정값 설정은 ⑥ 설정 화면에서 붙인다.
-            val result = withContext(Dispatchers.Default) { RoutePlanner(EnergyModel(EnergyParams(), s.params)).plan(start, targets) }
+            val energy = EnergyModel(EnergyParams(), s.params)
+            // 역전해 둔 소티(같은 전주 묶음)는 다시 계산해도 뒤집어 둔다
+            val result = withContext(Dispatchers.Default) { RoutePlanner(energy).plan(start, targets, keepOrder = rank != null) }
+                .let { r -> r.sorties.indices.filter { sortieKey(r.sorties[it]) in s.reversed }.fold(r) { acc, i -> acc.reverse(i, energy) } }
             val ms = (System.nanoTime() - t0) / 1_000_000
             _state.update { it.copy(plan = result, planMs = ms, planning = false, savedMissionId = null) }
             // 증빙 스크립트가 같은 입력으로 영역 판정과 가시권 판정을 다시 계산해 대조한다.
@@ -329,11 +428,13 @@ class PlanViewModel(
         }
     }
 
-    /** [fly]면 저장 뒤 비행 화면을 연다(Pilot 2 [수행]). 이미 저장한 계획이면 저장 없이 연다. */
-    fun savePlan(fly: Boolean = false) {
-        _state.value.savedMissionId?.let { id -> if (fly) _state.update { it.copy(flyMissionId = id) }; return }
+    /** [fly]면 저장 뒤 비행 화면을 연다(Pilot 2 [수행]), [leave]면 저장 뒤 화면을 닫는다(저장 확인). 이미 저장한 계획이면 저장 없이 연다. */
+    fun savePlan(fly: Boolean = false, leave: Boolean = false) {
+        _state.value.savedMissionId?.let { id -> _state.update { it.copy(flyMissionId = if (fly) id else it.flyMissionId, leave = leave || it.leave) }; return }
         val s = _state.value
         if (s.saving) return
+        // 전주별 설정이 범위를 벗어나면(이동 고도를 낮춤 등) 저장하지 않는다
+        if (!s.canSave) return _state.update { it.copy(message = it.paramErrors.firstOrNull() ?: it.message) }
         val p = s.plan ?: return
         OpLog.log("plan", "save", mapOf("project" to projectId, "sorties" to p.sorties.size, "homeSource" to s.homeSource))
         // 저장한 계획의 이륙 지점은 더 바꾸지 않는다(자동 올리기 끝)
@@ -352,6 +453,7 @@ class PlanViewModel(
                         it.copy(
                             savedMissionId = id.takeIf { _ -> it.plan === p },
                             flyMissionId = id.takeIf { _ -> fly && it.plan === p },
+                            leave = leave,
                             message = "계획을 저장했습니다: 미션 #$id (소티 ${sorties.size}개, 전주 ${sorties.sumOf { so -> so.poleRowIds.size }}개)",
                         )
                     }
@@ -370,6 +472,9 @@ class PlanViewModel(
             dao: ProjectDao, projectId: Long, replanFrom: Long?, mapsDir: File, settings: SettingsStore,
             positions: suspend () -> LivePositions, deviceLocation: suspend (Boolean) -> GeoPoint?, simulatorOn: () -> Boolean,
             prefetchArea: (List<GeoPoint>, String, MapBackground) -> Unit, copyFrom: Long? = null,
-        ) = viewModelFactory { initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, positions, deviceLocation, simulatorOn, prefetchArea, copyFrom) } }
+            importUri: String? = null, readRoute: suspend (String) -> ImportedRoute,
+        ) = viewModelFactory {
+            initializer { PlanViewModel(dao, projectId, replanFrom, mapsDir, settings, positions, deviceLocation, simulatorOn, prefetchArea, copyFrom, importUri, readRoute) }
+        }
     }
 }

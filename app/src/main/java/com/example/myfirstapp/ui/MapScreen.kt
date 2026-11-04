@@ -30,6 +30,20 @@ import com.example.myfirstapp.ui.theme.numberStyle
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 import com.example.myfirstapp.core.route.Viewpoints
+import com.example.myfirstapp.core.route.LocalProjection
+import com.example.myfirstapp.core.config.Tuning
+import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.PoleOverride
+import androidx.core.net.toUri
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Slider
+import androidx.compose.ui.semantics.Role
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.layers.PropertyFactory.iconImage
+import org.maplibre.android.style.layers.PropertyFactory.symbolSortKey
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.example.myfirstapp.core.model.ShotMode
 import android.graphics.RectF
@@ -174,6 +188,8 @@ fun MapScreen(
     replanFrom: Long? = null,
     /** 라이브러리 [다시 날기]: 이 미션의 경로로 연다(10.5.8). */
     copyFrom: Long? = null,
+    /** 라이브러리 경로 가져오기: 이 Pilot 2 경로 파일(SAF 주소)로 연다(5.7). */
+    importUri: String? = null,
 ) {
     val context = LocalContext.current
     val vm: PlanViewModel = viewModel(
@@ -181,8 +197,11 @@ fun MapScreen(
             dao, projectId, replanFrom, File(context.getExternalFilesDir(null), "maps").apply { mkdirs() },
             (context.applicationContext as InspectionApp).settings, ::djiPositions, { fresh -> deviceLocation(context.applicationContext, fresh) }, ::djiSimulatorOn,
             { points, name, bg -> context.getExternalFilesDir(null)?.let { prefetchSatellite(it, points, name, bg) } }, copyFrom,
+            importUri, { uri -> withContext(Dispatchers.IO) { readRouteFile(context.contentResolver, uri.toUri()) } },
         ),
     )
+    // 머리글·경로 칩의 계획 종류
+    val kind = replanFrom?.let { "#$it 남은 전주" } ?: copyFrom?.let { "#$it 다시 날기" } ?: importUri?.let { "가져온 경로" } ?: "새 계획"
     val s by vm.state.collectAsStateWithLifecycle()
     // 핀포인트·선·영역(10.4.7): 계획 지도는 보기·검색만(Pilot 2 경로 편집 지도에도 주석 도구는 없음)
     val notes by annotationViewModel().state.collectAsStateWithLifecycle()
@@ -199,14 +218,23 @@ fun MapScreen(
     LaunchedEffect(s.flyMissionId) {
         s.flyMissionId?.let { vm.onFlightOpened(); onStartFlight(it) }
     }
-    // 영역·이륙 지점을 찍는 중 뒤로 가기는 화면을 떠나지 않고 도구만 취소한다(10.3)
-    BackHandler(enabled = s.tool != Tool.NONE, onBack = vm::cancelTool)
+    LaunchedEffect(s.leave) { if (s.leave) onBack() }
+    // 영역·이륙 지점을 찍는 중 뒤로 가기는 화면을 떠나지 않고 도구만 취소한다(10.3). 저장하지 않은 경로가 있으면 저장 확인(5.7)
+    BackHandler(enabled = s.tool != Tool.NONE || s.unsaved) { if (s.tool != Tool.NONE) vm.cancelTool() else vm.requestLeave() }
+    if (s.leaveAsked) {
+        FullscreenAlertDialog(
+            onDismissRequest = vm::dismissLeave,
+            text = { Text("임무 저장 안 됨. 종료하기 전에 저장할까요?") },
+            confirmButton = { TextButton(onClick = { vm.answerLeave(save = true) }) { Text("저장") } },
+            dismissButton = { TextButton(onClick = { vm.answerLeave(save = false) }) { Text("종료") } },
+        )
+    }
     // RC 5D(10.4.3): ↕ 미션 설정 항목, ↔ 값. 5D ←는 여기서 뒤로가 아니다(MainActivity 허용 목록에서 뺌)
     val rc = (context.applicationContext as InspectionApp).rcButtons
     LaunchedEffect(vm) { rc.fiveD().collect(vm::on5d) }
 
     Column(Modifier.fillMaxSize()) {
-        PlanHeader(s, replanFrom, copyFrom, onBack)
+        PlanHeader(s, kind, vm::requestLeave)
         Row(Modifier.weight(1f)) {
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 s.poles?.let {
@@ -214,7 +242,10 @@ fun MapScreen(
                         poles = it,
                         mapFiles = s.mapFiles,
                         background = s.background,
-                        overlay = Overlay(s.vertices, s.plan, s.excludedPoints, s.params, s.poles?.firstOrNull { p -> p.poleId == s.selected }?.let { p -> GeoPoint(p.lat, p.lon) }),
+                        overlay = Overlay(
+                            s.vertices, s.plan, s.excludedPoints, s.params, s.poles?.firstOrNull { p -> p.poleId == s.selected }?.let { p -> GeoPoint(p.lat, p.lon) },
+                            s.importUnmatched,
+                        ),
                         markers = MapMarkers(home = s.home, aircraft = s.aircraft, headingDeg = s.aircraftHeadingDeg, rc = s.rc),
                         annotations = notes.items,
                         focus = s.focus,
@@ -234,10 +265,14 @@ fun MapScreen(
                             Text("H", fontSize = FontSize.Micro, fontWeight = FontWeight.Bold, color = Color.Black)
                         }
                     }
+                    // Pilot 2 경로 역전(S⇄E, 5.7): 고른 전주의 소티, 없으면 모든 소티
+                    MapTool("경로 역전", enabled = s.tool == Tool.NONE && !s.plan?.sorties.isNullOrEmpty(), onClick = vm::reverseRoute) { tint ->
+                        Icon(painterResource(R.drawable.ic_reverse), contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+                    }
                 }
                 // 경로 열기 칩(Pilot 2, 10.5.8): 왼쪽 그리기 도구 옆. 할 일 안내는 그 아래
                 Column(Modifier.align(Alignment.TopStart).padding(top = 8.dp, start = 52.dp, end = 52.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    RouteChip(s, inArea.size, replanFrom, copyFrom, onPlay = { vm.savePlan(fly = true) }, onSave = { vm.savePlan() }, onLibrary = onBack)
+                    RouteChip(s, inArea.size, kind, onPlay = { vm.savePlan(fly = true) }, onSave = { vm.savePlan() }, onLibrary = vm::requestLeave)
                     HintChip(s, inArea.size, vm)
                 }
                 // 오른쪽 지도 도구(10.5.4): 검색 · 전체 보기 · 레이어(배경 지도 고르기, 배경 끄기) · 지우기(영역) · 과녁(기체·조종기 위치로)
@@ -262,14 +297,14 @@ fun MapScreen(
 
 /** 머리글 32dp(지도·카메라 화면, 10.4.2): 뒤로, 프로젝트 이름, 새 계획/다시 계획, 저장 상태. */
 @Composable
-private fun PlanHeader(s: PlanUiState, replanFrom: Long?, copyFrom: Long?, onBack: () -> Unit) {
+private fun PlanHeader(s: PlanUiState, kind: String, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(Dimens.HeaderCamera).background(Color.Black).padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         IconButton(onClick = onBack, modifier = Modifier.size(Dimens.TouchSmall)) {
             Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(15.dp))
         }
         AppBadge()
         Text(s.projectName, fontSize = FontSize.Label, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 240.dp))
-        Text(replanFrom?.let { "미션 #$it 남은 전주" } ?: copyFrom?.let { "미션 #$it 다시 날기" } ?: "새 계획", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(if (kind.startsWith("#")) "미션 $kind" else kind, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         val saved = s.savedMissionId
         val c = if (saved == null) Warning else MaterialTheme.colorScheme.tertiary
         Row(Modifier.padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -284,10 +319,10 @@ private fun PlanHeader(s: PlanUiState, replanFrom: Long?, copyFrom: Long?, onBac
  * ▶는 저장(필요하면)하고 비행 화면의 비행 전 점검 → 체크리스트로 간다. ˅는 저장 · 라이브러리.
  */
 @Composable
-private fun RouteChip(s: PlanUiState, inAreaCount: Int, replanFrom: Long?, copyFrom: Long?, onPlay: () -> Unit, onSave: () -> Unit, onLibrary: () -> Unit) {
+private fun RouteChip(s: PlanUiState, inAreaCount: Int, kind: String, onPlay: () -> Unit, onSave: () -> Unit, onLibrary: () -> Unit) {
     val plan = s.plan
     val sum = plan?.let { RouteSummary.of(it.sorties, s.params) }
-    val ready = plan != null && plan.sorties.isNotEmpty() && !s.saving
+    val ready = s.canSave
     var menu by remember { mutableStateOf(false) }
     Column(Modifier.widthIn(max = 380.dp)) {
         Row(
@@ -302,7 +337,7 @@ private fun RouteChip(s: PlanUiState, inAreaCount: Int, replanFrom: Long?, copyF
             ) { Icon(painterResource(R.drawable.ic_play), contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp)) }
             Text(
                 s.savedMissionId?.let { "${s.projectName} #$it" }
-                    ?: listOf(s.projectName, replanFrom?.let { "#$it 남은 전주" } ?: copyFrom?.let { "#$it 다시 날기" } ?: "새 계획").joinToString(" · "),
+                    ?: listOf(s.projectName, kind).joinToString(" · "),
                 Modifier.weight(1f, fill = false), fontSize = FontSize.Title, color = Color.Black, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Box {
@@ -391,23 +426,24 @@ private fun ChipButton(label: String, enabled: Boolean = true, filled: Boolean =
 private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewModel) = LightScreen(Modifier.width(240.dp).fillMaxHeight(), color = LightSurface) {
     Column(Modifier.fillMaxSize()) {
         val pole = s.poles?.firstOrNull { it.poleId == s.selected }
-        if (pole != null) {
-            PoleSection(pole, isExcluded = pole.poleId in s.excluded, canExclude = inArea.any { it.id == pole.id }, vm)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        }
-        val guys = inArea.count { it.guy && it.poleId in s.excluded }
-        Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(listOfNotNull("미션 설정", "지선주 ${guys}개 기본 제외".takeIf { guys > 0 }).joinToString(" · "), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         val scroll = rememberScrollState()
+        // 고른 전주(전주별 설정까지)도 함께 스크롤한다(패널 높이 약 400dp)
         Column(Modifier.weight(1f).verticalScroll(scroll)) {
+            if (pole != null) {
+                PoleSection(pole, s, canExclude = inArea.any { it.id == pole.id }, vm)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            val guys = inArea.count { it.guy && it.poleId in s.excluded }
+            Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(listOfNotNull("미션 설정", "지선주 ${guys}개 기본 제외".takeIf { guys > 0 }).joinToString(" · "), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ParamRows(s.params, pole, enabled = s.tool == Tool.NONE, focus = s.paramFocus, simulator = s.simulator, onChange = vm::updateParams)
             s.paramErrors.forEach { Text(it, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) }
             s.plan?.let { PlanSummary(it, s.planMs, s.params) }
         }
         FiveDHints(Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 12.dp), listOf("5D ↕" to "항목", "5D ↔" to "값"))
-        val ready = s.plan != null && s.plan.sorties.isNotEmpty() && !s.saving
+        val ready = s.canSave
         Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(
                 onClick = { vm.savePlan() }, enabled = ready && s.savedMissionId == null, modifier = Modifier.width(72.dp).height(40.dp),
@@ -426,10 +462,23 @@ private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewMode
     }
 }
 
-/** 고른 전주(Pilot 2 개별 웨이포인트 설정 자리): 이름·설치기기, 속성 한 줄, 경로 넣기/빼기(F-06). */
+/**
+ * 고른 전주(Pilot 2 개별 웨이포인트 설정 자리): 이름·설치기기, 속성 한 줄, 경로 넣기/빼기(F-06).
+ * 경로 위 전주면 Pilot 2 "< 웨이포인트 n >"처럼 ‹ › 로 차례를 옮기고, 전주별 고도·짐벌 피치(5.7)를 정한다.
+ */
 @Composable
-private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boolean, vm: PlanViewModel) {
+private fun PoleSection(pole: PoleEntity, s: PlanUiState, canExclude: Boolean, vm: PlanViewModel) {
+    val isExcluded = pole.poleId in s.excluded
     Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val route = s.plan?.sorties?.flatMap { it.poles }.orEmpty()
+        val at = route.indexOfFirst { it.poleId == pole.poleId }
+        if (at >= 0) {
+            Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { vm.stepPole(-1) }, enabled = at > 0, modifier = Modifier.size(Dimens.TouchSmall).semantics { contentDescription = "앞 전주" }) { Text("‹", fontSize = FontSize.Title) }
+                Text("웨이포인트 ${at + 1}/${route.size}", Modifier.weight(1f), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                IconButton(onClick = { vm.stepPole(1) }, enabled = at < route.lastIndex, modifier = Modifier.size(Dimens.TouchSmall).semantics { contentDescription = "다음 전주" }) { Text("›", fontSize = FontSize.Title) }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(if (isExcluded) Color.Gray else Warning).border(2.dp, Caution, CircleShape))
             Text(poleDisplayName(pole.poleId, pole.lineName, pole.lineNo), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -447,6 +496,58 @@ private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boole
         when {
             !canExclude -> Text("영역 밖 전주", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else -> ChipButton(if (isExcluded) "경로에 다시 넣기" else "경로에서 빼기") { vm.toggleExcluded(pole.poleId) }
+        }
+        if (at >= 0) Column(Modifier.padding(end = 8.dp)) { PoleOverrideRows(pole.toPole(), s.params, enabled = s.tool == Tool.NONE) { vm.setOverride(pole.poleId, it) } }
+    }
+}
+
+/**
+ * 전주별 설정(5.7, Pilot 2 웨이포인트 ALT·짐벌 피치): 줄마다 [경로 팔로우](켜면 미션 설정). 끄면 고도는 [−10][−1] 값 [+1][+10](미션 고도 범위 안),
+ * 피치는 슬라이더(-90~0°, 손을 떼면 저장). 4방향 사선은 그 전주의 4지점에 같이 쓴다.
+ */
+@Composable
+private fun PoleOverrideRows(pole: Pole, p: FlightParams, enabled: Boolean, onChange: (PoleOverride) -> Unit) {
+    val o = p.poleOverrides[pole.poleId] ?: PoleOverride()
+    val range = p.shotAltitudeRangeM
+    val pitchRange = Tuning.Safety.GIMBAL_PITCH_RANGE_DEG
+    FollowRow("고도 (ALT)", follow = o.altitudeM == null, enabled) { f -> onChange(o.copy(altitudeM = if (f) null else Viewpoints.altitude(pole, p).coerceIn(range))) }
+    val alt = o.altitudeM
+    Row(Modifier.fillMaxWidth().height(Dimens.RowTable), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (alt == null) {
+            Text("${Viewpoints.altitude(pole, p).toInt()}m", style = numberStyle(FontSize.Number), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            listOf(-10, -1).forEach { d -> StepButton("$d", "고도 $d", enabled) { onChange(o.copy(altitudeM = (alt + d).coerceIn(range))) } }
+            Text("${alt.toInt()}m", Modifier.weight(1f), style = numberStyle(FontSize.Number), textAlign = TextAlign.Center, maxLines = 1)
+            listOf(1, 10).forEach { d -> StepButton("+$d", "고도 +$d", enabled) { onChange(o.copy(altitudeM = (alt + d).coerceIn(range))) } }
+        }
+    }
+    if (alt != null) Text("(${range.start.toInt()}~${range.endInclusive.toInt()}m)", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    FollowRow("짐벌 피치(°)", follow = o.gimbalPitchDeg == null, enabled) { f -> onChange(o.copy(gimbalPitchDeg = if (f) null else Viewpoints.pitch(pole, p).roundToInt().toDouble().coerceIn(pitchRange))) }
+    val pitch = o.gimbalPitchDeg
+    if (pitch == null) {
+        Text("${Viewpoints.pitch(pole, p).roundToInt()}°", style = numberStyle(FontSize.Number), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        // 끄는 동안은 화면 상태로만 두고 손을 떼면 한 번 저장한다(운용 로그가 끌 때마다 쌓이지 않게)
+        var drag by remember(pole.poleId) { mutableStateOf<Float?>(null) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Slider(
+                value = drag ?: pitch.toFloat(), onValueChange = { drag = it }, enabled = enabled, modifier = Modifier.weight(1f),
+                valueRange = pitchRange.start.toFloat()..pitchRange.endInclusive.toFloat(),
+                onValueChangeFinished = { drag?.let { onChange(o.copy(gimbalPitchDeg = it.roundToInt().toDouble())) }; drag = null },
+            )
+            Text("${(drag ?: pitch.toFloat()).roundToInt()}°", Modifier.width(40.dp), style = numberStyle(FontSize.Number), textAlign = TextAlign.End)
+        }
+    }
+}
+
+/** 전주별 설정 줄 머리: 이름과 Pilot 2 [경로 팔로우] 체크(줄 전체를 눌러도 됨). */
+@Composable
+private fun FollowRow(label: String, follow: Boolean, enabled: Boolean, onFollow: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(Dimens.RowTable), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f), fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Row(Modifier.toggleable(value = follow, enabled = enabled, role = Role.Checkbox, onValueChange = onFollow).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = follow, onCheckedChange = null, enabled = enabled)
+            Text("경로 팔로우", fontSize = FontSize.Caption)
         }
     }
 }
@@ -590,6 +691,8 @@ private data class Overlay(
     val vertices: List<GeoPoint>, val plan: RoutePlan?, val excluded: List<GeoPoint>, val params: FlightParams,
     /** 오른쪽 패널에 연 전주. 노란 고리로 표시한다(Pilot 2 선택한 웨이포인트). */
     val selected: GeoPoint?,
+    /** 가져온 경로에서 전주에 맞지 않은 웨이포인트(회색 작은 점, 5.7). */
+    val unmatched: List<GeoPoint> = emptyList(),
 )
 
 /**
@@ -651,6 +754,8 @@ private fun PoleMap(
                 style.addSource(GeoJsonSource("route"))
                 style.addSource(GeoJsonSource("selected"))
                 style.addSource(GeoJsonSource("excluded"))
+                style.addSource(GeoJsonSource("route-length"))
+                style.addSource(GeoJsonSource("unmatched"))
                 style.addLayer(
                     FillLayer("area-fill", "draw").withFilter(eq(geometryType(), literal("Polygon")))
                         .withProperties(fillColor(MAP_AREA), fillOpacity(0.12f)),
@@ -679,6 +784,16 @@ private fun PoleMap(
                     CircleLayer("excluded-point", "excluded").withProperties(
                         circleColor("#868E96"), circleRadius(POLE_RADIUS), circleStrokeColor("#FFFFFF"), circleStrokeWidth(POLE_STROKE),
                     ),
+                )
+                // 가져온 경로에서 전주에 맞지 않은 웨이포인트(5.7)
+                style.addLayer(
+                    CircleLayer("unmatched-point", "unmatched").withProperties(
+                        circleColor("#868E96"), circleRadius(4f), circleStrokeColor("#FFFFFF"), circleStrokeWidth(1.5f),
+                    ),
+                )
+                // 구간 거리(Pilot 2 "346.3m"): 긴 구간부터 놓고 겹치면 숨긴다
+                style.addLayer(
+                    SymbolLayer("route-length", "route-length").withProperties(iconImage(get("icon")), symbolSortKey(get("rank"))),
                 )
                 style.addLayer(
                     CircleLayer("area-vertex", "draw").withFilter(eq(geometryType(), literal("Point"))).withProperties(
@@ -729,6 +844,18 @@ private fun PoleMap(
             val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
             style.getSourceAs<GeoJsonSource>("draw")?.setGeoJson(drawFeatures(overlay.vertices))
             style.getSourceAs<GeoJsonSource>("route")?.setGeoJson(routeFeatures(overlay.plan, overlay.params))
+            style.getSourceAs<GeoJsonSource>("route-length")?.setGeoJson(
+                FeatureCollection.fromFeatures(
+                    routeLines(overlay.plan, overlay.params).flatMap { it.zipWithNext() }.map { (a, b) ->
+                        val m = LocalProjection.distanceM(a, b)
+                        Feature.fromGeometry(GeoPoint((a.lat + b.lat) / 2, (a.lon + b.lon) / 2).toPoint()).apply {
+                            addStringProperty("icon", style.labelImage(String.format(Locale.ROOT, "%.1fm", m), dark = false))
+                            addNumberProperty("rank", -m)
+                        }
+                    },
+                ),
+            )
+            style.getSourceAs<GeoJsonSource>("unmatched")?.setGeoJson(FeatureCollection.fromFeatures(overlay.unmatched.map { Feature.fromGeometry(it.toPoint()) }))
             style.getSourceAs<GeoJsonSource>("excluded")?.setGeoJson(
                 FeatureCollection.fromFeatures(overlay.excluded.map { Feature.fromGeometry(it.toPoint()) }),
             )
@@ -818,11 +945,14 @@ private fun drawFeatures(vertices: List<GeoPoint>): FeatureCollection {
 internal fun areaPolygon(vertices: List<GeoPoint>): GeoJsonPolygon =
     vertices.map { it.toPoint() }.let { GeoJsonPolygon.fromLngLats(listOf(it + it.first())) }
 
-/** 소티마다 이륙 지점 → 실제 촬영 지점들(5.6, 4방향이면 4패스) → 이륙 지점으로 닫힌 선 하나와 방문 전주 점들. 기체가 날 경로와 같다. */
+/** 소티마다 이륙 지점 → 실제 촬영 지점들(5.6, 4방향이면 전주마다 4점) → 이륙 지점. 기체가 날 수평 경로와 같다. */
+private fun routeLines(plan: RoutePlan?, params: FlightParams): List<List<GeoPoint>> =
+    if (plan == null) emptyList() else plan.sorties.map { s -> listOf(plan.home) + Viewpoints.expand(s.poles, params, plan.home).map { it.position } + plan.home }
+
+/** 소티마다 닫힌 선 하나([routeLines])와 방문 전주 점들. */
 private fun routeFeatures(plan: RoutePlan?, params: FlightParams): FeatureCollection = FeatureCollection.fromFeatures(
-    if (plan == null) emptyList() else plan.sorties.flatMapIndexed { i, s ->
+    routeLines(plan, params).zip(plan?.sorties.orEmpty()).flatMapIndexed { i, (line, s) ->
         val color = SORTIE_COLORS[i % SORTIE_COLORS.size]
-        val line = listOf(plan.home) + Viewpoints.expand(s.poles, params, plan.home).map { it.position } + plan.home
         (listOf(LineString.fromLngLats(line.map { it.toPoint() })) + s.poles.map { it.position.toPoint() })
             .map { g -> Feature.fromGeometry(g).apply { addStringProperty("color", color) } }
     },

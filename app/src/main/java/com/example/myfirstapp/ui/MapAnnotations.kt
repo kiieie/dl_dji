@@ -148,7 +148,7 @@ private fun labelPoint(a: Annotation): GeoPoint? = when {
 }
 
 /** 글자 그림을 스타일에 한 번만 넣고 이름을 돌려준다. [dark]면 검은 반투명 바탕(전주 라벨과 같음), 아니면 Pilot 2 구간 길이처럼 회색 바탕. */
-private fun Style.labelImage(text: String, dark: Boolean): String {
+internal fun Style.labelImage(text: String, dark: Boolean): String {
     val id = "note-label-$dark-$text"
     if (getImage(id) == null) addImage(id, labelBitmap(text, if (dark) 0x99000000.toInt() else 0xCC5A5F5A.toInt()))
     return id

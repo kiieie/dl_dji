@@ -252,20 +252,25 @@ class MainActivity : ComponentActivity() {
                     onResult = { pid, mid -> nav.navigate("result/$pid/$mid") },
                     onCopy = { pid, mid -> nav.navigate("map/$pid?copy=$mid") },
                     onReplay = { mid -> nav.navigate("replay?mission=$mid") },
+                    onImportRoute = { pid, uri -> nav.navigate("map/$pid?kmz=${android.net.Uri.encode(uri)}") },
                 ) }
             }
             composable(
-                "map/{pid}?replan={replan}&copy={copy}",
+                "map/{pid}?replan={replan}&copy={copy}&kmz={kmz}",
                 listOf(
                     navArgument("pid") { type = NavType.LongType }, navArgument("replan") { type = NavType.LongType; defaultValue = -1L },
                     navArgument("copy") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("kmz") { type = NavType.StringType; nullable = true; defaultValue = null },
                 ),
             ) { e ->
                 val pid = e.arguments!!.getLong("pid")
                 val replan = e.arguments!!.getLong("replan").takeIf { it > 0 }
                 val copy = e.arguments!!.getLong("copy").takeIf { it > 0 }
                 // ▶·[저장하고 수행]: 비행 화면을 비행 전 점검을 연 채로(10.5.5 → 체크리스트)
-                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it?pre=true") { launchSingleTop = true } }, replanFrom = replan, copyFrom = copy)
+                MapScreen(
+                    pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it?pre=true") { launchSingleTop = true } },
+                    replanFrom = replan, copyFrom = copy, importUri = e.arguments!!.getString("kmz"),
+                )
             }
             composable("flight/{pid}/{mid}?pre={pre}", ids + navArgument("pre") { type = NavType.BoolType; defaultValue = false }) { e ->
                 val pid = e.arguments!!.getLong("pid")

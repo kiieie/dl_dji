@@ -56,9 +56,19 @@ data class FlightParams(
     val rcLostAction: RcLostAction = RcLostAction.GO_BACK,
     /** 체크리스트 폴더 만들기: SD 사진 폴더 이름. null이면 앱이 "<프로젝트>-#<미션>"으로 정한다. */
     val photoFolder: String? = null,
+    /** 전주별 설정(5.7, Pilot 2 웨이포인트별 ALT·짐벌 피치): 전주번호 → 덮어쓸 값. 없는 전주·값은 위 미션 설정을 따른다(Pilot 2 "경로 팔로우"). */
+    val poleOverrides: Map<String, PoleOverride> = emptyMap(),
 ) {
     /** 촬영 고도: 4방향 사선은 사선 고도, 전주 위는 점검 고도(5.6). */
     val shotAltitudeM: Double get() = if (shotMode == ShotMode.DIAGONAL4) diagonalAltitudeM else inspectAltitudeM
+
+    /** 촬영 고도로 고를 수 있는 범위(전주별 설정의 [−][+] 끝값, [validate]와 같음): 사선은 전선 위 10m ~ 이동 고도, 전주 위는 1m ~ 이동 고도. */
+    val shotAltitudeRangeM: ClosedFloatingPointRange<Double>
+        get() = (if (shotMode == ShotMode.DIAGONAL4) Tuning.Safety.WIRE_HEIGHT_M + Tuning.Safety.WIRE_CLEARANCE_M else 1.0)..transitAltitudeM
+
+    /** 전주 [poleId]의 전주별 설정을 [o]로 바꾼다. 비면(모두 경로 팔로우) 지운다. */
+    fun withOverride(poleId: String, o: PoleOverride) =
+        copy(poleOverrides = if (o.altitudeM == null && o.gimbalPitchDeg == null) poleOverrides - poleId else poleOverrides + (poleId to o))
 
     /**
      * 전주 하나에서 받을 사진 파일 수(5.6) = 촬영 동작 수: 촬영 지점 수(사선 4, 전주 위 1) × 렌즈별 동작 수, 사선에서 설치기기가 있으면 설비 조준 사진으로 2배.
@@ -87,7 +97,7 @@ data class FlightParams(
         if (transitAltitudeM + Tuning.Safety.RTH_MARGIN_M > Tuning.Safety.MAX_ALTITUDE_M) add("RTH 고도가 150m를 넘습니다.")
         if (speedMps !in Tuning.Safety.SPEED_RANGE_MPS) add("비행 속도는 1.0~15.0m/s여야 합니다.")
         if (offsetDistanceM < 0.0) add("오프셋 거리는 0m 이상이어야 합니다.")
-        if (gimbalPitchDeg !in -90.0..0.0) add("짐벌 피치는 -90~0°여야 합니다.")
+        if (gimbalPitchDeg !in Tuning.Safety.GIMBAL_PITCH_RANGE_DEG) add("짐벌 피치는 -90~0°여야 합니다.")
         if (lenses.isEmpty()) add("촬영 렌즈를 하나 이상 선택해야 합니다.")
         if (waitSec < 0) add("대기 시간은 0초 이상이어야 합니다.")
         if (batteryReservePct < Tuning.Safety.MIN_RESERVE_PCT) add("배터리 예비율은 20% 이상이어야 합니다.")
@@ -102,5 +112,13 @@ data class FlightParams(
             if (diagonalDistanceM !in 3.0..50.0) add("전주까지 수평거리는 3~50m여야 합니다.")
             if (aimHeightM !in 0.0..diagonalAltitudeM) add("조준 높이는 0m 이상, 비행 고도 이하여야 합니다.")
         }
+        // 전주별 설정(5.7)도 미션 설정과 같은 범위를 지킨다(이동 고도를 낮추면 걸릴 수 있음)
+        poleOverrides.forEach { (id, o) ->
+            o.altitudeM?.let { if (it !in shotAltitudeRangeM) add("전주 $id 고도는 ${shotAltitudeRangeM.start.toInt()}~${shotAltitudeRangeM.endInclusive.toInt()}m여야 합니다.") }
+            o.gimbalPitchDeg?.let { if (it !in Tuning.Safety.GIMBAL_PITCH_RANGE_DEG) add("전주 $id 짐벌 피치는 -90~0°여야 합니다.") }
+        }
     }
 }
+
+/** 전주 하나의 촬영 고도(이륙 지점 또는 지면 기준, 미션 고도 모드와 같음)·짐벌 피치 덮어쓰기(5.7). null은 미션 설정을 따른다. */
+data class PoleOverride(val altitudeM: Double? = null, val gimbalPitchDeg: Double? = null)
