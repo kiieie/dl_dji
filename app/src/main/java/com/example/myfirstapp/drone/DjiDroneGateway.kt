@@ -16,6 +16,7 @@ import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.PhotoModes
 import com.example.myfirstapp.core.model.ShootMode
 import com.example.myfirstapp.core.model.Telemetry
+import com.example.myfirstapp.core.port.CameraNotReady
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.DroneEvent
 import com.example.myfirstapp.core.port.DroneGateway
@@ -71,6 +72,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -123,6 +125,9 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     @Volatile private var kmzWaypoints: List<WpmlWriter.Waypoint> = emptyList()
     /** 새 사진의 주인(앱 촬영·지점)을 가른다(6.4 사진 주인 가르기). 시각은 모두 조종기가 알림을 받은 때라 카메라 시계와 무관하다. */
     private val owners = MediaClassifier()
+
+    /** 앱 촬영(셔터·타이머)으로 가른 사진 번호: 받기 차례를 지점 사진 뒤로 미룬다([withMediaTurn]). */
+    private val appMedia: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     private var lostJob: Job? = null
     private var lost = false
 
@@ -243,7 +248,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(CameraKey.KeyCameraFocusMode, camera) { m -> _camera.update { it.copy(focus = focusOf(m)) } }
         on(CameraKey.KeySDCardAvailablePhotoCount, camera) { n -> _camera.update { it.copy(photosLeft = n) } }
         on(CameraKey.KeySDCardAvailableVideoDuration, camera) { n -> _camera.update { it.copy(recordSecLeft = n) } }
-        on(CameraKey.KeyCameraMode, camera) { m -> cameraMode = m }
+        on(CameraKey.KeyCameraMode, camera) { m -> cameraModeIs(m) }
         on(FlightControllerKey.KeyCompassHeading) { h -> _telemetry.update { it.copy(headingDeg = ((h ?: 0.0) + 360) % 360) } }
         // 조종기 위치(지도 파란 점, 10.5.4)
         on(RemoteControllerKey.KeyRcGPSInfo) { g ->
@@ -273,7 +278,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             Log.i(TAG, "사진 #${info.index} 지점 $waypoint → $owner")
             OpLog.log("media", owner.name, mapOf("media" to info.index, "dcf" to info.dcf_type?.name, "waypoint" to waypoint, "shot" to shot, "file" to file?.toString()))
             when (owner) {
-                MediaOwner.SCREEN -> newPhotos.tryEmit(capture)
+                MediaOwner.SCREEN -> {
+                    appMedia += capture.mediaId
+                    newPhotos.tryEmit(capture)
+                }
                 // 같은 지점의 n번째 파일 = n번째 촬영 동작(광각 → 망원 → 설비). 실제 렌즈는 받을 때 파일 이름(_W/_Z)으로 다시 본다
                 MediaOwner.WAYPOINT -> file?.let { f -> _events.tryEmit(DroneEvent.PhotoTaken(f.shot, capture.copy(lens = f.lens, equipment = f.equipment))) }
                 MediaOwner.NONE -> Unit
@@ -356,6 +364,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     @Volatile private var uploadedTerrain = false
 
     override suspend fun uploadSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> = runCatching {
+        ensureSinglePhoto("upload")
         kmzDir.mkdirs()
         val previousKmz = lastKmzName() // 새 KMZ를 쓰기 전에(옛 미션을 끝낼 때 쓸 이름)
         val name = "sortie_${System.currentTimeMillis()}"
@@ -412,10 +421,13 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     override suspend fun startUploaded(): Result<Unit> = runCatching {
         val name = uploadedName ?: error("올린 미션 없음")
+        ensureSinglePhoto("start")
         missionName = name
         // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
         runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected("미션 시작 거절: ${it.message}", it) }
         uploadedName = null
+        // 땅에서 돌린 타이머의 파일 붙잡기를 푼다(이제 오는 파일은 지점 사진)
+        owners.missionResumed()
         Log.i(TAG, "소티 미션 시작 $name")
         Unit
     }.onFailure { e ->
@@ -466,8 +478,27 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     override suspend fun resumeMission(): Result<Unit> = runCatching {
         check(missionName != null) { "올린 미션 없음" }
+        ensureSinglePhoto("resume")
         djiDone { missions.resumeMission(it) }
         owners.missionResumed()
+    }
+
+    override val missionPhotosPending: Boolean get() = System.currentTimeMillis() < photoGraceUntil
+
+    /**
+     * 미션 사진 상태(6.4): KMZ 촬영 동작이 인터벌·SMART·연사로 찍히면 파일 수·시각이 어긋나 지점 사진이 밀린다. 그래서 올리기·시작·재개 전에
+     * 카메라가 단일 사진(`PHOTO_NORMAL`)이 아니면(Pilot 2·타이머·SMART가 남김, 앱 재시작 뒤 화면은 단일) 바꾼다. 타이머가 돌고 있거나
+     * 알던 다른 모드에서 못 바꾸면 [CameraNotReady](운용자 안내, 운용 로그). 모드를 아직 모르면 해 보고 실패는 기록만 한다.
+     */
+    private suspend fun ensureSinglePhoto(what: String) {
+        if (timerOn) throw CameraNotReady("타이머 촬영 중입니다. 셔터를 눌러 타이머를 멈춘 뒤 다시 하세요.")
+        val was = cameraMode
+        if (was == CameraMode.PHOTO_NORMAL) return
+        val r = runCatching { setCameraMode(CameraMode.PHOTO_NORMAL) }
+        OpLog.log("camera", "singlePhoto", mapOf("what" to what, "from" to was?.name, "ok" to r.isSuccess, "error" to r.exceptionOrNull()?.djiDetail()))
+        if (r.isFailure && was != null) {
+            throw CameraNotReady("카메라를 단일 사진으로 바꾸지 못했습니다(지금 ${was.name}). 타이머·녹화를 멈추고 다시 하세요.", r.exceptionOrNull())
+        }
     }
 
     override suspend fun stopMission(): Result<Unit> {
@@ -509,7 +540,31 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     private fun photoModeOf(m: ShootMode) = if (m == ShootMode.SMART) CameraMode.PHOTO_HYPER_LIGHT else CameraMode.PHOTO_NORMAL
 
-    private suspend fun setCameraMode(m: CameraMode) = djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyCameraMode, camera), m, it) }
+    /** 카메라 모드를 바꾼다. 인터벌(타이머)에서 나갈 때는 먼저 촬영을 멈춘다(돌고 있으면 모드 바꾸기가 거절될 수 있음). 받아지면 알림 전에 값을 맞춘다. */
+    private suspend fun setCameraMode(m: CameraMode, stopFirst: Boolean = cameraMode == CameraMode.PHOTO_INTERVAL && m != CameraMode.PHOTO_INTERVAL) {
+        if (stopFirst) stopShooting()
+        djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyCameraMode, camera), m, it) }
+        cameraModeIs(m)
+    }
+
+    private suspend fun stopShooting() = runCatching { djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.performAction(KeyTools.createKey(CameraKey.KeyStopShootPhoto, camera), it) } }
+
+    /**
+     * 카메라 모드 알림(또는 받아진 바꾸기): 인터벌이면 사진 주인 가르기가 새 파일을 모두 앱 촬영으로 본다(6.4).
+     * 화면 촬영 모드 처음 값(10.5.7)과 사진 기다림(SMART)도 기체 값을 따른다(Pilot 2·앱 재시작이 남긴 SMART).
+     */
+    private fun cameraModeIs(m: CameraMode?) {
+        cameraMode = m
+        owners.cameraInterval(m == CameraMode.PHOTO_INTERVAL)
+        val shoot = when (m) {
+            CameraMode.PHOTO_NORMAL -> ShootMode.SINGLE
+            CameraMode.PHOTO_HYPER_LIGHT -> ShootMode.SMART
+            CameraMode.PHOTO_INTERVAL -> ShootMode.TIMER
+            else -> null
+        }
+        if (shoot == ShootMode.SINGLE || shoot == ShootMode.SMART) shootMode = shoot
+        _camera.update { it.copy(shootMode = shoot) }
+    }
 
     /**
      * 촬영 모드 메뉴(10.5.7): `KeyCameraModeRange`의 사진 모드(인터벌 → 타이머, 파노라마, 하이퍼라이트 → SMART)와 `KeyIntervalModeParamRange` 간격.
@@ -537,48 +592,82 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         shootMode = mode
     }
 
-    /** [intervalShots]를 멈추라는 신호(화면 셔터를 다시 누름). */
-    @Volatile private var intervalStop: CompletableDeferred<Unit>? = null
+    /** 돌고 있는 [intervalShots]에 보내는 멈춤 요청(답: 카메라가 인터벌을 벗어났는지). 타이머가 끝나면 닫힌다. */
+    @Volatile private var intervalStops: Channel<CompletableDeferred<Result<Unit>>>? = null
+
+    /** 타이머 촬영 중(시작부터 늦은 파일까지): 미션 올리기·시작·재개를 막는다([ensureSinglePhoto]). */
+    @Volatile private var timerOn = false
+
+    /** 인터벌을 옛 키(`KeyShootPhotoMode`)로 걸었다: 끝낼 때 그 키도 되돌린다. */
+    @Volatile private var legacyInterval = false
 
     /**
      * 타이머 촬영(10.5.7): 카메라를 인터벌(장수 [AppConfig.CameraView.INTERVAL_COUNT_CONTINUOUS])로 바꾸고 촬영을 시작한다. 그 동안 새 파일은 모두 앱 촬영 것([MediaClassifier] 연속).
-     * 멈추면 `KeyStopShootPhoto` 뒤 [Tuning.Photo.MULTI_FILE_MS] 동안 늦은 파일까지 넘기고 사진 모드(단일·SMART)로 돌린다.
+     * [stopInterval]마다 멈춰 보고([leaveInterval]), 카메라가 인터벌을 벗어나야 [Tuning.Photo.MULTI_FILE_MS] 동안 늦은 파일까지 넘기고 끝난다.
+     * 벗어나지 못하면(멈춤·모드 되돌림 거절, 연결 끊김) 계속 돈다(6.4: 그대로 재개하면 인터벌 사진이 지점 사진이 됨).
      * ponytail: M3E가 `KeyCameraMode` PHOTO_INTERVAL을 받는지 실기 확인 전이라, 거절되면 `KeyShootPhotoMode` INTERVAL로 한 번 더 해 본다(어느 쪽인지 로그).
      */
     override fun intervalShots(intervalSec: Double): Flow<CaptureInfo> {
-        // 멈춤 신호는 부를 때 만든다: 모으기 시작 전에 누른 멈춤도 잃지 않게
-        val stop = CompletableDeferred<Unit>().also { intervalStop = it }
+        // 멈춤 요청 통로는 부를 때 만든다: 모으기 시작 전에 누른 멈춤도 잃지 않게
+        val stops = Channel<CompletableDeferred<Result<Unit>>>(Channel.UNLIMITED).also { intervalStops = it }
         return channelFlow {
-            captureLock.withLock {
-                // 사진 알림은 시작 명령 전에 구독한다(capture와 같음)
-                val photos = launch(start = CoroutineStart.UNDISPATCHED) { newPhotos.collect { send(it) } }
-                owners.screenStarted(continuous = true)
-                try {
-                    runCatching { setCameraMode(CameraMode.PHOTO_INTERVAL) }.onFailure { e ->
-                        OpLog.log("camera", "intervalMode", mapOf("cameraMode" to e.djiDetail()))
-                        djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyShootPhotoMode, camera), CameraShootPhotoMode.INTERVAL, it) }
-                    }
-                    val settings = PhotoIntervalShootSettings(AppConfig.CameraView.INTERVAL_COUNT_CONTINUOUS, intervalSec)
-                    djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyPhotoIntervalShootSettings, camera), settings, it) }
-                    djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.performAction(KeyTools.createKey(CameraKey.KeyStartShootPhoto, camera), it) }
-                    OpLog.log("camera", "intervalStart", mapOf("sec" to intervalSec))
-                    stop.await()
-                } finally {
-                    withContext(NonCancellable) {
-                        val stopped = runCatching { djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.performAction(KeyTools.createKey(CameraKey.KeyStopShootPhoto, camera), it) } }
-                        owners.screenEnded(System.currentTimeMillis())
-                        delay(Tuning.Photo.MULTI_FILE_MS)
-                        photos.cancel()
-                        val back = runCatching { setCameraMode(photoModeOf(shootMode)) }
-                        OpLog.log("camera", "intervalStop", mapOf("stop" to stopped.exceptionOrNull()?.djiDetail(), "mode" to back.exceptionOrNull()?.djiDetail()))
+            try {
+                captureLock.withLock {
+                    timerOn = true
+                    // 사진 알림은 시작 명령 전에 구독한다(capture와 같음)
+                    val photos = launch(start = CoroutineStart.UNDISPATCHED) { newPhotos.collect { send(it) } }
+                    owners.screenStarted(continuous = true)
+                    var left: Result<Unit>? = null
+                    try {
+                        runCatching { setCameraMode(CameraMode.PHOTO_INTERVAL) }.onFailure { e ->
+                            OpLog.log("camera", "intervalMode", mapOf("cameraMode" to e.djiDetail()))
+                            djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyShootPhotoMode, camera), CameraShootPhotoMode.INTERVAL, it) }
+                            legacyInterval = true
+                        }
+                        val settings = PhotoIntervalShootSettings(AppConfig.CameraView.INTERVAL_COUNT_CONTINUOUS, intervalSec)
+                        djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyPhotoIntervalShootSettings, camera), settings, it) }
+                        djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.performAction(KeyTools.createKey(CameraKey.KeyStartShootPhoto, camera), it) }
+                        OpLog.log("camera", "intervalStart", mapOf("sec" to intervalSec))
+                        while (left?.isSuccess != true) {
+                            val reply = stops.receive()
+                            left = leaveInterval().also { reply.complete(it) }
+                        }
+                    } finally {
+                        withContext(NonCancellable) {
+                            // 시작 거절·화면 닫힘: 한 번 멈춰 본다. 못 멈추면 카메라 모드 알림(인터벌)이 새 파일을 계속 앱 촬영으로 둔다
+                            val r = left?.takeIf { it.isSuccess } ?: leaveInterval()
+                            stops.close()
+                            generateSequence { stops.tryReceive().getOrNull() }.forEach { it.complete(r) }
+                            owners.screenEnded(System.currentTimeMillis())
+                            delay(Tuning.Photo.MULTI_FILE_MS)
+                            photos.cancel()
+                            timerOn = false
+                        }
                     }
                 }
+            } finally {
+                // 자물쇠를 받기 전에 끝남(타이머 시작 전 취소): 기다리는 멈춤 요청에 답한다
+                if (stops.close()) generateSequence { stops.tryReceive().getOrNull() }.forEach { it.complete(Result.success(Unit)) }
             }
         }
     }
 
-    override suspend fun stopInterval() {
-        intervalStop?.complete(Unit)
+    /** 타이머 끝: 촬영을 멈추고 사진 모드(단일·SMART)로 되돌린다. 모드 되돌림이 받아져야 성공(카메라가 인터벌을 벗어남). */
+    private suspend fun leaveInterval(): Result<Unit> {
+        val stopped = stopShooting()
+        val back = runCatching {
+            if (legacyInterval) djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyShootPhotoMode, camera), CameraShootPhotoMode.NORMAL, it) }
+            legacyInterval = false
+            setCameraMode(photoModeOf(shootMode), stopFirst = false)
+        }
+        OpLog.log("camera", "intervalStop", mapOf("stop" to stopped.exceptionOrNull()?.djiDetail(), "mode" to back.exceptionOrNull()?.djiDetail()))
+        return back
+    }
+
+    override suspend fun stopInterval(): Result<Unit> {
+        val reply = CompletableDeferred<Result<Unit>>()
+        if (intervalStops?.trySend(reply)?.isSuccess != true) return Result.success(Unit)
+        return reply.await()
     }
 
     /** ☀ 노출 손잡이(10.5.7): 기체 범위(`KeyExposureCompensationRange`, 처음 한 번)에서 [ev]에 가장 가까운 단계. 수동 노출이면 기체가 거절한다. */
@@ -594,7 +683,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     /** SD 최신 목록에서 사진 번호([CaptureInfo.mediaId])로 찾아 받는다. 막 찍힌 사진은 목록에 늦게 올라오므로 몇 번 다시 본다. */
     override suspend fun download(capture: CaptureInfo, mode: DownloadMode): Result<ByteArray> = runCatching {
-        mediaLock.withLock {
+        withMediaTurn(app = capture.mediaId in appMedia) {
             val index = capture.mediaId.toInt()
             var file: MediaFile? = null
             repeat(AppConfig.Polling.DOWNLOAD_TRIES) {
@@ -628,6 +717,35 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             }
         }
     }.onFailure { Log.w(TAG, "다운로드 실패 #${capture.mediaId}: ${it.message}"); OpLog.log("error", "download", mapOf("media" to capture.mediaId, "message" to it.message)) }
+
+    /** [mediaLock]을 기다리는 앱 촬영 아닌(지점) 사진 받기 수. */
+    private val waypointWaiting = MutableStateFlow(0)
+    private val appDownloadLock = Mutex()
+
+    /**
+     * [mediaLock] 차례(6.4): 타이머 사진이 수십 장 밀려도 재개 뒤 지점 사진 받기가 그 뒤에 줄 서지 않게, 앱 촬영 사진은 하나씩만 들어가고
+     * 기다리는 지점 사진이 있으면 그것이 먼저 들어간 뒤에 들어간다(지점 사진 앞에 있는 앱 촬영 받기는 많아야 하나).
+     */
+    private suspend fun <T> withMediaTurn(app: Boolean, block: suspend () -> T): T {
+        if (app) {
+            appDownloadLock.withLock {
+                waypointWaiting.first { it == 0 }
+                mediaLock.lock()
+            }
+        } else {
+            waypointWaiting.update { it + 1 }
+            try {
+                mediaLock.lock()
+            } finally {
+                waypointWaiting.update { it - 1 }
+            }
+        }
+        try {
+            return block()
+        } finally {
+            mediaLock.unlock()
+        }
+    }
 
     override suspend fun listMedia(sinceMs: Long): Result<List<CaptureInfo>> = runCatching {
         mediaLock.withLock {
@@ -737,7 +855,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     }.getOrNull()
 
     override suspend fun setVideoMode(on: Boolean): Result<Unit> = runCatching {
-        djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyCameraMode, camera), if (on) CameraMode.VIDEO_NORMAL else CameraMode.PHOTO_NORMAL, it) }
+        setCameraMode(if (on) CameraMode.VIDEO_NORMAL else CameraMode.PHOTO_NORMAL)
     }
 
     override suspend fun setRecording(on: Boolean): Result<Unit> = runCatching {

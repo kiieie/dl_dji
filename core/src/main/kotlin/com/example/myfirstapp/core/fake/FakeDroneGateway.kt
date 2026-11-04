@@ -13,6 +13,7 @@ import com.example.myfirstapp.core.model.Obstacles
 import com.example.myfirstapp.core.model.PhotoModes
 import com.example.myfirstapp.core.model.ShootMode
 import com.example.myfirstapp.core.model.Telemetry
+import com.example.myfirstapp.core.port.CameraNotReady
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.DroneEvent
 import com.example.myfirstapp.core.port.DroneGateway
@@ -104,6 +105,9 @@ class FakeDroneGateway(
     var kmzTakesOff = false
     var failNextCaptures = 0
 
+    /** 값이 있으면 카메라를 단일 사진으로 맞추지 못한 것처럼 올리기·시작·재개를 [CameraNotReady]로 거절한다(실제 기체 어댑터, 6.4). */
+    var cameraNotReady: String? = null
+
     /** 다음 지점 사진을 이만큼 늦게 알린다(다음 지점에 도착한 뒤 오는 사진, 6.4 사진 순서). */
     var lateNextPhotoMs = 0L
     var failNextDownloads = 0
@@ -161,6 +165,7 @@ class FakeDroneGateway(
     override suspend fun uploadSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> {
         calls += "startSortie:${points.size}"
         if (!connected()) return Result.failure(IllegalStateException("연결 없음"))
+        cameraNotReady?.let { return Result.failure(CameraNotReady(it)) }
         delay(config.legStartMs)
         if (failNextLegStarts > 0) {
             failNextLegStarts--
@@ -173,6 +178,7 @@ class FakeDroneGateway(
 
     override suspend fun startUploaded(): Result<Unit> {
         calls += "startUploaded"
+        cameraNotReady?.let { return Result.failure(CameraNotReady(it)) }
         return runUploaded()
     }
 
@@ -226,6 +232,7 @@ class FakeDroneGateway(
 
     override suspend fun resumeMission(): Result<Unit> {
         calls += "resumeMission"
+        cameraNotReady?.let { return Result.failure(CameraNotReady(it)) }
         if (!missionPaused || motionJob?.isActive != true) return Result.failure(IllegalStateException("멈춘 미션 없음"))
         missionPaused = false
         _telemetry.update { it.copy(flightMode = FlightMode.MISSION) }
@@ -273,8 +280,9 @@ class FakeDroneGateway(
         }
     }
 
-    override suspend fun stopInterval() {
+    override suspend fun stopInterval(): Result<Unit> {
         intervalStop?.complete(Unit)
+        return Result.success(Unit)
     }
 
     override suspend fun setExposureCompensation(ev: Double): Result<Unit> = Result.success(Unit).also {

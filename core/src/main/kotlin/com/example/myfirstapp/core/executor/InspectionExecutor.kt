@@ -25,6 +25,7 @@ import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.Telemetry
 import com.example.myfirstapp.core.model.VisitStatus
+import com.example.myfirstapp.core.port.CameraNotReady
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.Detector
 import com.example.myfirstapp.core.port.DroneEvent
@@ -127,7 +128,8 @@ class InspectionExecutor(
         data class Downloaded(val images: List<Pair<Long, ByteArray>>) : StepResult
         data class Analyzed(val detections: Map<Long, List<Detection>>, val error: String?) : StepResult
         data object WaitDone : StepResult
-        data class Resumed(val ok: Boolean) : StepResult
+        /** [cameraError]: 카메라를 단일 사진으로 맞추지 못해 재개하지 않음(미션은 기체에 그대로, 6.4). */
+        data class Resumed(val ok: Boolean, val cameraError: String? = null) : StepResult
         data class RthCommanded(val ok: Boolean, val error: String? = null) : StepResult
         data class ManualCaptured(val capture: CaptureInfo?, val image: ByteArray?) : StepResult
         data class Crashed(val message: String) : StepResult
@@ -395,6 +397,10 @@ class InspectionExecutor(
             is StepResult.Resumed -> if (state == Paused) {
                 if (r.ok) {
                     enter(FlyingLeg, "미션 재개")
+                } else if (r.cameraError != null) {
+                    // 카메라가 타이머·SMART 등에 남아 재개하면 지점 사진이 섞인다: 일시정지로 두고 알린다(다시 ▶로 재개)
+                    message = r.cameraError
+                    notifier.play(Sound.ERROR)
                 } else {
                     // 미션이 기체에 없으면(앱 재시작 등) 남은 전주로 새 소티 미션을 올린다
                     missionActive = false
@@ -551,7 +557,10 @@ class InspectionExecutor(
         notifier.play(Sound.RESUMED)
         if (config.sortieMission && missionActive) {
             // 방식 A: 기체에 남은 미션을 이어 간다(멈춘 지점으로 돌아간 뒤 계속, 6.1)
-            launchStep { StepResult.Resumed(drone.resumeMission().isSuccess) }
+            launchStep {
+                val r = drone.resumeMission()
+                StepResult.Resumed(r.isSuccess, (r.exceptionOrNull() as? CameraNotReady)?.message)
+            }
             return
         }
         // 하드웨어 일시정지는 미션을 종료하지 않았으므로 새 구간 전에 stopMission으로 끝낸다(6.4)
@@ -732,6 +741,8 @@ class InspectionExecutor(
         repeat(config.legRetries + 1) { attempt ->
             val r = if (uploadOnly) drone.uploadSortie(points, params) else drone.startSortie(points, params)
             if (r.isSuccess) return StepResult.LegReady(true, "")
+            // 카메라를 단일 사진으로 못 바꿈: 다시 올려도 같다. 운용자가 카메라를 정리하도록 이유를 그대로 보인다
+            (r.exceptionOrNull() as? CameraNotReady)?.let { return StepResult.LegReady(false, it.message.orEmpty()) }
             // 올라갔는데 시작만 거절: 같은 KMZ는 다시 올려도 같다. 지형 추적이면 운용자에게 이륙 기준을 묻는다
             if (r.exceptionOrNull() is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, TERRAIN_ASK, terrainRejected = true)
             if (attempt < config.legRetries) delay(config.legRetryDelayMs)

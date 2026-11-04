@@ -33,6 +33,15 @@ class ShutterRouteTest {
     }
 
     @Test
+    fun `미션을 끝내거나 멈춘 뒤 늦은 지점 사진을 받는 동안(5초)은 RTH·일시정지 셔터도 막는다`() {
+        assertEquals(ShutterRoute.BLOCKED, shutterRoute(ExecState.ReturningHome, flying = true, missionPhotos = true))
+        assertEquals(ShutterRoute.BLOCKED, shutterRoute(ExecState.Paused, flying = true, missionPhotos = true))
+        assertEquals(ShutterRoute.BLOCKED, shutterRoute(ExecState.SortieDone, flying = false, missionPhotos = true))
+        // 유예가 끝나면 원래대로
+        assertEquals(ShutterRoute.MANUAL, shutterRoute(ExecState.ReturningHome, flying = true, missionPhotos = false))
+    }
+
+    @Test
     fun `촬영 모드 - 파노라마는 늘 막고 땅에서는 Pilot 2 문구, 기체가 모르는 모드도 막음`() {
         val basic = PhotoModes.BASIC.modes
         assertEquals("기체 비행 전. 파노라마 촬영 불가", shootModeBlock(ShootMode.PANORAMA, basic + ShootMode.PANORAMA, flying = false))

@@ -69,7 +69,9 @@ import com.example.myfirstapp.detect.PreciseDetection
 import com.example.myfirstapp.core.port.InspectionRecorder
 import com.example.myfirstapp.sound.ToneNotifier
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -316,7 +318,12 @@ class FlightViewModel(
             }
         }
         viewModelScope.watchObstacles(drone, notifier) { w -> _state.update { it.copy(obstacles = w) } }
-        viewModelScope.launch { drone.cameraStatus.collect { c -> _state.update { it.copy(camera = c) } } }
+        viewModelScope.launch {
+            drone.cameraStatus.collect { c ->
+                _state.update { it.copy(camera = c) }
+                camera.adoptShootMode(c.shootMode)
+            }
+        }
         _state.update {
             it.copy(
                 loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = params.zoomRatio,
@@ -343,14 +350,16 @@ class FlightViewModel(
     /**
      * 6.4 SD 대조: 죽을 때의 목표 전주에 이미 찍은 사진(DB 기록 또는 DB에 없는 SD 사진)이 있으면 연결하고 완료로 둔다.
      * 사진이 없으면 미점검으로 되돌려 재개할 때 다시 간다. SD 사진의 이미지는 비행 후 원본 다운로드로 받는다.
+     * 앱 촬영(타이머·셔터, 운용 로그 `media SCREEN`)은 지점 사진이 아니므로 붙이지 않고, 수동(MANUAL) 사진만으로는 완료로 보지 않는다.
      */
     private suspend fun recoverTarget(sortieId: Long, drone: DroneGateway) {
         val v = dao.visits(sortieId).firstOrNull { it.status == "IN_PROGRESS" } ?: return
         val db = dao.missionCaptures(missionId)
         val sd = v.arrivedAt?.let { drone.listMedia(it).getOrNull() }.orEmpty()
-        val fresh = recoveredCaptures(v.arrivedAt, sd, db.map { it.mediaId }.toSet())
+        val app = v.arrivedAt?.let { t -> withContext(Dispatchers.IO) { OpLog.appCaptureMedia(t) } }.orEmpty()
+        val fresh = recoveredCaptures(v.arrivedAt, sd, db.map { it.mediaId }.toSet() + app)
         fresh.forEach { dao.insertCapture(it.toEntity(v.id, CaptureSource.AUTO)) }
-        val done = fresh.isNotEmpty() || db.any { it.visitId == v.id }
+        val done = fresh.isNotEmpty() || db.any { it.visitId == v.id && it.source == CaptureSource.AUTO.name }
         dao.setVisitStatus(v.id, if (done) "DONE" else "PENDING", null)
     }
 
@@ -426,18 +435,19 @@ class FlightViewModel(
     private var resuming: Job? = null
 
     /**
-     * 재개(미션 칸 ▶·일시정지 중 RC 5D 누름): 영상 모드였으면 사진 모드로 돌린 뒤 재개한다(지점 사진을 놓치지 않게).
-     * 카메라가 답하지 않아도 [AppConfig.Timeouts.RESUME_CAMERA_MS] 뒤에는 재개한다. 기다리는 동안 다시 누른 것은 무시한다.
+     * 재개(미션 칸 ▶·일시정지 중 RC 5D 누름): 타이머·영상 모드였으면 단일 사진으로 돌린 뒤 재개한다(지점 사진을 놓치지 않게, [afterPhotoReady]).
      */
     fun resume() = afterPhotoReady(restoreZoom = true) { send(Command.Resume) }
 
     /**
-     * 카메라를 미션 사진 상태(타이머·녹화 정지, 사진, 단일, 재개면 미션 망원 배율)로 돌린 뒤 [then]. 카메라가 답하지 않아도
-     * [AppConfig.Timeouts.RESUME_CAMERA_MS] 뒤에는 [then]. 기다리는 동안 다시 누른 것은 무시한다.
+     * 카메라를 미션 사진 상태(타이머·녹화 정지, 사진, 단일, 재개면 미션 망원 배율)로 돌린 뒤 [then]. 기다리는 동안 다시 누른 것은 무시한다.
+     * 타이머는 정말 끝날 때까지(늦은 사진까지) 기다리고, 못 멈추면 [then]을 하지 않는다(6.4: 인터벌 사진이 지점 사진이 됨).
+     * 나머지(녹화·모드·배율)는 카메라가 답하지 않아도 [AppConfig.Timeouts.RESUME_CAMERA_MS] 뒤에 [then]: 어댑터가 올리기·시작·재개 전에 단일 사진을 다시 맞춘다.
      */
     private fun afterPhotoReady(restoreZoom: Boolean = false, then: () -> Unit) {
         if (resuming?.isActive == true) return
         resuming = viewModelScope.launch {
+            if (!camera.stopTimerAndWait()) return@launch
             withTimeoutOrNull(AppConfig.Timeouts.RESUME_CAMERA_MS) {
                 camera.backToPhotoAndWait()
                 if (restoreZoom) flightParams?.takeIf { Lens.ZOOM in it.lenses }?.let { camera.restoreZoom(it.zoomRatio) }
@@ -461,14 +471,16 @@ class FlightViewModel(
     private fun shutter(rc: Boolean) {
         val st = _state.value
         if (!st.shutterFree) return
+        // 미션을 끝내거나 멈춘 뒤 5초는 늦은 지점 사진을 받는 중: 찍으면 그 파일을 이 촬영 것으로 가져간다(6.4)
+        val pending = drone?.missionPhotosPending == true
+        val route = shutterRoute(st.exec.state, st.telemetry?.isFlying == true, pending)
         when {
             st.videoMode -> toggleRecording()
+            st.timerRunning -> camera.toggleTimer()
+            route == ShutterRoute.BLOCKED -> if (pending) camera.notice(CameraControl.MISSION_PHOTOS, NoticeKind.SMALL)
             st.shootMode == ShootMode.TIMER -> camera.toggleTimer()
-            else -> when (shutterRoute(st.exec.state, st.telemetry?.isFlying == true)) {
-                ShutterRoute.EXECUTOR -> if (paused && !rc) manualCapture() else send(Command.RcShutter(st.lens))
-                ShutterRoute.MANUAL -> manualShot()
-                ShutterRoute.BLOCKED -> Unit
-            }
+            route == ShutterRoute.EXECUTOR -> if (paused && !rc) manualCapture() else send(Command.RcShutter(st.lens))
+            else -> manualShot()
         }
     }
 

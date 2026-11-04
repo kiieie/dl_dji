@@ -103,6 +103,8 @@ data class CameraStatus(
     val focus: FocusMode? = null,
     val photosLeft: Int? = null,
     val recordSecLeft: Int? = null,
+    /** 기체 카메라의 사진 모드(`KeyCameraMode`). 영상·모름이면 null. 화면을 열 때 촬영 모드 메뉴 값을 여기에 맞춘다(10.5.7). */
+    val shootMode: ShootMode? = null,
 )
 
 /** 계획 화면의 지금 위치(10.5.5): 기체(연결되고 위성이 충분할 때)와 기수, 조종기 GPS. 모르면 null. */

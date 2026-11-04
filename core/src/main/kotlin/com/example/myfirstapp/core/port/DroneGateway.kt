@@ -122,12 +122,24 @@ interface DroneGateway {
      */
     fun intervalShots(intervalSec: Double): Flow<CaptureInfo> = flow { throw UnsupportedOperationException("타이머 미지원") }
 
-    /** [intervalShots]를 멈춘다. 돌고 있지 않으면 아무 일 없다. */
-    suspend fun stopInterval() {}
+    /**
+     * [intervalShots]를 멈춘다(늦은 사진까지 내보내고 흐름이 끝남). 돌고 있지 않으면 성공. 카메라가 인터벌을 벗어나지 못하면(멈춤·모드 되돌림 거절,
+     * 연결 끊김) 실패이고 타이머는 그대로 돈다(다시 부르면 다시 해 봄, 6.4).
+     */
+    suspend fun stopInterval(): Result<Unit> = Result.success(Unit)
+
+    /**
+     * 미션을 끝내거나 멈춘 뒤 늦은 지점 사진을 아직 받는 중(어댑터 유예 5초, 6.4). 이 동안 앱 촬영의 첫 새 파일은 마지막 전주 사진일 수 있어
+     * 셔터를 막는다([com.example.myfirstapp.core.executor.shutterRoute]).
+     */
+    val missionPhotosPending: Boolean get() = false
 
     /** 노출 보정(탭 초점 ☀ 손잡이, 10.5.7): [ev]에 가장 가까운 기체 단계(1/3 EV)로. */
     suspend fun setExposureCompensation(ev: Double): Result<Unit> = Result.failure(UnsupportedOperationException("노출 보정 미지원"))
 }
+
+/** 카메라를 미션 사진 상태(단일 사진)로 맞추지 못해 미션을 올리거나 시작·재개하지 않음(6.4, 운용자 안내 문구). */
+class CameraNotReady(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
 
 /** 미션은 올렸지만 기체가 시작을 거절함([DroneGateway.startSortie]). 다시 올려도 같으므로 재시도하지 않는다(지형 추적 KMZ, 2026-10-30 시뮬레이터). */
 class MissionStartRejected(message: String, cause: Throwable? = null) : Exception(message, cause)
