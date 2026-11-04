@@ -17,6 +17,8 @@ import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.logTelemetry
+import com.example.myfirstapp.data.ManualSessionEntity
+import com.example.myfirstapp.data.ManualTrackEntity
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.RecorderSortie
 import com.example.myfirstapp.data.RoomRecorder
@@ -33,6 +35,7 @@ import com.example.myfirstapp.detect.LiveDetection
 import com.example.myfirstapp.detect.PreciseDetection
 import com.example.myfirstapp.drone.djiAircraftConnected
 import com.example.myfirstapp.sound.ToneNotifier
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,8 +99,29 @@ class ManualFlightViewModel(
                 }
             }
         }
-        // 수동 비행 궤적은 운용 로그에(떠 있는 동안 1초마다, 4.4)
-        drone?.let { d -> viewModelScope.launch { while (true) { delay(AppConfig.Polling.TRACK_MS); d.telemetry.value.takeIf { it.isFlying }?.let { logTelemetry("manual", it) } } } }
+        // 수동 비행 궤적(떠 있는 동안 1초마다): 뜬 때부터 내릴 때까지 한 번의 수동 비행(MANUAL_SESSION, 10.4.6 다시 보기)과 운용 로그(4.4)
+        drone?.let { d ->
+            viewModelScope.launch {
+                while (true) {
+                    delay(AppConfig.Polling.TRACK_MS)
+                    val t = d.telemetry.value
+                    val now = System.currentTimeMillis()
+                    if (!t.isFlying) {
+                        session?.let { dao.endManualSession(it, now) }
+                        session = null
+                        continue
+                    }
+                    logTelemetry("manual", t)
+                    val id = session ?: dao.insertManualSession(ManualSessionEntity(startedAt = now, projectId = _state.value.latest?.projectId)).also { session = it }
+                    dao.insertManualTrack(
+                        ManualTrackEntity(
+                            sessionId = id, at = now, lat = t.position?.lat, lon = t.position?.lon, altRel = t.altitudeM, speed = t.speedMps,
+                            heading = t.headingDeg, gimbalPitch = t.gimbalPitchDeg, batteryPct = t.batteryPct.toInt(), flightMode = t.flightMode.name,
+                        ),
+                    )
+                }
+            }
+        }
         drone?.let { d -> viewModelScope.watchObstacles(d, tone) { w -> _state.update { it.copy(flight = it.flight.copy(obstacles = w)) } } }
         drone?.let { d -> viewModelScope.launch { d.cameraStatus.collect { c -> _state.update { it.copy(flight = it.flight.copy(camera = c)) } } } }
         viewModelScope.launch {
@@ -127,6 +151,9 @@ class ManualFlightViewModel(
 
     /** 화면이 맨 위에 보이는 동안만 참(화면이 [LifecycleResumeEffect]로 바꾼다). */
     var active = false
+
+    /** 기록 중인 수동 비행(MANUAL_SESSION). 떠 있지 않으면 null. */
+    private var session: Long? = null
 
     /** 화면 셔터: 영상 모드면 녹화 시작·정지, 사진이면 [shoot]. */
     fun shutter() = if (_state.value.flight.videoMode) toggleRecording() else shoot()
@@ -216,6 +243,8 @@ class ManualFlightViewModel(
     }
 
     override fun onCleared() {
+        // 떠 있는 채로 화면을 떠나면 그 수동 비행을 닫는다(viewModelScope는 이미 끝나 따로 쓴다)
+        session?.let { id -> CoroutineScope(Dispatchers.IO).launch { dao.endManualSession(id, System.currentTimeMillis()) } }
         (drone as? DjiDroneGateway)?.close()
         tone.release()
         live?.close()

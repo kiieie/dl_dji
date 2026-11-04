@@ -128,6 +128,8 @@ private enum class MarkerCard { AIRCRAFT, RC }
 internal fun FlightMap(
     s: FlightUiState, interactive: Boolean, pad: List<Dp>, modifier: Modifier,
     onMapSource: (MapSource) -> Unit = {}, onClearTrack: () -> Unit = {},
+    /** 스타일을 (다시) 읽을 때마다 표지를 더한 뒤 부른다: 다른 화면이 제 레이어를 얹는다(비행 다시 보기, 10.4.6). */
+    onStyle: (MapLibreMap, Style) -> Unit = { _, _ -> },
 ) {
     val mapView = rememberMapView()
     val density = LocalDensity.current
@@ -240,6 +242,7 @@ internal fun FlightMap(
                 )
                 style.addLayer(LineLayer("rth-line", "rth").withProperties(lineColor(MAP_ROUTE), lineWidth(3f)))
                 style.addMarkerLayers(scale = if (interactive) 1f else 0.75f)
+                onStyle(map, style)
                 styleGen++
             }
         }

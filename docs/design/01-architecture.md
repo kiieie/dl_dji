@@ -120,7 +120,7 @@ A-1234,37.123456,127.123456,OO선,비고
 
 ### 4.2 엔티티 (Room)
 
-`POLE`의 설비 속성(선로번호, 전주규격, 설치기기, 지선주, 설치년월, 고/저압)은 4.5.4. DB 버전 4(2026-10-30).
+`POLE`의 설비 속성(선로번호, 전주규격, 설치기기, 지선주, 설치년월, 고/저압)은 4.5.4. DB 버전 10(2026-11-04).
 
 ```mermaid
 erDiagram
@@ -134,6 +134,7 @@ erDiagram
   VISIT ||--o{ REVIEW : "1차 판독"
   SORTIE ||--o{ FLIGHT_EVENT : "state log"
   SORTIE ||--o{ TELEMETRY_SAMPLE : "flight log"
+  MANUAL_SESSION ||--o{ MANUAL_TRACK : "manual flight log"
 
   PROJECT { long id; string name; datetime createdAt }
   POLE { long id; long projectId; string poleId; double lat; double lon; string lineName; string note }
@@ -145,6 +146,8 @@ erDiagram
   REVIEW { long id; long visitId; string verdict; string tags; string memo; datetime at }
   FLIGHT_EVENT { long id; long sortieId; string fromState; string toState; string reason; long visitId; datetime at }
   TELEMETRY_SAMPLE { long id; long sortieId; datetime at; double lat; double lon; double altRel; float speed; float heading; float gimbalPitch; int batteryPct; string flightMode }
+  MANUAL_SESSION { long id; datetime startedAt; datetime endedAt; long projectId }
+  MANUAL_TRACK { long id; long sessionId; datetime at; double lat; double lon; double altRel; float speed; float heading; float gimbalPitch; int batteryPct; string flightMode }
 ```
 
 - **구현 현황**: `TELEMETRY_SAMPLE`을 뺀 엔티티를 구현했다(`POLE`은 `(projectId, poleId)` 고유, 하위 행은 상위 삭제 시 함께 삭제). `TELEMETRY_SAMPLE`과 `CAPTURE.viewpoint`는 실제 기체 연동 때 추가했다(스키마 버전 2, 2026-10-30). 기기에 현장 시험 데이터가 있어 지우지 않고 1 → 2 마이그레이션을 둔다.
@@ -157,7 +160,7 @@ erDiagram
 - `CAPTURE.source`: `AUTO`(도착 시 자동), `MANUAL`(수동 촬영 버튼), `PERIODIC`(주기 분석 프레임)
 - `MISSION.flightParams`에는 실행 시점의 파라미터를 그대로 저장한다(나중에 설정을 바꿔도 기록은 유지된다).
 - 탐지 모델 버전을 기록해 어떤 모델로 분석했는지 추적한다(`MISSION.modelVersion`). `CAPTURE.detectModel`은 그 사진을 착륙 뒤 정밀 탐지한 모델 버전이고, 비어 있으면 아직 안 한 것이다(결과 0개와 구별, DB 8, 2026-11-04, 9.6).
-- `FLIGHT_EVENT`: 상태머신의 모든 전이를 기록한다(6.4 복구용). `TELEMETRY_SAMPLE`: 1~2초 간격으로 기록하며 에너지 모델 보정(5.5)과 사후 분석에 쓴다.
+- `FLIGHT_EVENT`: 상태머신의 모든 전이를 기록한다(6.4 복구용). `TELEMETRY_SAMPLE`: 1~2초 간격으로 기록하며 에너지 모델 보정(5.5)과 사후 분석, 비행 다시 보기(10.4.6)에 쓴다. `MANUAL_SESSION`·`MANUAL_TRACK`(DB 10, 2026-11-04): 수동 비행(카메라 뷰) 한 번(뜬 때부터 내리거나 화면을 떠날 때까지)과 그 궤적(같은 열, 1초). `endedAt`은 앱이 갑자기 꺼지면 비고, `projectId`는 그때 최근 미션의 프로젝트(표시용, 외래 키 없음). 9 → 10 마이그레이션은 표만 만든다.
 
 ### 4.3 파일 저장
 
@@ -189,7 +192,7 @@ erDiagram
 
 - 화면 이동, 버튼·RC 버튼·5D 입력, 계획 조작(영역, 이륙 지점, 파라미터, 경로 계산·저장), 비행 명령(비행 전 점검 결과와 경고 무시 여부, 시작·일시정지·재개·RTH·착륙 확인·렌즈·짐벌), 실행기 상태 전이, 사진·다운로드·탐지 결과, 기체 설정 변경, 판독 저장, 내보내기, 오류.
 - 구현: `data/OpLog.kt`(한 줄 쓰기, 백그라운드 한 스레드). 비행 기록 DB(`FLIGHT_EVENT`, `TELEMETRY_SAMPLE`)와 별개로 사용자 행동 중심이다.
-- **비행 궤적**(2026-10-31): 떠 있는 동안 1초마다 `tele` 한 줄(위치·고도·속도·기수·짐벌·배터리·비행 모드·위성·신호). 자동 비행(`auto`)은 DB `TELEMETRY_SAMPLE`에도, 수동 비행(`manual`)은 운용 로그에만 남는다. 미션 상태(`mission`), 카메라 저장 렌즈(`camera`), 위성 미리 받기(`map`)도 남긴다.
+- **비행 궤적**(2026-10-31): 떠 있는 동안 1초마다 `tele` 한 줄(위치·고도·속도·기수·짐벌·배터리·비행 모드·위성·신호). 자동 비행(`auto`)은 DB `TELEMETRY_SAMPLE`에도, 수동 비행(`manual`)은 DB `MANUAL_TRACK`(DB 10, 2026-11-04)에도 남는다. 미션 상태(`mission`), 카메라 저장 렌즈(`camera`), 위성 미리 받기(`map`)도 남긴다.
 - **하드웨어 입력 전부**(`drone/DjiInputLog.kt`): 앱이 아직 쓰지 않는 RC 버튼(C3·C4, 셔터, 녹화, 재생, 전환, 오른쪽 휠 누름 등), 다이얼·휠, 비행 모드 스위치, 5D, 스틱(움직일 때 0.5초에 한 번), 안드로이드 키 이벤트. 나중에 버튼 기능을 붙일 근거로 쓴다.
 - **장애물·미션 거절**(2026-11-04, 11-03 현장에서 판정할 근거가 없었음): 15m 안에 장애물이 있으면 1초마다, 경고 등급이 바뀔 때마다 `obstacle` 한 줄(방향별 최소 거리 m, 위·아래 포함). 미션 시작이 거절되면 `error startSortie`에 SDK 오류 코드 전체와 KMZ 검증(`WPMZManager.checkValidation`) 결과.
 - **오류·갑자기 꺼짐**: 처리되지 않은 예외는 그 자리에서 `crash-시각.txt`(스택)로 쓰고, 실행 중 표시 파일이 남아 있으면(강제 종료·ANR·메모리 부족) 다음 시작 때 앱 자신의 logcat 마지막 5,000줄을 `logcat-시각.txt`로 남긴다. SDK 실패(미션·다운로드)는 `error`로 남긴다.
