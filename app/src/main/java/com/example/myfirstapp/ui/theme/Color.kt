@@ -49,6 +49,8 @@ val Brand = Color(0xFF8B5CF6)
 
 /** 영상 위 카드·버튼 바탕(10.4 시안 #121212 90%). */
 val CardBg = Color(0xE6121212)
+/** 영상 위 회색 버튼 바탕(Pilot 2 ZOOM 버튼·세로 줌, 시안 Flight3 rgba(40,40,40,.9)). */
+val ControlBg = Color(0xE6282828)
 /** 꺼진 아이콘·신호 막대·셔터 테두리. */
 val Inactive = Color(0xFF555555)
 /** 상태를 모를 때의 점, 고르지 않은 칸 글자. */

@@ -1,5 +1,7 @@
 package com.example.myfirstapp
 
+import com.example.myfirstapp.core.config.Tuning
+
 /**
  * 앱(:app) 운용 조정값을 한곳에 모은다(2026-10-31). 값은 옮기기 전과 같다.
  * 도메인 조정값은 :core `Tuning`, 화면 크기·글자는 `Dimens`·`FontSize`에 둔다. 모의 기체·PoC 값은 그 파일에 남긴다.
@@ -114,9 +116,6 @@ object AppConfig {
 
         /** 점이 하나뿐일 때 맞추는 확대. */
         const val SINGLE_POINT_ZOOM = 17.0
-
-        /** 내비 원판 가장자리 거리(m). 홈 표시를 이 거리에 맞춰 놓는다. */
-        const val NAV_RANGE_M = 200.0
 
         /** 큰 지도에서 웨이포인트 번호·고도 라벨을 보이는 최소 확대(10.5.4). 전주 라벨과 겹치지 않게 더 크게 확대해야 보인다. */
         const val WAYPOINT_MIN_ZOOM = 18
@@ -277,17 +276,15 @@ object AppConfig {
         /** 기체가 없을 때(모의 기체) 비행 전 점검 설정의 처음 값. 이름은 `PreflightSettings` 항목 이름. */
         val FAKE_VALUES: kotlin.collections.Map<String, Any> = mapOf(
             "RTH 고도" to 100, "최고 고도" to 120, "신호 끊김 조치" to 0, "최대 비행 거리" to false, "최대 비행 거리 값" to 5000,
-            "조종 스틱 모드" to 1, "배터리 경고" to (22.0 to 43.0), "장애물 회피" to 0,
+            "조종 스틱 모드" to 1, "배터리 경고" to (Tuning.Battery.CRITICAL_PCT.toDouble() to Tuning.Battery.LOW_PCT.toDouble()), "장애물 회피" to 0,
             "수평 감지" to true, "수평 감지 거리" to (10.0 to 13.8), "상향 감지" to true, "상향 감지 거리" to (1.5 to 7.0),
             "하향 감지" to true, "하향 감지 거리" to (2.0 to 6.3),
         )
-
-        /** 모의 기체 배터리 전압(V). */
-        const val FAKE_VOLTAGE_V = 16.9
     }
 
-    object Rth {
-        /** RTH 버튼을 이만큼 길게 눌러야 귀환한다. */
-        const val HOLD_MS = 1_000L
+    /** 카메라 뷰(10.5.2). */
+    object CameraView {
+        /** 탭 초점 노란 사각형을 보이는 시간. */
+        const val FOCUS_MARK_MS = 2_000L
     }
 }

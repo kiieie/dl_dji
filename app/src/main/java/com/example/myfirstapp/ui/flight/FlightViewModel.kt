@@ -7,7 +7,9 @@ import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.executor.PreflightEvaluator
 import com.example.myfirstapp.core.executor.PreflightCheck
+import com.example.myfirstapp.core.model.CameraStatus
 import com.example.myfirstapp.core.model.Lens
+import com.example.myfirstapp.core.route.Viewpoints
 import com.example.myfirstapp.core.model.ObstacleDirection
 import com.example.myfirstapp.core.model.ObstacleWarning
 import com.example.myfirstapp.core.model.Obstacles
@@ -113,6 +115,14 @@ data class FlightUiState(
     val obstacles: ObstacleWarning = ObstacleWarning(),
     /** 지도 비행 궤적(10.5.4 주황 선): 떠 있는 동안의 기체 위치, 개수 상한([withTrack]). 지도 지우개로 비운다. */
     val track: List<GeoPoint> = emptyList(),
+    /** 노출 띠(10.5.2): 기체 카메라 노출·초점·남은 저장. */
+    val camera: CameraStatus = CameraStatus(),
+    /** 큰 화면이 지도(10.5.4 미니맵을 누르거나 RC C2). */
+    val mapMain: Boolean = false,
+    /** 내비 원판 왼쪽 위 다음 웨이포인트(10.5.3). 미션 비행 중에만. */
+    val nextWaypoint: NextWaypoint? = null,
+    /** 기체·홈·조종기 위치를 모를 때(실내 수동 비행) 지도를 맞출 곳: 지난 비행 마지막 위치 또는 최근 미션 이륙 지점. */
+    val mapFallback: GeoPoint? = null,
 ) {
     /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
@@ -165,18 +175,22 @@ class FlightViewModel(
         }
     }
 
-    /** 일시정지 버튼: 실제 기체는 펌웨어가 멈추고 어댑터가 알리므로 모의 기체만 흉내 낸다. C1: 화면 [재개]와 같다. 셔터·녹화는 화면 버튼과 같다. */
+    /**
+     * RC 버튼(10.5.10, Pilot 2 기본값): 일시정지는 실제 기체면 펌웨어가 멈추고 어댑터가 알리므로 모의 기체만 흉내 낸다.
+     * C1 광각/줌, C2 지도/카메라, 일시정지 중 5D 누름 = 미션 칸 ▶ 재개. 셔터·녹화는 화면 버튼과 같다.
+     */
     private fun onRcButton(b: RcButton) {
         Log.i("RcKey", "$b state=${_state.value.exec.state}")
         when (b) {
             RcButton.PAUSE -> rcPause()
-            RcButton.C1 -> resume()
-            RcButton.C2 -> toggleGimbal()
+            RcButton.C1 -> toggleLens()
+            RcButton.C2 -> swapView()
+            RcButton.FIVE_D_CENTER -> if (paused) resume()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
             // RC 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04). 실행기가 일시정지·수동 조종 중에만 받는다
             RcButton.SHUTTER -> if (_state.value.videoMode) toggleRecording() else send(Command.RcShutter(_state.value.lens))
             RcButton.RECORD -> if (paused || _state.value.recordingSinceMs != null) camera.recordButton()
-            else -> Unit // 5D는 비행 명령에 쓰지 않는다(10장)
+            else -> Unit // 5D 방향은 비행 명령에 쓰지 않는다(10장)
         }
     }
 
@@ -255,6 +269,7 @@ class FlightViewModel(
             }
         }
         viewModelScope.watchObstacles(drone, notifier) { w -> _state.update { it.copy(obstacles = w) } }
+        viewModelScope.launch { drone.cameraStatus.collect { c -> _state.update { it.copy(camera = c) } } }
         _state.update {
             it.copy(
                 loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = params.zoomRatio,
@@ -265,7 +280,10 @@ class FlightViewModel(
             val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
             val wasPaused = paused
             precise?.setFlying("auto", ui.state.airborne || t.isFlying)
-            _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need).withTrack(t).let { s -> if (ui.state in CLOSES_PROCEDURE) s.copy(page = null) else s } }
+            _state.update {
+                it.copy(exec = ui, telemetry = t, returnNeedPct = need, nextWaypoint = nextWaypoint(ui, t)).withTrack(t)
+                    .let { s -> if (ui.state in CLOSES_PROCEDURE) s.copy(page = null) else s }
+            }
             // RC 재개 등으로 일시정지를 벗어나면 녹화를 멈추고 사진 모드로(10.4.3)
             if (wasPaused && ui.state != ExecState.Paused) camera.backToPhoto()
         }
@@ -357,7 +375,7 @@ class FlightViewModel(
     private var resuming: Job? = null
 
     /**
-     * 재개(화면 ▶·RC C1): 영상 모드였으면 사진 모드로 돌린 뒤 재개한다(지점 사진을 놓치지 않게).
+     * 재개(미션 칸 ▶·일시정지 중 RC 5D 누름): 영상 모드였으면 사진 모드로 돌린 뒤 재개한다(지점 사진을 놓치지 않게).
      * 카메라가 답하지 않아도 [AppConfig.Timeouts.RESUME_CAMERA_MS] 뒤에는 재개한다. 기다리는 동안 다시 누른 것은 무시한다.
      */
     fun resume() {
@@ -384,7 +402,7 @@ class FlightViewModel(
     fun dismissTerrainFallback() = send(Command.DismissTerrainFallback)
     fun markDone() = send(Command.MarkDone)
     /**
-     * [RTH 길게]: 미션 중이면 실행기가 처리한다(방문 정리 포함). 실행기는 대기인데 기체가 떠 있으면
+     * RTH(RC RTH 버튼은 모의 기체만, 모의 RC 줄 [RTH]): 미션 중이면 실행기가 처리한다(방문 정리 포함). 실행기는 대기인데 기체가 떠 있으면
      * (수동 비행에서 넘어옴, 소티·미션 완료, 재시작 복구) 기체에 바로 RTH를 보낸다.
      */
     fun returnHome() {
@@ -415,10 +433,39 @@ class FlightViewModel(
     fun setVideoMode(on: Boolean) { if (paused) camera.setVideoMode(on) }
     fun toggleRecording() { if (paused || _state.value.recordingSinceMs != null) camera.toggleRecording() }
 
-    /** 짐벌 중앙 ↔ 아래(Pilot 2 짐벌 모드, RC C2). */
-    fun toggleGimbal() {
-        OpLog.log("flight", "gimbal")
-        drone?.let { d -> viewModelScope.launch { d.toggleGimbal().onFailure { e -> Log.w("Flight", "짐벌 전환 실패: ${e.message}") } } }
+    /** 짐벌 메뉴(10.5.7): 짐벌 중앙 / 아래(-90°). */
+    fun setGimbal(down: Boolean) {
+        OpLog.log("flight", "gimbal", mapOf("down" to down))
+        drone?.let { d -> viewModelScope.launch { d.setGimbal(down).onFailure { e -> Log.w("Flight", "짐벌 실패: ${e.message}") } } }
+    }
+
+    /** RC C1·왼쪽 열 ZOOM/WIDE(10.5.10): 광각 ↔ 망원 보기. */
+    fun toggleLens() = setLens(if (_state.value.lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE)
+
+    /** RC C2·미니맵 누름(10.5.4): 큰 화면 지도 ↔ 카메라. */
+    fun swapView() = _state.update { it.copy(mapMain = !it.mapMain) }
+
+    /** 노출 띠 AFS·탭 초점(10.5.2): 일시정지 중에만(지점 사진 초점을 건드리지 않게). */
+    fun cycleFocus() { if (paused) camera.cycleFocus(_state.value.camera.focus) }
+    fun focusAt(x: Double, y: Double) { if (paused) camera.focusAt(x, y) }
+
+    /** 소티마다 펼친 촬영 지점 번호(전주 id → 그 전주 첫 지점 번호, 지도 웨이포인트 번호와 같음). */
+    private val waypointNumbers = mutableMapOf<Int, Map<String, Int>>()
+
+    /**
+     * 내비 왼쪽 위 다음 웨이포인트(10.5.3): 미션 비행 중 목표 전주의 첫 촬영 지점 번호와 기체에서 그 전주까지 수평 거리.
+     * ponytail: 4방향 사선은 전주의 첫 지점 번호만 보인다. 지점마다 바꾸려면 어댑터의 지금 웨이포인트 번호를 상태로 내보낸다.
+     */
+    private fun nextWaypoint(ui: ExecutorUiState, t: Telemetry): NextWaypoint? {
+        val target = ui.target?.takeIf { ui.state.airborne && ui.state != ExecState.ReturningHome } ?: return null
+        val p = flightParams ?: return null
+        val home = _state.value.home ?: return null
+        val pos = t.position ?: return null
+        val numbers = waypointNumbers.getOrPut(ui.sortieIndex) {
+            val poles = ui.visits.filter { it.sortieIndex == ui.sortieIndex }.sortedBy { it.order }.map { it.pole }
+            Viewpoints.expand(poles, p, home).withIndex().groupBy({ it.value.pole.poleId }, { it.index + 1 }).mapValues { it.value.first() }
+        }
+        return numbers[target.pole.poleId]?.let { NextWaypoint(it, LocalProjection.distanceM(pos, target.pole.position)) }
     }
 
     /** 착륙 보호 확인(기체가 지면 가까이에서 기다릴 때). 실행기 상태와 무관한 기체 명령이다. */
@@ -430,7 +477,6 @@ class FlightViewModel(
 
     // RC 하드웨어 버튼을 대신하는 모의 조작(기체 연동 전 전용)
     fun rcPause() = (drone as? FakeDroneGateway)?.pressRcPause()
-    fun rcResume() = (drone as? FakeDroneGateway)?.pressRcResume()
     fun dropBattery() = (drone as? FakeDroneGateway)?.let { it.setBattery((it.telemetry.value.batteryPct - 30).coerceAtLeast(0.0)) }
 
     /** 모의 장애물: 누를 때마다 앞 장애물 없음 → 8m → 4m → 없음. */

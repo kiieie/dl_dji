@@ -89,9 +89,10 @@ import com.example.myfirstapp.ui.theme.Muted
  * 기체 점검·설정(10.4.3 ⑧, Pilot 2 설정 메뉴 57쪽): 머리글 40dp, 왼쪽 160dp 탭(상태 점검 · 기체 탭 · 일반), 오른쪽 내용.
  * 상태 점검은 기체 종류·시리얼·펌웨어, 비행 모드 F/N/S, 확인 필요 항목을 맨 위에 보인다. 기체 탭은 SDK로 읽고 쓰고,
  * [일반]은 앱 설정(비행 기본값, 모델, 지도)이다. [initialGeneral]이면 일반 탭으로 연다(화면 ⚙).
+ * [initialCamera]면 짐벌·카메라 탭으로 연다(카메라 뷰 카메라 설정 아이콘, 10.5.2).
  */
 @Composable
-fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false) {
+fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false, initialCamera: Boolean = false) {
     val settings = (LocalContext.current.applicationContext as InspectionApp).settings
     val vm: AircraftSettingsViewModel = viewModel(
         factory = AircraftSettingsViewModel.factory(::djiAircraftSettingTabs) { djiAircraftCheck(settings.flightDefaults.first().rthAltitudeM) },
@@ -105,6 +106,9 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false) {
     fun pick(i: Int) {
         tab = i
         if (i == 0) vm.recheck() else if (i < general) vm.openTab(i - 1)
+    }
+    LaunchedEffect(initialCamera) {
+        if (initialCamera) vm.tabs.indexOfFirst { it.first == CAMERA_TAB }.takeIf { it >= 0 }?.let { pick(it + 1) }
     }
     // RC 5D(10.4.3): ↕ 탭 고르기. 대화상자가 떠 있으면 받지 않는다(← 뒤로는 MainActivity 몫)
     val rc = (LocalContext.current.applicationContext as InspectionApp).rcButtons
@@ -345,3 +349,6 @@ private fun SettingRow(item: AircraftSetting, value: Any?, vm: AircraftSettingsV
         }
     }
 }
+
+/** 카메라 뷰 카메라 설정 아이콘이 여는 탭 이름(`djiAircraftSettingTabs`). */
+private const val CAMERA_TAB = "짐벌·카메라"

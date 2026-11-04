@@ -44,6 +44,8 @@ object Dimens {
     val LastPhoto = DpSize(120.dp, 90.dp)
     /** 계획 화면 파라미터 −/+ 버튼. */
     val Stepper = 32.dp
+    /** 카메라 뷰 세로 줌 눈금(10.5.2): 이만큼 끌 때마다 줌 한 단계. */
+    val ZoomDragStep = 16.dp
 
     /** 지도 홈 표지(노란 원 "H", 10.5.4). */
     val MarkerHome = 22.dp
