@@ -46,6 +46,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.R
+import com.example.myfirstapp.core.model.Annotation
+import com.example.myfirstapp.core.model.Annotations
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.PoleSearch
 import com.example.myfirstapp.data.MapSource
@@ -159,28 +161,34 @@ internal fun MapTargetButton(size: Dp, aircraftKnown: Boolean, rcKnown: Boolean,
     }
 }
 
-/** 검색(10.5.7): 이 지도의 전주를 전주번호·선로번호로 찾아([PoleSearch], 앱 DB만) 고르면 [onPick]. 전주가 없으면 끈다. */
+/**
+ * 검색(10.5.7): 이 지도의 전주를 전주번호·선로번호로([PoleSearch]), 핀포인트·선·영역을 이름으로([Annotations.search]) 찾아(앱 DB만)
+ * 고르면 [onPick]·[onPickNote]. 둘 다 없으면 끈다.
+ */
 @Composable
-internal fun MapSearchButton(poles: List<Pole>, size: Dp, onPick: (Pole) -> Unit) {
+internal fun MapSearchButton(poles: List<Pole>, size: Dp, notes: List<Annotation> = emptyList(), onPickNote: (Annotation) -> Unit = {}, onPick: (Pole) -> Unit) {
     var open by rememberSaveable { mutableStateOf(false) }
-    MapTool(if (poles.isEmpty()) "검색(전주 없음)" else "전주 검색", active = open, enabled = poles.isNotEmpty(), size = size, onClick = { open = true }) { tint ->
+    val any = poles.isNotEmpty() || notes.isNotEmpty()
+    MapTool(if (any) "검색" else "검색(전주·주석 없음)", active = open, enabled = any, size = size, onClick = { open = true }) { tint ->
         Icon(painterResource(R.drawable.ic_search), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
     }
     if (!open) return
     var query by rememberSaveable { mutableStateOf("") }
     val found = remember(poles, query) { PoleSearch.search(poles, query, AppConfig.Map.SEARCH_LIMIT) }
+    // 전주와 합쳐 [AppConfig.Map.SEARCH_LIMIT]개까지(대화상자 높이)
+    val foundNotes = remember(notes, query, found) { Annotations.search(notes, query, AppConfig.Map.SEARCH_LIMIT - found.size) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     FullscreenAlertDialog(
         onDismissRequest = { open = false },
-        title = { Text("전주 검색") },
+        title = { Text("검색") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 OutlinedTextField(
                     query, { query = it }, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
-                    label = { Text("전주번호 또는 선로번호") },
+                    label = { Text("전주번호·선로번호 또는 핀포인트·선·영역 이름") },
                 )
-                if (query.isNotBlank() && found.isEmpty()) Text("찾는 전주가 없습니다", fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (query.isNotBlank() && found.isEmpty() && foundNotes.isEmpty()) Text("찾는 전주·주석이 없습니다", fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 found.forEach { p ->
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = Dimens.RowList).clickable(onClickLabel = "${p.displayName}로 이동") { open = false; onPick(p) }.padding(horizontal = 4.dp),
@@ -188,6 +196,16 @@ internal fun MapSearchButton(poles: List<Pole>, size: Dp, onPick: (Pole) -> Unit
                     ) {
                         Text(p.displayName, Modifier.weight(1f), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(p.poleId, fontSize = FontSize.Caption, color = TextSoft, maxLines = 1)
+                    }
+                }
+                foundNotes.forEach { a ->
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = Dimens.RowList).clickable(onClickLabel = "${a.name}로 이동") { open = false; onPickNote(a) }.padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Diamond(a.color.ui, 14.dp)
+                        Text(a.name, Modifier.weight(1f), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(a.kind.title, fontSize = FontSize.Caption, color = TextSoft, maxLines = 1)
                     }
                 }
             }

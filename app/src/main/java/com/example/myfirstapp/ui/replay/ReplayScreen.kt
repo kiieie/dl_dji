@@ -138,7 +138,7 @@ private fun ReplayMap(s: ReplayUiState, vm: ReplayViewModel) {
     var style by remember { mutableStateOf<Style?>(null) }
     // 지도가 움직일 때마다 늘려 사진 점 자리를 다시 센다
     var moved by remember { mutableIntStateOf(0) }
-    FlightMap(s.map, interactive = true, pad = List(4) { 60.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack) { m, st ->
+    FlightMap(s.map, interactive = true, pad = List(4) { 60.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack, tools = false) { m, st ->
         st.addSource(GeoJsonSource(FULL_TRACK))
         st.addLayerBelow(LineLayer(FULL_TRACK, FULL_TRACK).withProperties(lineColor(MAP_TRACK), lineOpacity(0.35f), lineWidth(3f)), "track-line")
         if (map !== m) {

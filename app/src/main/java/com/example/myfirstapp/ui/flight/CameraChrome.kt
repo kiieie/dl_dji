@@ -83,6 +83,7 @@ import com.example.myfirstapp.core.model.batteryLevel
 import com.example.myfirstapp.core.model.remainingFlightSec
 import com.example.myfirstapp.core.model.videoContentRect
 import com.example.myfirstapp.core.model.zoomFrameFraction
+import com.example.myfirstapp.ui.PinpointButton
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.CardBg
 import com.example.myfirstapp.ui.theme.Caution
@@ -506,16 +507,13 @@ private fun LockGlyph(locked: Boolean) {
 }
 
 /**
- * 왼쪽 열(Pilot 2, 10.5.7): 핀포인트(H묶음 전까지 꺼 둠) · 짐벌 메뉴(짐벌 중앙 / 짐벌 아래 -90°) · AR(꺼 둠) · ZOOM/WIDE 전환.
+ * 왼쪽 열(Pilot 2, 10.5.7): 핀포인트(누름 = 기체 위치, 길게 = 설정, 10.4.7 [PinpointButton]) · 짐벌 메뉴(짐벌 중앙 / 짐벌 아래 -90°) · AR(꺼 둠) · ZOOM/WIDE 전환.
  * 미션 칸·[미션 이어서 비행]은 화면이 핀포인트 오른쪽(x 48dp)에 따로 둔다.
  */
 @Composable
-internal fun CameraLeftColumn(lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boolean) -> Unit, modifier: Modifier) {
+internal fun CameraLeftColumn(lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boolean) -> Unit, modifier: Modifier, telemetry: Telemetry?) {
     Box(modifier) {
-        Canvas(Modifier.offset(y = 4.dp).size(Dimens.TouchSmall).padding(6.dp).alpha(0.4f).semantics { contentDescription = "핀포인트(준비 중)" }) {
-            val p = Path().apply { moveTo(size.width / 2, 0f); lineTo(size.width, size.height / 2); lineTo(size.width / 2, size.height); lineTo(0f, size.height / 2); close() }
-            drawPath(p, Accent, style = Stroke(2.dp.toPx()))
-        }
+        PinpointButton(telemetry, Modifier.offset(y = 4.dp))
         var gimbal by remember { mutableStateOf(false) }
         Box(Modifier.offset(y = 68.dp)) {
             Box(

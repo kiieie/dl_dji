@@ -139,6 +139,18 @@ object AppConfig {
         const val FOCUS_PAD_DEG = 0.0005
     }
 
+    /** 핀포인트·지도 주석(10.4.7). */
+    object Annotation {
+        /** 새 핀포인트·선·영역 이름 머리말(Pilot 2는 기기 이름 "M3T-1 8"). 번호는 셋이 함께 쓴다. */
+        const val NAME_PREFIX = "M3E"
+
+        /** 핀포인트 안내(위치 레코딩 실패·추가함)를 보이는 시간. */
+        const val NOTICE_MS = 3_000L
+
+        /** 미션 ZIP `annotations.geojson`(4.3): 미션 전주·이륙 지점을 둘러싼 상자에서 이만큼(m) 안에 점이 있는 주석만 넣는다. */
+        const val EXPORT_MARGIN_M = 500.0
+    }
+
     /** 비행 다시 보기(10.4.6). */
     object Replay {
         /** 궤적 두 점 사이가 이보다 멀면(기록 끊김) 보간하지 않고 머물며, 재생 시간도 이만큼으로 줄인다. 기록 간격은 [Polling.TRACK_MS]. */
