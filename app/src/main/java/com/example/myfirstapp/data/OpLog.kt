@@ -42,6 +42,16 @@ object OpLog {
     }
 
     /**
+     * [sinceMs] 뒤 앱 촬영(셔터·타이머)으로 가른 사진 번호(어댑터의 `media` `SCREEN` 줄). 앱 재시작 복구가 DB에 없는 SD 사진을
+     * 지점 사진으로 붙일 때 뺀다(6.4: 타이머·땅 위·전주 없는 셔터 사진은 DB에 없을 수 있음).
+     */
+    fun appCaptureMedia(sinceMs: Long): Set<String> =
+        dir?.listFiles { f -> f.name.startsWith("ops-") && f.lastModified() >= sinceMs }.orEmpty().flatMap { it.readLines() }
+            .filter { "\"SCREEN\"" in it }
+            .mapNotNull { l -> runCatching { JSONObject(l) }.getOrNull()?.takeIf { it.optString("type") == "media" && it.optString("what") == "SCREEN" && it.optLong("t") >= sinceMs } }
+            .map { it.optString("media") }.toSet()
+
+    /**
      * 처리되지 않은 예외: 프로세스가 곧 죽으므로 그 자리에서 바로 `crash-시각.txt`에 쓰고, 원래 처리기(시스템 종료 창)로 넘긴다.
      */
     private fun watchCrashes(d: File) {

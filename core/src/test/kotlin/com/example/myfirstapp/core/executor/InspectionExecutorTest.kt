@@ -634,6 +634,41 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `방식 A - 카메라가 단일 사진으로 안 바뀌어 재개가 거절되면 일시정지로 남고 새 미션을 올리지 않는다`() = runTest {
+        val h = harness(config = sortieMode)
+        h.send(Command.Start)
+        h.awaitState(ExecState.FlyingLeg)
+        h.drone.pressRcPause()
+        h.scope.runCurrent()
+        h.drone.cameraNotReady = "카메라 인터벌 촬영을 멈추지 못했습니다"
+
+        h.send(Command.Resume)
+        h.awaitUntil { "resumeMission" in h.drone.calls }
+        h.scope.runCurrent()
+        assertEquals(ExecState.Paused, h.state)
+        assertTrue(h.executor.uiState.value.message!!.contains("인터벌"))
+        assertTrue("stopMission" !in h.drone.calls)
+        assertEquals(1, h.drone.calls.count { it.startsWith("startSortie") })
+
+        h.drone.cameraNotReady = null
+        h.send(Command.Resume)
+        h.awaitState(ExecState.FlyingLeg)
+        assertEquals(1, h.drone.calls.count { it.startsWith("startSortie") })
+    }
+
+    @Test
+    fun `방식 A - 카메라가 단일 사진으로 안 바뀌면 올리기를 되풀이하지 않고 그 이유를 보인다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly) {
+            it.kmzTakesOff = true
+            it.cameraNotReady = "카메라를 단일 사진으로 바꾸지 못했습니다"
+        }
+        h.send(Command.Start)
+        h.awaitUntil { h.state == ExecState.Idle && h.drone.calls.any { it.startsWith("startSortie") } }
+        assertEquals(1, h.drone.calls.count { it.startsWith("startSortie") })
+        assertTrue(h.executor.uiState.value.message!!.contains("단일 사진"))
+    }
+
+    @Test
     fun `방식 A - 화면 일시정지는 미션을 끝내지 않고 멈춘다`() = runTest {
         val h = harness(config = sortieMode)
         h.send(Command.Start)

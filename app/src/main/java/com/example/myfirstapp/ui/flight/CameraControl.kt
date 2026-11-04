@@ -135,14 +135,28 @@ internal class CameraControl(
     }
 
     /**
+     * 타이머가 돌고 있으면 멈추고 끝날 때까지(늦은 사진까지) 기다린다(6.4). 기체가 멈춤을 거절하면(연결 끊김 등) 타이머는 그대로 돌고
+     * (화면도 타이머 중) 안내문을 띄우고 거짓: 그대로 재개하면 인터벌 사진이 지점 사진이 된다. 다시 부르면 다시 멈춰 본다.
+     */
+    suspend fun stopTimerAndWait(): Boolean {
+        if (!get().timerRunning) return true
+        val r = drone()?.stopInterval() ?: Result.success(Unit)
+        logResult("타이머 정지", r)
+        if (r.isFailure) {
+            notice(TIMER_STOP_FAILED, NoticeKind.CENTER)
+            return false
+        }
+        timerJob?.join()
+        return true
+    }
+
+    /**
      * 재개·업로드 전용: 타이머 정지, 녹화 정지, 사진 모드, 단일 촬영(SMART 풀기)을 기체가 받을 때까지 기다린다.
      * 미션 재개와 동시에 보내면 첫 지점 사진을 놓칠 수 있고, KMZ 촬영 동작이 SMART·인터벌로 찍히면 안 된다. 바꿀 것이 없으면 바로 돌아온다.
+     * 타이머를 못 멈추면 나머지는 하지 않고 거짓([stopTimerAndWait]).
      */
-    suspend fun backToPhotoAndWait() {
-        if (get().timerRunning) {
-            drone()?.stopInterval()
-            timerJob?.join()
-        }
+    suspend fun backToPhotoAndWait(): Boolean {
+        if (!stopTimerAndWait()) return false
         lock.withLock {
             val d = drone()
             set { it.copy(shootMenu = false) }
@@ -159,6 +173,16 @@ internal class CameraControl(
                 d?.setShootMode(ShootMode.SINGLE)?.let { logResult("단일 촬영", it) }
             }
         }
+        return true
+    }
+
+    private var modeAdopted = false
+
+    /** 화면을 열 때 촬영 모드 메뉴 값을 기체 카메라 모드([com.example.myfirstapp.core.model.CameraStatus.shootMode])에 맞춘다(Pilot 2·앱 재시작이 남긴 SMART·타이머). 처음 한 번만. */
+    fun adoptShootMode(mode: ShootMode?) {
+        if (modeAdopted || mode == null) return
+        modeAdopted = true
+        set { if (it.timerRunning) it else it.copy(shootMode = mode) }
     }
 
     /** 타이머 촬영 중·SMART 촬영 중에는 카메라를 바꾸지 않는다(Pilot 2 "촬영 중 기체 또는 카메라 작동 금지"). 막으면 안내문을 띄운다. */
@@ -222,7 +246,7 @@ internal class CameraControl(
         val d = drone() ?: return
         if (get().timerRunning) {
             OpLog.log(tag, "timer", mapOf("stop" to true))
-            scope.launch { d.stopInterval() }
+            scope.launch { stopTimerAndWait() }
             return
         }
         val sec = get().timerSec
@@ -265,6 +289,8 @@ internal class CameraControl(
         /** Pilot 2 안내문 문구(11-04 녹화). */
         const val BUSY = "촬영 중 기체 또는 카메라 작동 금지"
         const val NO_POSITION = "이용 가능한 위성이 충분하지 않습니다. 위치 레코딩 실패"
+        const val TIMER_STOP_FAILED = "타이머를 멈추지 못했습니다. 셔터를 다시 눌러 멈추세요"
+        const val MISSION_PHOTOS = "미션 사진을 받는 중입니다. 잠시 뒤 촬영하세요"
     }
 
     /** 명령 결과를 운용 로그에(성공 `cameraOk`, 실패 `cameraFail`과 이유). */

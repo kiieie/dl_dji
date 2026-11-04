@@ -97,8 +97,8 @@ data class ExecutorUiState(
 }
 
 /**
- * 앱 재시작 복구의 SD 대조(6.4): 목표 전주에 도착한 뒤 SD에 저장되었지만 DB에 없는 사진.
- * 도착 기록이 없으면 그 전주에서 찍은 사진도 없다.
+ * 앱 재시작 복구의 SD 대조(6.4): 목표 전주에 도착한 뒤 SD에 저장되었지만 [dbMediaIds]에 없는 사진.
+ * [dbMediaIds]에는 DB 사진과 앱 촬영(타이머·셔터) 사진 번호를 넣는다. 도착 기록이 없으면 그 전주에서 찍은 사진도 없다.
  * ponytail: 기체 사진 시각과 조종기 시각을 같은 시계로 본다. 차이가 크면 PoC에서 허용 오차를 둔다.
  */
 fun recoveredCaptures(arrivedAtMs: Long?, sdMedia: List<CaptureInfo>, dbMediaIds: Set<String>): List<CaptureInfo> =
@@ -112,11 +112,16 @@ enum class ShutterRoute {
     /** 수동 사진 경로(수동 비행 셔터와 같음): 땅 위(Pilot 2처럼 찍음)와 RTH 중. 실행기의 지점 사진 가르기에 넣지 않는다. */
     MANUAL,
 
-    /** 자동 비행 중: 지점 사진(KMZ)과 섞이므로 막는다(10.5.2 "다름"). */
+    /** 자동 비행 중: 지점 사진(KMZ)과 섞이므로 막는다(10.5.2 "다름"). 미션 사진 유예 중(늦은 지점 사진)도 막는다. */
     BLOCKED,
 }
 
-fun shutterRoute(state: ExecState, flying: Boolean): ShutterRoute = when {
+/**
+ * [missionPhotos]: 미션을 끝내거나 멈춘 뒤 늦은 지점 사진을 아직 받는 중(어댑터 5초 유예, 6.4). 이때 찍으면 늦게 온 마지막 전주 사진을
+ * 앱 촬영의 첫 파일로 가져가므로 막는다.
+ */
+fun shutterRoute(state: ExecState, flying: Boolean, missionPhotos: Boolean = false): ShutterRoute = when {
+    missionPhotos -> ShutterRoute.BLOCKED
     state == ExecState.Paused -> ShutterRoute.EXECUTOR
     state.airborne -> ShutterRoute.BLOCKED
     flying && state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone) -> ShutterRoute.EXECUTOR

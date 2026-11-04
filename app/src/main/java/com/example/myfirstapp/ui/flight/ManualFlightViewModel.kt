@@ -120,7 +120,14 @@ class ManualFlightViewModel(
             }
         }
         drone?.let { d -> viewModelScope.watchObstacles(d, tone) { w -> _state.update { it.copy(flight = it.flight.copy(obstacles = w)) } } }
-        drone?.let { d -> viewModelScope.launch { d.cameraStatus.collect { c -> _state.update { it.copy(flight = it.flight.copy(camera = c)) } } } }
+        drone?.let { d ->
+            viewModelScope.launch {
+                d.cameraStatus.collect { c ->
+                    _state.update { it.copy(flight = it.flight.copy(camera = c)) }
+                    camera.adoptShootMode(c.shootMode)
+                }
+            }
+        }
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
             _state.update { it.copy(flight = it.flight.copy(mapFiles = files)) }
@@ -239,6 +246,15 @@ class ManualFlightViewModel(
     override fun onCleared() {
         // 떠 있는 채로 화면을 떠나면 그 수동 비행을 닫는다(viewModelScope는 이미 끝나 따로 쓴다)
         session?.let { id -> CoroutineScope(Dispatchers.IO).launch { dao.endManualSession(id, System.currentTimeMillis()) } }
+        // 카메라를 단일 사진으로 두고 떠난다: SMART·타이머가 남으면 다음 미션 화면이 단일로 보이고 KMZ 사진이 그 모드로 찍힌다(6.4).
+        // 타이머 흐름은 viewModelScope 취소로 멈추고, 멈춤 요청의 답은 그 정리가 끝난 뒤 온다
+        val f = _state.value.flight
+        if (f.shootMode != ShootMode.SINGLE || f.timerRunning) drone?.let { d ->
+            CoroutineScope(Dispatchers.IO).launch {
+                d.stopInterval()
+                d.setShootMode(ShootMode.SINGLE).onFailure { OpLog.log("manual", "singleOnExit", mapOf("error" to it.message)) }
+            }
+        }
         (drone as? DjiDroneGateway)?.close()
         tone.release()
         live?.close()

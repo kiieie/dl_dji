@@ -34,6 +34,9 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
     private var screenUntil = Long.MIN_VALUE / 2
     /** 앱 촬영이 사진 알림 없이 끝났다(시간 초과): 늦게 오는 그 파일을 지점 사진으로 넘기지 않는다. 미션을 재개하면 버린다. */
     private var screenOwed = false
+    /** 타이머 촬영이 끝났다: 미션을 재개(또는 새 소티)할 때까지 오는 파일은 앱 촬영 것(늦은 타이머 파일이 새 지점 0번 자리를 차지하지 않게). */
+    private var continuousHeld = false
+    private var cameraInterval = false
     private var lastShot: Int? = null
     private var actionsAt: (Int) -> List<PhotoAction> = { ONE }
     private val files = mutableMapOf<Int, Int>()
@@ -52,11 +55,18 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
         screenActive = false
         screenUntil = now + tailMs
         screenOwed = owed && !screenGot
+        if (screenContinuous) continuousHeld = true
     }
 
-    /** 미션 재개: 일시정지 중 늦은 앱 촬영 파일을 더 기다리지 않는다(뒤 파일은 지점 사진). */
+    /** 미션 시작·재개: 일시정지 중 늦은 앱 촬영 파일을 더 기다리지 않는다(뒤 파일은 지점 사진). */
     @Synchronized fun missionResumed() {
         screenOwed = false
+        continuousHeld = false
+    }
+
+    /** 카메라가 인터벌(타이머) 모드라고 알림(`KeyCameraMode`): 그 동안의 파일은 모두 앱 촬영 것(멈춤 실패·앱 재시작으로 타이머가 남아도). */
+    @Synchronized fun cameraInterval(on: Boolean) {
+        cameraInterval = on
     }
 
     /** 새 소티 미션(테스트·단순 경우): 모든 지점에서 광각 동작 [filesPerShot]개, 동작마다 파일 1장. */
@@ -72,6 +82,7 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
         files.clear()
         reachedShot = null
         screenOwed = false
+        continuousHeld = false
     }
 
     /** 촬영 지점 [shot]에 도착(웨이포인트 알림). */
@@ -87,6 +98,7 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
     /** [classify]와 같고, 지점 사진이면 어느 지점의 몇 번째 파일인지도 돌려준다. [lens]는 파일 종류로 안 렌즈(모르면 null). */
     @Synchronized fun classifyFile(now: Long, shot: Int?, lens: Lens? = null): Pair<MediaOwner, WaypointFile?> = when {
         screenActive && (screenContinuous || !screenGot) -> (MediaOwner.SCREEN to null).also { screenGot = true }
+        cameraInterval || (continuousHeld && shot != null) -> MediaOwner.SCREEN to null
         screenOwed -> (MediaOwner.SCREEN to null).also { screenOwed = false }
         shot != null && shot != lastShot -> MediaOwner.WAYPOINT to waypointFile(now, shot, lens)
         screenActive || now < screenUntil -> MediaOwner.SCREEN to null

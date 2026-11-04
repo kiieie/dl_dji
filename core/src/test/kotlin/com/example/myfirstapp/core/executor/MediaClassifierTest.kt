@@ -38,10 +38,62 @@ class MediaClassifierTest {
         c.screenEnded(6_000)
         assertEquals(SCREEN, c.classify(6_500, shot = null)) // 멈춘 뒤 늦게 온 파일
         assertEquals(NONE, c.classify(9_000, shot = null))
-        // 다음 홑 촬영은 다시 첫 파일만
+        // 재개한 뒤 다음 홑 촬영은 다시 첫 파일만
+        c.missionResumed()
         c.screenStarted()
         assertEquals(SCREEN, c.classify(10_000, shot = 1))
         assertEquals(WAYPOINT, c.classify(10_100, shot = 1))
+    }
+
+    /** 지점 0을 찍고 지점 1에 도착한 뒤(아직 안 찍음) 일시정지, 타이머를 돌리고 멈춤(10초). 지점 1은 lastShot(0)과 다르다. */
+    private fun pausedTimerAtNewShot() = MediaClassifier().apply {
+        sortieStarted()
+        shotReached(0, 0)
+        assertEquals(WaypointFile(0, 0), classifyFile(600, shot = 0).second)
+        shotReached(1, 5_000)
+        screenStarted(continuous = true)
+        assertEquals(SCREEN, classify(7_000, shot = 1))
+        screenEnded(10_000)
+    }
+
+    @Test
+    fun `타이머를 멈춘 직후 늦은 파일은 새 지점(지점 1) 사진이 아니다`() {
+        val c = pausedTimerAtNewShot()
+        assertEquals(SCREEN, c.classify(10_500, shot = 1))
+    }
+
+    @Test
+    fun `타이머를 멈추고 한참 뒤에도 일시정지 중이면 앱 촬영 것`() {
+        val c = pausedTimerAtNewShot()
+        assertEquals(SCREEN, c.classify(30_000, shot = 1))
+    }
+
+    @Test
+    fun `타이머 뒤 재개하면 지점 1의 첫 파일은 지점 1의 0번 자리(밀리지 않음)`() {
+        val c = pausedTimerAtNewShot()
+        assertEquals(SCREEN, c.classify(10_500, shot = 1))
+        c.missionResumed()
+        assertEquals(WAYPOINT to WaypointFile(1, 0), c.classifyFile(40_000, shot = 1))
+        c.shotReached(2, 50_000)
+        assertEquals(WAYPOINT to WaypointFile(2, 0), c.classifyFile(50_600, shot = 2))
+    }
+
+    @Test
+    fun `타이머 뒤 새 소티면 지점 사진`() {
+        val c = pausedTimerAtNewShot()
+        c.sortieStarted()
+        assertEquals(WAYPOINT to WaypointFile(0, 0), c.classifyFile(60_000, shot = 0))
+    }
+
+    @Test
+    fun `카메라가 인터벌이라고 알리는 동안은 재개 뒤에도 앱 촬영 것(멈춤 실패·앱 재시작)`() {
+        val c = MediaClassifier().apply { sortieStarted() }
+        c.cameraInterval(true)
+        assertEquals(SCREEN, c.classify(1_000, shot = 0))
+        c.missionResumed()
+        assertEquals(SCREEN, c.classify(2_000, shot = 0))
+        c.cameraInterval(false)
+        assertEquals(WAYPOINT to WaypointFile(0, 0), c.classifyFile(3_000, shot = 0))
     }
 
     @Test
