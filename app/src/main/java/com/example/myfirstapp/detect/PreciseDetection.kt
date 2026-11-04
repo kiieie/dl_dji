@@ -64,7 +64,11 @@ class PreciseDetection(
 
     init {
         scope.launch { pauseReason.collect { OpLog.log("precise", "gate", mapOf("pause" to it)) } }
-        scope.launch { backfill.run() }
+        scope.launch {
+            // 비행 중에 앱이 다시 켜졌으면(6.4 복구) 비행 화면이 기체 상태를 알릴 때까지 쉰다
+            if (dao.openSortieMission() != null) setFlying("auto", true)
+            backfill.run()
+        }
     }
 
     /** 비행 화면([source] "auto")·수동 비행 화면("manual")이 기체가 떠 있는지 알린다. 하나라도 떠 있으면 쉰다. */

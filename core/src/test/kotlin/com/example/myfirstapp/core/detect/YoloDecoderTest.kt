@@ -53,4 +53,12 @@ class YoloDecoderTest {
         assertEquals(580 / 640f, d.x, 1e-5f)
         assertEquals(1f, d.x + d.w, 1e-5f)
     }
+
+    @Test
+    fun `경고 라벨이 비면(설비 모델) 모두 표시만 하고 검출로 세지 않는다`() {
+        val out = output(floatArrayOf(0.5f, 0.5f, 0.2f, 0.2f, 0.9f, 0f), floatArrayOf(0.2f, 0.2f, 0.1f, 0.1f, 0f, 0.8f))
+        val list = YoloDecoder(labels, emptySet(), 0.25f, 0.45f).decode(out, 2, Letterbox(640, 640, 640))
+        assertEquals(2, list.size)
+        assertEquals(0, list.count { it.alert })
+    }
 }

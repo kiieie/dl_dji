@@ -62,7 +62,14 @@ class PreciseBackfill(
             if (!ok) return@collectLatest
             try {
                 while (true) {
-                    val next = remaining().filterNot { it in failed }
+                    // DB를 못 읽으면(드묾) 일이 없는 것으로 보고 다음 알림을 기다린다(앱 수명 일꾼이 죽지 않게)
+                    val next = try {
+                        remaining().filterNot { it in failed }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
                     if (next.isEmpty()) {
                         done = 0
                         _progress.value = BackfillProgress()

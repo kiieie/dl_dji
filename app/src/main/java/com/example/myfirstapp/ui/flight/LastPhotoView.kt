@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.myfirstapp.core.detect.sampleSize
 import com.example.myfirstapp.detect.LastPhoto
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.theme.CardBg
@@ -59,7 +60,7 @@ internal fun LastPhotoThumb(p: LastPhoto, modifier: Modifier) {
         modifier.padding(start = 8.dp).width(Dimens.LastPhoto.width).clip(RoundedCornerShape(4.dp)).background(CardBg)
             .clickable(onClickLabel = "마지막 사진 크게 보기") { open = true },
     ) {
-        PhotoWithBoxes(p, sample = 16, labels = false, Modifier.size(Dimens.LastPhoto))
+        PhotoWithBoxes(p, longSidePx = 320, labels = false, Modifier.size(Dimens.LastPhoto))
         Text(
             p.summary, Modifier.padding(horizontal = 4.dp, vertical = 2.dp), fontSize = FontSize.Caption, color = Color.White,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -70,7 +71,7 @@ internal fun LastPhotoThumb(p: LastPhoto, modifier: Modifier) {
         title = { Text("마지막 사진 · ${p.summary}", fontSize = FontSize.Label) },
         text = {
             Column {
-                PhotoWithBoxes(p, sample = 4, labels = true, Modifier.fillMaxWidth().height(280.dp))
+                PhotoWithBoxes(p, longSidePx = 1280, labels = true, Modifier.fillMaxWidth().height(280.dp))
                 if (p.crop < 1f) Text("흰 테두리 안만 비행 중에 탐지했습니다. 전체 사진은 착륙 뒤 정밀 탐지합니다.", fontSize = FontSize.Caption, color = TextSoft)
             }
         },
@@ -78,11 +79,17 @@ internal fun LastPhotoThumb(p: LastPhoto, modifier: Modifier) {
     )
 }
 
-/** 사진(비율을 지켜 가운데)과 상자. [labels]면 상자 위에 화면 이름(model.json `displayNames`)을 쓴다. */
+/** 사진(비율을 지켜 가운데, 긴 변이 [longSidePx] 이상 남게 줄여 읽음)과 상자. [labels]면 상자 위에 화면 이름(model.json `displayNames`)을 쓴다. */
 @Composable
-private fun PhotoWithBoxes(p: LastPhoto, sample: Int, labels: Boolean, modifier: Modifier) {
-    val bitmap by produceState<ImageBitmap?>(null, p.path, sample) {
-        value = withContext(Dispatchers.IO) { p.path?.let { BitmapFactory.decodeFile(it, BitmapFactory.Options().apply { inSampleSize = sample }) }?.asImageBitmap() }
+private fun PhotoWithBoxes(p: LastPhoto, longSidePx: Int, labels: Boolean, modifier: Modifier) {
+    val bitmap by produceState<ImageBitmap?>(null, p.path, longSidePx) {
+        value = withContext(Dispatchers.IO) {
+            p.path?.let { path ->
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { BitmapFactory.decodeFile(path, it) }
+                val sample = sampleSize(maxOf(bounds.outWidth, bounds.outHeight), 1f, longSidePx)
+                BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+            }?.asImageBitmap()
+        }
     }
     val measurer = rememberTextMeasurer()
     Box(modifier.background(Color.Black)) {

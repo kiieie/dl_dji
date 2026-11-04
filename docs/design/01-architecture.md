@@ -77,7 +77,7 @@ flowchart TB
 
 > **1차는 3개 모듈로 시작한다**: `:app`(UI, 데이터, `FakeDroneGateway`, 탐지기는 패키지로 구분) + `:core`(JVM: model, domain, route 통합) + `:drone:dji`. 위 표의 세분화는 규모가 커질 때 `:core`와 `:app`에서 패키지 단위로 분리해 나간다. 기체 능력 차이(렌즈 목록, 줌)는 `DroneGateway`가 능력(capabilities)으로 노출해, 새 기체를 추가해도 도메인이 바뀌지 않게 한다.
 
-**`:core` 패키지 구성(구현됨)**: `com.example.myfirstapp.core` 아래에 `model`(도메인 모델, `FlightParams` 검증), `port`(`DroneGateway`, `Detector`, `Notifier`, `StorageMonitor`, `InspectionRecorder`), `csv`(`PoleCsvParser`), `route`(투영, 다각형, `TspSolver`, `RoutePlanner`, `EnergyModel`), `executor`(`InspectionExecutor`, `PreflightEvaluator`), `fake`(`FakeDroneGateway`)를 둔다. `:app`의 `data` 패키지(구현됨)에는 Room `AppDatabase`와 `ProjectDao`(가져오기 트랜잭션)를 둔다. 화면 ①·②는 `:app`의 `ui/ProjectScreen.kt` 한 화면(왼쪽 목록, 오른쪽 가져오기)으로 구현했고 로직은 `ProjectViewModel`에 있으며, `InspectionApp`(`Application`)이 DB를 만든다. 지도는 `ui/MapScreen.kt`(MapLibre, `maps/*.mbtiles`를 모두 겹쳐 표시, 전주는 묶지 않고 줌에 따라 크기가 바뀌는 점)이며, 글리프 파일이 없어 지도 위 글자는 그리지 않고 전주를 누르면 카드로 보여 준다. 같은 화면이 계획 화면 ③을 겸해 다각형 영역, 이륙 지점, 소티별 경로를 그리고, `PlanViewModel`이 `RoutePlanner`로 계산해(`Dispatchers.Default`) 계획을 저장한다. 비행 화면 ④는 `ui/flight/`(`FlightViewModel`)이며, 저장한 `MISSION`을 읽어 `InspectionExecutor`를 실행하고 기록은 `data/RoomRecorder.kt`(`InspectionRecorder` 구현)가 Room과 이미지 폴더(4.3)에 남긴다. `FakeDroneGateway`는 순수 Kotlin이므로 `:app`이 아니라 `:core`에 두어 단위 테스트와 앱(에뮬레이터 시연)이 함께 쓴다. **조정값의 위치(2026-10-31)**: 현장 조정값은 `:core` `config/Tuning.kt`, 앱 설정값은 `:app` `AppConfig.kt`, 화면 크기·글자·색은 `ui/theme/`(`Dimens`, `FontSize`, `Color`), 전주 표지 규칙은 `:core` `model/PoleCodes.kt`에 모은다(코드에 숫자를 박지 않음).
+**`:core` 패키지 구성(구현됨)**: `com.example.myfirstapp.core` 아래에 `model`(도메인 모델, `FlightParams` 검증), `port`(`DroneGateway`, `Detector`, `Notifier`, `StorageMonitor`, `InspectionRecorder`), `csv`(`PoleCsvParser`), `route`(투영, 다각형, `TspSolver`, `RoutePlanner`, `EnergyModel`), `executor`(`InspectionExecutor`, `PreflightEvaluator`), `fake`(`FakeDroneGateway`)를 둔다. `:app`의 `data` 패키지(구현됨)에는 Room `AppDatabase`와 `ProjectDao`(가져오기 트랜잭션)를 둔다. 화면 ①·②는 `:app`의 `ui/ProjectScreen.kt` 한 화면(왼쪽 목록, 오른쪽 가져오기)으로 구현했고 로직은 `ProjectViewModel`에 있으며, `InspectionApp`(`Application`)이 DB를 만든다. 지도는 `ui/MapScreen.kt`(MapLibre, `maps/*.mbtiles`를 모두 겹쳐 표시, 전주는 묶지 않고 줌에 따라 크기가 바뀌는 점)이며, 글리프 파일이 없어 지도 위 글자는 그리지 않고 전주를 누르면 카드로 보여 준다. 같은 화면이 계획 화면 ③을 겸해 다각형 영역, 이륙 지점, 소티별 경로를 그리고, `PlanViewModel`이 `RoutePlanner`로 계산해(`Dispatchers.Default`) 계획을 저장한다. 비행 화면 ④는 `ui/flight/`(`FlightViewModel`)이며, 저장한 `MISSION`을 읽어 `InspectionExecutor`를 실행하고 기록은 `data/RoomRecorder.kt`(`InspectionRecorder` 구현)가 Room과 이미지 폴더(4.3)에 남긴다. `FakeDroneGateway`는 순수 Kotlin이므로 `:app`이 아니라 `:core`에 두어 단위 테스트와 앱(에뮬레이터 시연)이 함께 쓴다. **조정값의 위치(2026-10-31)**: 현장 조정값은 `:core` `config/Tuning.kt`, 앱 설정값은 `:app` `AppConfig.kt`, 화면 크기·글자·색은 `ui/theme/`(`Dimens`, `FontSize`, `Color`), 전주 표지 규칙은 `:core` `model/PoleCodes.kt`에 모은다(코드에 숫자를 박지 않음). **탐지 위치(9.6, 2026-11-04)**: 실행기는 사진을 저장만 한다. 비행 중 최근 1장 탐지는 화면 수명(`detect/LiveDetection`, `FlightViewModel`·`ManualFlightViewModel`이 저장한 사진을 넘김), 착륙 뒤 정밀 탐지 일꾼은 앱 수명(`InspectionApp`이 만드는 `detect/PreciseDetection`)이고, 순서·쉼 규칙과 모델 고르기는 `:core` `detect/TwoStage.kt`(`LatestOnly`, `PreciseBackfill`, `ModelPick`)에 둔다.
 
 ### 3.4 기술 스택
 
@@ -140,7 +140,7 @@ erDiagram
   MISSION { long id; long projectId; datetime createdAt; string areaGeoJson; double homeLat; double homeLon; json flightParams; string modelVersion; string status }
   SORTIE { long id; long missionId; int seq; double estDistanceM; double estBatteryPct; string status; datetime startedAt; datetime endedAt }
   VISIT { long id; long sortieId; long poleRowId; int order; string status; datetime arrivedAt; string skipReason }
-  CAPTURE { long id; long visitId; string mediaId; string filePath; string lens; string source; int viewpoint; double lat; double lon; double altRel; double gimbalPitch; double heading; datetime takenAt; bool originalDownloaded }
+  CAPTURE { long id; long visitId; string mediaId; string filePath; string lens; string source; int viewpoint; double lat; double lon; double altRel; double gimbalPitch; double heading; datetime takenAt; bool originalDownloaded; string detectModel }
   DETECTION { long id; long captureId; string label; float score; float x; float y; float w; float h; bool alert }
   REVIEW { long id; long visitId; string verdict; string tags; string memo; datetime at }
   FLIGHT_EVENT { long id; long sortieId; string fromState; string toState; string reason; long visitId; datetime at }
@@ -156,7 +156,7 @@ erDiagram
 - `CAPTURE.viewpoint`: 촬영 방식(5.6)의 촬영 지점 번호. 전주 위 방식은 0, 4방향 사선은 0~3(선로 방향 기준 45°부터 시계 방향). 수동 촬영은 비움.
 - `CAPTURE.source`: `AUTO`(도착 시 자동), `MANUAL`(수동 촬영 버튼), `PERIODIC`(주기 분석 프레임)
 - `MISSION.flightParams`에는 실행 시점의 파라미터를 그대로 저장한다(나중에 설정을 바꿔도 기록은 유지된다).
-- 탐지 모델 버전을 기록해 어떤 모델로 분석했는지 추적한다.
+- 탐지 모델 버전을 기록해 어떤 모델로 분석했는지 추적한다(`MISSION.modelVersion`). `CAPTURE.detectModel`은 그 사진을 착륙 뒤 정밀 탐지한 모델 버전이고, 비어 있으면 아직 안 한 것이다(결과 0개와 구별, DB 8, 2026-11-04, 9.6).
 - `FLIGHT_EVENT`: 상태머신의 모든 전이를 기록한다(6.4 복구용). `TELEMETRY_SAMPLE`: 1~2초 간격으로 기록하며 에너지 모델 보정(5.5)과 사후 분석에 쓴다.
 
 ### 4.3 파일 저장
