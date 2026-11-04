@@ -147,7 +147,7 @@ class FlightViewModel(
         }
     }
 
-    /** 일시정지 버튼: 실제 기체는 펌웨어가 멈추고 어댑터가 알리므로 모의 기체만 흉내 낸다. C1: 화면 [재개]와 같다. */
+    /** 일시정지 버튼: 실제 기체는 펌웨어가 멈추고 어댑터가 알리므로 모의 기체만 흉내 낸다. C1: 화면 [재개]와 같다. 셔터·녹화는 화면 버튼과 같다. */
     private fun onRcButton(b: RcButton) {
         Log.i("RcKey", "$b state=${_state.value.exec.state}")
         when (b) {
@@ -155,8 +155,9 @@ class FlightViewModel(
             RcButton.C1 -> resume()
             RcButton.C2 -> toggleGimbal()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
-            // 실제 기체는 스스로 찍고 어댑터가 ShutterPhoto로 알린다. 모의 기체만 흉내 낸다
-            RcButton.SHUTTER -> (drone as? FakeDroneGateway)?.pressRcShutter()
+            // RC 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04). 실행기가 일시정지·수동 조종 중에만 받는다
+            RcButton.SHUTTER -> if (_state.value.videoMode) toggleRecording() else send(Command.RcShutter(_state.value.lens))
+            RcButton.RECORD -> if (paused || _state.value.recordingSinceMs != null) camera.recordButton()
             else -> Unit // 5D는 비행 명령에 쓰지 않는다(10장)
         }
     }

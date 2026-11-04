@@ -13,7 +13,6 @@ import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.port.CaptureInfo
-import com.example.myfirstapp.core.port.DroneEvent
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.OpLog
@@ -88,17 +87,16 @@ class ManualFlightViewModel(
             _state.update { it.copy(flight = it.flight.copy(background = bg)) }
         }
         viewModelScope.launch { loadLatestMission(dao)?.let { m -> _state.update { it.copy(latest = m) } } }
-        // RC: C2는 짐벌 전환(비행 화면과 같음). 이 화면 위에 설정 등이 열려 있을 때([active] 거짓)는 받지 않는다
+        // RC: C2는 짐벌 전환(비행 화면과 같음), 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04 고침). 이 화면 위에 설정 등이 열려 있을 때([active] 거짓)는 받지 않는다
         viewModelScope.launch { rcButtons.collect {
             if (!active) return@collect
             when (it) {
                 RcButton.C2 -> toggleGimbal()
-                RcButton.FIVE_D_CENTER -> shutter() // ○(C3)도 5D 누름으로 온다
+                RcButton.FIVE_D_CENTER, RcButton.SHUTTER -> shutter() // ○(C3)도 5D 누름으로 온다
+                RcButton.RECORD -> camera.recordButton()
                 else -> {}
             }
         } }
-        // RC 셔터는 기체가 직접 찍고 어댑터가 셔터 사진으로 알린다(6.4). 다른 화면이 덮고 있을 때 찍은 사진은 SD에만 남는다
-        drone?.let { d -> viewModelScope.launch { d.events.collect { e -> if (e is DroneEvent.ShutterPhoto && active) keep(d, _state.value.flight.lens) { e.capture } } } }
     }
 
     /** 화면이 맨 위에 보이는 동안만 참(화면이 [LifecycleResumeEffect]로 바꾼다). */

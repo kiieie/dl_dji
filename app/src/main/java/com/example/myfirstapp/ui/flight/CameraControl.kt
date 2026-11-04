@@ -1,10 +1,12 @@
 package com.example.myfirstapp.ui.flight
 
-import android.util.Log
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.port.DroneGateway
+import com.example.myfirstapp.core.port.ZOOM_STEPS
 import com.example.myfirstapp.core.port.nextZoom
+import com.example.myfirstapp.core.port.zoomSteps
 import com.example.myfirstapp.data.OpLog
+import com.example.myfirstapp.drone.djiDetail
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -12,9 +14,9 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * 카메라 뷰 공통 카메라 조작(10.4.3): 렌즈, 줌 +/−, 사진/영상, 녹화. 자동·수동 비행 ViewModel이 같이 쓴다.
- * 상태는 각 ViewModel의 [FlightUiState]에 둔다([get]·[set]). 화면 값은 누른 대로 바로 바꾸고, 기체가 거절하면 되돌린다
- * (그 사이 다음 누름으로 값이 바뀌었으면 그대로 둔다).
- * 명령은 누른 차례대로 하나씩 보낸다(렌즈 전환이 끝난 뒤 줌).
+ * 상태는 각 ViewModel의 [FlightUiState]에 둔다([get]·[set]). 화면 값은 누른 대로 바로 바꾸고, 기체가 거절하거나 응답이 없으면 되돌린다
+ * (그 사이 다음 누름으로 값이 바뀌었으면 그대로 둔다). 렌즈·줌은 명령 뒤 기체 값을 다시 읽어 실제 값을 보인다(2026-11-03 현장: 화면만 바뀌고 사진은 광각).
+ * 명령은 누른 차례대로 하나씩 보낸다(렌즈 전환이 끝난 뒤 줌). 응답 없는 명령은 어댑터 시간 제한으로 실패하므로 뒤 명령이 막히지 않는다.
  */
 internal class CameraControl(
     private val scope: CoroutineScope,
@@ -23,21 +25,43 @@ internal class CameraControl(
     private val set: ((FlightUiState) -> FlightUiState) -> Unit,
     private val tag: String,
 ) {
+    /** 기체 줌 범위 안의 단계(처음 줌을 누를 때 읽는다). */
+    private var steps: List<Double> = ZOOM_STEPS
+    private var stepsRead = false
+
     fun setLens(lens: Lens) {
         OpLog.log(tag, "lens", mapOf("lens" to lens.name))
         val was = get().lens
         set { it.copy(lens = lens) }
-        call("렌즈 전환", { if (it.lens == lens) it.copy(lens = was) else it }) { setVideoLens(lens) }
+        call("렌즈 전환", { if (it.lens == lens) it.copy(lens = was) else it }, read = {
+            videoLens()?.let { actual ->
+                OpLog.log(tag, "cameraRead", mapOf("what" to "렌즈", "want" to lens.name, "actual" to actual.name))
+                val fix: (FlightUiState) -> FlightUiState = { s -> if (s.lens == lens || s.lens == was) s.copy(lens = actual) else s }
+                fix
+            }
+        }) { setVideoLens(lens) }
     }
 
     /** 줌 +/−. 광각이면 먼저 망원으로 바꾸고 지금 배율을 건다(누른 단계는 그다음부터). */
     fun zoom(up: Boolean) {
         val s = get()
-        val ratio = if (s.lens == Lens.ZOOM) nextZoom(s.zoomRatio, up) else s.zoomRatio
+        val ratio = if (s.lens == Lens.ZOOM) nextZoom(s.zoomRatio, up, steps) else s.zoomRatio
         if (s.lens != Lens.ZOOM) setLens(Lens.ZOOM)
         OpLog.log(tag, "zoom", mapOf("ratio" to ratio))
         set { it.copy(zoomRatio = ratio) }
-        call("줌", { if (it.zoomRatio == ratio) it.copy(zoomRatio = s.zoomRatio) else it }) { setZoom(ratio) }
+        call("줌", { if (it.zoomRatio == ratio) it.copy(zoomRatio = s.zoomRatio) else it }, read = {
+            zoomRatio()?.let { actual ->
+                OpLog.log(tag, "cameraRead", mapOf("what" to "줌", "want" to ratio, "actual" to actual))
+                val fix: (FlightUiState) -> FlightUiState = { st -> if (st.zoomRatio == ratio || st.zoomRatio == s.zoomRatio) st.copy(zoomRatio = actual) else st }
+                fix
+            }
+        }) {
+            if (!stepsRead) {
+                stepsRead = true
+                steps = zoomSteps(zoomRange())
+            }
+            setZoom(ratio)
+        }
     }
 
     fun setVideoMode(on: Boolean) {
@@ -55,6 +79,12 @@ internal class CameraControl(
         call("녹화", { it.copy(recordingSinceMs = was) }) { setRecording(on) }
     }
 
+    /** RC 녹화 버튼(Pilot 2와 같음): 사진 모드면 영상 모드로 바꾼 뒤 녹화를 시작하고, 녹화 중이면 멈춘다. */
+    fun recordButton() {
+        if (get().recordingSinceMs == null && !get().videoMode) setVideoMode(true)
+        toggleRecording()
+    }
+
     /** 녹화를 멈추고 사진 모드로 돌린다(자동 비행 재개 전, 10.4.3). */
     fun backToPhoto() {
         if (get().recordingSinceMs != null) toggleRecording()
@@ -69,11 +99,11 @@ internal class CameraControl(
         val d = drone()
         if (get().recordingSinceMs != null) {
             set { it.copy(recordingSinceMs = null) }
-            d?.setRecording(false)?.onFailure { e -> Log.w("Camera", "녹화 정지 실패: ${e.message}") }
+            d?.setRecording(false)?.let { logResult("녹화 정지", it) }
         }
         if (get().videoMode) {
             set { it.copy(videoMode = false) }
-            d?.setVideoMode(false)?.onFailure { e -> Log.w("Camera", "사진 모드 실패: ${e.message}") }
+            d?.setVideoMode(false)?.let { logResult("사진 모드", it) }
         }
     }
 
@@ -81,19 +111,32 @@ internal class CameraControl(
     suspend fun restoreZoom(ratio: Double) = lock.withLock {
         // 화면 값이 같아도 카메라는 다를 수 있으니(거절·되돌림 사이) 늘 보낸다
         set { it.copy(zoomRatio = ratio) }
-        drone()?.setZoom(ratio)?.onFailure { e -> Log.w("Camera", "줌 되돌림 실패: ${e.message}") }
+        drone()?.setZoom(ratio)?.let { logResult("줌 되돌림", it) }
     }
 
     /** 카메라 명령 차례(공정한 [Mutex]라 누른 순서대로). */
     private val lock = Mutex()
 
-    private fun call(what: String, undo: (FlightUiState) -> FlightUiState, block: suspend DroneGateway.() -> Result<Unit>) {
+    /** 명령 결과를 운용 로그에(성공 `cameraOk`, 실패 `cameraFail`과 이유). */
+    private fun logResult(what: String, r: Result<Unit>) = r.fold(
+        { OpLog.log(tag, "cameraOk", mapOf("what" to what)) },
+        { e -> OpLog.log(tag, "cameraFail", mapOf("what" to what, "error" to e.djiDetail())) },
+    )
+
+    /** [block]을 차례대로 보내고 결과를 남긴다. 실패면 [undo], 그다음 [read]로 기체 실제 값을 읽어 화면에 맞춘다. */
+    private fun call(
+        what: String,
+        undo: (FlightUiState) -> FlightUiState,
+        read: (suspend DroneGateway.() -> ((FlightUiState) -> FlightUiState)?)? = null,
+        block: suspend DroneGateway.() -> Result<Unit>,
+    ) {
         val d = drone() ?: return
         scope.launch {
-            lock.withLock { d.block() }.onFailure { e ->
-                Log.w("Camera", "$what 실패: ${e.message}")
-                OpLog.log(tag, "cameraFail", mapOf("what" to what, "error" to e.message))
-                set(undo)
+            lock.withLock {
+                val r = d.block()
+                logResult(what, r)
+                if (r.isFailure) set(undo)
+                read?.let { d.it() }?.let(set)
             }
         }
     }
