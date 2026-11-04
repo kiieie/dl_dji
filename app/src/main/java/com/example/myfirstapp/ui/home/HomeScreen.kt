@@ -78,13 +78,22 @@ import com.example.myfirstapp.ui.flight.PoleFailed
 import com.example.myfirstapp.ui.flight.PolePending
 import com.example.myfirstapp.ui.mission.STATUS_TITLE
 import com.example.myfirstapp.ui.mission.statusColor
-import com.example.myfirstapp.ui.theme.Accent
-import com.example.myfirstapp.ui.theme.Caution
-import com.example.myfirstapp.ui.theme.TextSoft
+import com.example.myfirstapp.ui.theme.DarkButton
 import com.example.myfirstapp.ui.theme.Warning
+import androidx.compose.ui.draw.alpha
 import com.example.myfirstapp.ui.theme.numberStyle
 import kotlin.math.cos
-import kotlin.math.min
+import kotlinx.coroutines.launch
+import com.example.myfirstapp.core.executor.sdFreeLabel
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.example.myfirstapp.ui.theme.AircraftBody
+import com.example.myfirstapp.ui.theme.AircraftPropTip
 import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 
@@ -235,7 +244,12 @@ private fun AircraftPanel(a: AircraftStatus, modifier: Modifier, onHms: () -> Un
             }
         }
         Column(Modifier.weight(1f).fillMaxWidth().clickable(onClickLabel = "기체 세부", onClick = onDetail), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(a.model?.uppercase() ?: "기체 연결 안 됨", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            // 기체 그림(Pilot 2 홈): DJI 그림 대신 간단한 쿼드콥터 선 그림. 연결 안 되면 흐리게
+            AircraftDrawing(Modifier.size(200.dp, 110.dp).alpha(if (a.connected) 1f else 0.45f))
+            Box(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                Text(a.model?.uppercase() ?: "기체 연결 안 됨", Modifier.align(Alignment.Center), fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                AircraftSwitch(Modifier.align(Alignment.CenterEnd))
+            }
             if (a.simulator) Text("시뮬레이터", fontSize = FontSize.Caption, color = Warning)
             Row(Modifier.padding(top = 18.dp).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
                 PanelFigure(if (a.connected) "M3E" else "--", "페이로드 1")
@@ -247,7 +261,11 @@ private fun AircraftPanel(a: AircraftStatus, modifier: Modifier, onHms: () -> Un
                 }
             }
         }
-        Button(onClick = onCamera, modifier = Modifier.fillMaxWidth().height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp)) {
+        // Pilot 2 [카메라 뷰 입력]은 짙은 회색. 파랑 채운 버튼은 우리 [미션 비행 시작] 하나(10.5.5)
+        Button(
+            onClick = onCamera, modifier = Modifier.fillMaxWidth().height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp),
+            colors = ButtonDefaults.buttonColors(DarkButton, Color.White),
+        ) {
             Text("카메라 뷰 입력", fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
         }
     }
@@ -272,10 +290,10 @@ private fun MissionCard(
 ) {
     Surface(modifier, shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Box {
-            if (m != null) RoutePreview(m.route, m.home, Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(top = 28.dp))
+            if (m != null) RoutePreview(m.route, m.home, Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(start = 10.dp, end = 10.dp, top = 34.dp).clip(RoundedCornerShape(4.dp)))
             Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("최근 미션", fontSize = FontSize.Caption, color = TextSoft)
+                    Text("최근 미션", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (m != null) StatusBadge(m.status)
                 }
                 Spacer(Modifier.weight(1f))
@@ -294,7 +312,7 @@ private fun MissionCard(
                     Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.Bottom) {
                         Figure("전주", "${m.done}", "/${m.total}")
                         Figure("소티", "${m.sorties}")
-                        Figure("사진", "${m.photos}")
+                        Figure("사진", "${m.photosTaken}", "/${m.photos}")
                         Text(if (m.shotMode == ShotMode.DIAGONAL4) "4방향 사선" else "전주 위", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     when {
@@ -350,18 +368,18 @@ private fun HomeTile(
     subtitle: String,
     modifier: Modifier,
     enabled: Boolean = true,
-    iconTint: Color = Color.White,
+    iconTint: Color = MaterialTheme.colorScheme.onSurface,
     onClick: () -> Unit,
 ) {
     val dim = MaterialTheme.colorScheme.outline
     Surface(
         onClick = onClick, enabled = enabled, modifier = modifier.fillMaxHeight(), shape = RoundedCornerShape(6.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Icon(painterResource(icon), contentDescription = null, tint = if (enabled) iconTint else dim, modifier = Modifier.size(26.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(title, fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = if (enabled) Color.White else dim)
+                Text(title, fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = if (enabled) MaterialTheme.colorScheme.onSurface else dim)
                 Text(subtitle, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -388,7 +406,7 @@ private fun AircraftDialog(a: AircraftStatus, onClose: () -> Unit) {
                 Text(label, color = color, fontWeight = FontWeight.Bold)
                 Item("배터리", a.batteryPct?.let { "$it%" })
                 Item("GNSS 위성", a.satellites?.let { "${it}개" })
-                Item("SD 카드", a.sdFreeMb?.let { if (a.sdState == "NORMAL") "${it / 1024}GB 남음" else a.sdState })
+                Item("SD 카드", a.sdFreeMb?.let { if (a.sdState == "NORMAL") sdFreeLabel(it.toLong()) else a.sdState })
                 Item("LDM(로컬 데이터 모드)", if (a.ldm) "켜짐" else "꺼짐")
                 Item("시뮬레이터", if (a.simulator) "켜짐" else "꺼짐")
                 Text("기체 설정은 [기체 점검]에서 바꿉니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -403,5 +421,63 @@ private fun Item(label: String, value: String?) {
     Row(Modifier.fillMaxWidth()) {
         Text(label, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value ?: "--", fontWeight = FontWeight.Bold)
+    }
+}
+
+/**
+ * 기체 그림(Pilot 2 홈 기체 판, 10.5.5): 위에서 본 쿼드콥터 선 그림(몸체 · 팔 4개 · 모터 · 2날 프로펠러 · 앞 짐벌).
+ * DJI 제품 그림은 쓰지 않는다(저작권). 크기는 [modifier]로 정한다.
+ */
+@Composable
+private fun AircraftDrawing(modifier: Modifier) {
+    Canvas(modifier) {
+        val c = center
+        val hubs = listOf(-1f to -1f, 1f to -1f, -1f to 1f, 1f to 1f).map { (sx, sy) -> Offset(c.x + sx * size.width * 0.3f, c.y + sy * size.height * 0.32f) }
+        val arm = 5.dp.toPx()
+        hubs.forEach { drawLine(AircraftBody, c, it, arm, cap = androidx.compose.ui.graphics.StrokeCap.Round) }
+        val bw = size.width * 0.16f
+        val bh = size.height * 0.5f
+        drawRoundRect(AircraftBody, Offset(c.x - bw / 2, c.y - bh / 2), Size(bw, bh), CornerRadius(bw / 3))
+        // 앞 짐벌과 렌즈
+        drawCircle(Color(0xFF1C1C1C), bw * 0.32f, Offset(c.x, c.y - bh / 2))
+        drawCircle(Color(0xFF4DABF7), bw * 0.12f, Offset(c.x, c.y - bh / 2))
+        val prop = size.width * 0.14f
+        hubs.forEachIndexed { i, h ->
+            drawCircle(AircraftBody, 5.dp.toPx(), h)
+            // 2날 프로펠러를 조금씩 다른 각으로(돌고 있는 느낌), 끝은 주황
+            val a = Math.toRadians((20 + i * 35).toDouble())
+            val d = Offset((cos(a) * prop).toFloat(), (kotlin.math.sin(a) * prop).toFloat())
+            drawLine(AircraftBody.copy(alpha = 0.8f), h - d, h + d, 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(AircraftPropTip, h + d * 0.8f, h + d, 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(AircraftPropTip, h - d * 0.8f, h - d, 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        }
+    }
+}
+
+/** 기체 바꾸기 ⇋(Pilot 2 기체 이름 옆): 1차는 M3E만 지원하므로 흐리게 두고, 누르면 "M3E만 지원" 안내. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AircraftSwitch(modifier: Modifier) {
+    val tip = rememberTooltipState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text("M3E만 지원") } },
+        state = tip, modifier = modifier,
+    ) {
+        val tint = MaterialTheme.colorScheme.outline
+        Canvas(
+            Modifier.size(Dimens.TouchMedium).clickable(onClickLabel = "기체 바꾸기(M3E만 지원)") { scope.launch { tip.show() } }.padding(8.dp)
+                .semantics { contentDescription = "기체 바꾸기(M3E만 지원)" },
+        ) {
+            val w = 2.dp.toPx()
+            val y1 = size.height * 0.35f
+            val y2 = size.height * 0.65f
+            val head = size.width * 0.22f
+            drawLine(tint, Offset(0f, y1), Offset(size.width, y1), w)
+            drawLine(tint, Offset(size.width, y1), Offset(size.width - head, y1 - head * 0.8f), w)
+            drawLine(tint, Offset(0f, y2), Offset(size.width, y2), w)
+            drawLine(tint, Offset(0f, y2), Offset(head, y2 + head * 0.8f), w)
+        }
     }
 }

@@ -202,7 +202,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(FlightControllerKey.KeyLowBatteryWarningThreshold) { p -> _telemetry.update { it.copy(lowBatteryPct = p) } }
         on(FlightControllerKey.KeySeriousLowBatteryWarningThreshold) { p -> _telemetry.update { it.copy(criticalBatteryPct = p) } }
         on(FlightControllerKey.KeyGoHomeAssessment) { a ->
-            _telemetry.update { it.copy(rthBatteryPct = a?.batteryPercentNeededToGoHome, remainingFlightSec = a?.remainingFlightTime) }
+            _telemetry.update { it.copy(rthBatteryPct = a?.batteryPercentNeededToGoHome, landBatteryPct = a?.batteryPercentNeededToLand, remainingFlightSec = a?.remainingFlightTime) }
         }
         // ponytail: 풍속 단위를 0.1 m/s로 본다(MSDK 문서에 단위 없음). 실기에서 Pilot 2 WS와 대조한다
         on(FlightControllerKey.KeyWindSpeed) { w -> _telemetry.update { it.copy(windSpeedMps = w?.div(10.0)) } }

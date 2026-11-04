@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- 카메라 뷰 아이콘(10.4 시안). 색은 Icon tint로 정한다 -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2" android:fillColor="#00000000" android:strokeLineJoin="round" android:strokeLineCap="round" android:pathData="M12,4v14M6,12l6,6l6,-6" />
-</vector>

@@ -111,7 +111,8 @@ fun ManualFlightScreen(
         val t = f.telemetry
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (t?.landingConfirmNeeded == true) LandingConfirmButton(vm::confirmLanding)
-            t?.let { NavDisplay(it, f.home, f.obstacles) }
+            // Pilot 2 지도 뷰에는 내비 원판이 없다(10.5.4)
+            if (!mapMain) t?.let { NavDisplay(it, f.home, f.obstacles) }
         }
         if (mapMain) Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { LibraryButton(enabled = t?.isFlying != true, onLibrary) }
     }

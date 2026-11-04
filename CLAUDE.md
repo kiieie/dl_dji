@@ -145,7 +145,7 @@ docs/
 
 - **아키텍처**: MVVM + Clean Architecture(`docs/design/01-architecture.md` 3.2). 화면마다 `ViewModel`이 `StateFlow<UiState>`를 내보내고, 화면은 이벤트를 `ViewModel` 함수로 올려 보내는 단방향 데이터 흐름(UDF)을 따릅니다.
 - **금지**: Compose UI 안에 비즈니스 로직(DB 조회·저장, 실행기 조립, 파일 내보내기, 판정)을 두지 않습니다. `LiveData`는 쓰지 않습니다.
-- **디자인**: Material Design 3를 엄격히 따르고, 톤앤매너는 DJI 조종 앱 방식(어두운 바탕, 흰 글자, 파랑 강조)을 씁니다. 세부 규칙은 `docs/design/06-ui-sound.md` 10.1입니다. `/design-sync`로 디자인 시스템을 연결하면 그것을 기준으로 합니다.
+- **디자인**: Material Design 3를 엄격히 따르고, 톤앤매너는 DJI Pilot 2 방식을 씁니다. 카메라 뷰·지도는 어두운 바탕(흰 글자, 파랑 강조), 절차 화면(홈·라이브러리·비행 전 점검·체크리스트·설정·계획 패널·앨범)은 Pilot 2처럼 밝은 바탕(`LightScreen`)입니다(2026-11-04 사용자 결정). 색은 `colorScheme` 역할로만 지정합니다. 세부 규칙은 `docs/design/06-ui-sound.md` 10.1입니다. `/design-sync`로 디자인 시스템을 연결하면 그것을 기준으로 합니다.
 
 ## 알려진 이슈 (현재 검증 코드)
 

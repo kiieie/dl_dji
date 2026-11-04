@@ -9,6 +9,7 @@ import com.example.myfirstapp.ui.procedure.ChecklistPage
 import com.example.myfirstapp.ui.procedure.PreflightPage
 import com.example.myfirstapp.ui.procedure.PreflightViewModel
 import com.example.myfirstapp.ui.procedure.ProcedurePage
+import com.example.myfirstapp.ui.theme.LightScreen
 
 /**
  * 미션 절차 화면(10.5.5): [비행 시작]·상단 바 비행 상태 글자 → 비행 전 점검 → 웨이포인트 경로 체크리스트([업로드] → [시작]).
@@ -18,6 +19,12 @@ import com.example.myfirstapp.ui.procedure.ProcedurePage
 internal fun ProcedurePages(s: FlightUiState, vm: FlightViewModel) {
     val pre: PreflightViewModel = viewModel(key = "preflight", factory = PreflightViewModel.factory(report = vm::preflightReport, checksOf = vm::checksFor))
     BackHandler { if (s.page == ProcedurePage.CHECKLIST) vm.backToPreflight() else vm.closeProcedure() }
+    // 절차 화면은 밝은 바탕(Pilot 2, 2026-11-04 사용자 결정). 비행 화면 위를 덮는다
+    if (s.page != null) LightScreen { ProcedureContent(s, vm, pre) }
+}
+
+@Composable
+private fun ProcedureContent(s: FlightUiState, vm: FlightViewModel, pre: PreflightViewModel) {
     when (s.page) {
         ProcedurePage.PREFLIGHT -> PreflightPage(pre, onClose = vm::closeProcedure, onNext = vm::confirmPreflight)
         ProcedurePage.CHECKLIST -> {

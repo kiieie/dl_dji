@@ -13,6 +13,9 @@ import com.example.myfirstapp.data.MissionSummary
 import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.exportMission
+import com.example.myfirstapp.data.flightParamsFromJson
+import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.ui.home.RoutePoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -38,6 +41,8 @@ data class MissionListUiState(
     val missions: List<MissionSummary> = emptyList(),
     /** 미션 → 소티마다 방문 순서의 전주(카드 경로 그림). */
     val routes: Map<Long, List<List<RoutePoint>>> = emptyMap(),
+    /** 미션 → 예상 사진 수([com.example.myfirstapp.core.model.FlightParams.expectedPhotos], 홈·미션 칸과 같은 값). */
+    val expectedPhotos: Map<Long, Int> = emptyMap(),
     /** 프로젝트(선로) 거르기. null이면 모두. */
     val projectFilter: Long? = null,
     val filter: LibraryFilter = LibraryFilter.ALL,
@@ -122,10 +127,17 @@ class MissionListViewModel(
         viewModelScope.launch {
             dao.observeLibrary().collect { list ->
                 // 카드 그림은 미션 목록이 바뀔 때만 다시 읽는다(전주 수천 개도 한 번의 질의)
-                val routes = dao.libraryPoints().groupBy { it.missionId }.mapValues { (_, pts) ->
+                val points = dao.libraryPoints().groupBy { it.missionId }
+                val routes = points.mapValues { (_, pts) ->
                     pts.groupBy { it.sortieId }.values.map { s -> s.map { RoutePoint(it.lat, it.lon, it.status != "PENDING" && it.status != "IN_PROGRESS") } }
                 }
-                _state.update { it.copy(loading = false, missions = list, routes = routes, checked = it.checked.filter { id -> list.any { m -> m.id == id } }.toSet()) }
+                val params = list.associate { it.id to flightParamsFromJson(it.flightParams) }
+                val expected = points.mapValues { (id, pts) ->
+                    params[id]?.expectedPhotos(pts.map { Pole("", GeoPoint(it.lat, it.lon), equipment = it.equipment) }) ?: 0
+                }
+                _state.update {
+                    it.copy(loading = false, missions = list, routes = routes, expectedPhotos = expected, checked = it.checked.filter { id -> list.any { m -> m.id == id } }.toSet())
+                }
             }
         }
     }

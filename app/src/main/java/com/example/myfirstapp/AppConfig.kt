@@ -117,8 +117,11 @@ object AppConfig {
         /** 점이 하나뿐일 때 맞추는 확대. */
         const val SINGLE_POINT_ZOOM = 17.0
 
-        /** 큰 지도에서 웨이포인트 번호·고도 라벨을 보이는 최소 확대(10.5.4). 전주 라벨과 겹치지 않게 더 크게 확대해야 보인다. */
-        const val WAYPOINT_MIN_ZOOM = 18
+        /**
+         * 큰 지도에서 웨이포인트 번호·고도 라벨을 보이는 최소 확대(10.5.4). Pilot 2는 3km 경로 전체가 보이는 확대(약 15~16)에서도 보인다(p2s_2).
+         * 겹치는 라벨은 소티 순서로 앞의 것만 남긴다(FlightMap).
+         */
+        const val WAYPOINT_MIN_ZOOM = 15
 
         /** 지도 비행 궤적(10.5.4 주황 선): 앞 점에서 이만큼(m) 움직여야 점을 더한다. */
         const val TRACK_MIN_STEP_M = 2.0
@@ -255,8 +258,11 @@ object AppConfig {
 
     /** 비행 전 점검·웨이포인트 경로 체크리스트(10.5.5, Pilot 2 같은 범위). */
     object Preflight {
-        /** RTH·최고 고도 범위(m, M3E). */
-        val ALTITUDE_RANGE_M = 20..500
+        /**
+         * RTH·최고 고도 범위(m): Pilot 2 비행 전 점검 "(20~1500 m)"와 같다(2026-11-04). 기체 키로 범위를 주지 않아(MSDK 5.18) 고정값,
+         * 범위 밖 값은 기체가 거절하거나 고쳐 다시 읽는다. 법정 상한 150m은 우리 점검이 본다.
+         */
+        val ALTITUDE_RANGE_M = 20..1500
 
         /** 최대 비행 거리 범위(m). */
         val DISTANCE_RANGE_M = 15..8000
@@ -270,8 +276,6 @@ object AppConfig {
         /** 상태 줄(배터리·홈·SD·점검 항목) 다시 읽기 간격. */
         const val STATUS_MS = 2_000L
 
-        /** 체크리스트 비행 임무 속도 범위(m/s, Pilot 2 1.0~15.0, 우리 검증은 [com.example.myfirstapp.core.model.FlightParams.validate]). */
-        val SPEED_RANGE_MPS = 2.0..15.0
 
         /** 기체가 없을 때(모의 기체) 비행 전 점검 설정의 처음 값. 이름은 `PreflightSettings` 항목 이름. */
         val FAKE_VALUES: kotlin.collections.Map<String, Any> = mapOf(

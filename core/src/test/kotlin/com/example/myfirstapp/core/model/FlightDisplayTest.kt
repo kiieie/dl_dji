@@ -26,16 +26,23 @@ class FlightDisplayTest {
     }
 
     @Test
-    fun `배터리 띠는 심각 빨강 낮음 주황 그 위 초록을 남은 양까지`() {
-        val full = batteryBand(70.0, lowPct = 30, criticalPct = 10)
-        assertEquals(listOf(BatteryLevel.CRITICAL, BatteryLevel.LOW, BatteryLevel.OK), full.map { it.level })
-        assertEquals(0.1f, full[0].to, 1e-6f)
-        assertEquals(0.3f, full[1].to, 1e-6f)
-        assertEquals(0.7f, full[2].to, 1e-6f)
-        val low = batteryBand(20.0, lowPct = 30, criticalPct = 10)
+    fun `배터리 띠는 땅에서 초록 하나, 떠 있으면 착륙 빨강 RTH 주황 그 위 초록`() {
+        val ground = batteryBand(70.0, flying = false, rthPct = 18, landPct = 8, criticalPct = 22)
+        assertEquals(listOf(BandSegment(0f, 0.7f, BatteryLevel.OK)), ground)
+        val air = batteryBand(70.0, flying = true, rthPct = 18, landPct = 8, criticalPct = 22)
+        assertEquals(listOf(BatteryLevel.CRITICAL, BatteryLevel.LOW, BatteryLevel.OK), air.map { it.level })
+        assertEquals(0.08f, air[0].to, 1e-6f)
+        assertEquals(0.18f, air[1].to, 1e-6f)
+        assertEquals(0.7f, air[2].to, 1e-6f)
+        // 착륙 필요량을 모르면 심각 문턱까지, 단 RTH 필요량을 넘지 않음
+        assertEquals(0.1f, batteryBand(70.0, true, rthPct = 10, landPct = null, criticalPct = 22)[0].to, 1e-6f)
+        // 남은 양이 RTH 필요량보다 적으면 거기서 자름
+        val low = batteryBand(12.0, true, rthPct = 18, landPct = 8, criticalPct = 22)
         assertEquals(listOf(BatteryLevel.CRITICAL, BatteryLevel.LOW), low.map { it.level })
-        assertEquals(0.2f, low.last().to, 1e-6f)
-        assertTrue(batteryBand(0.0, 30, 10).isEmpty())
+        assertEquals(0.12f, low.last().to, 1e-6f)
+        // 떠 있어도 RTH 필요량을 모르면 초록 하나
+        assertEquals(1, batteryBand(50.0, true, null, null, 22).size)
+        assertTrue(batteryBand(0.0, false, null, null, 22).isEmpty())
         assertEquals(BatteryLevel.LOW, batteryLevel(43.0, 43, 22))
         assertEquals(BatteryLevel.CRITICAL, batteryLevel(22.0, 43, 22))
         assertEquals(BatteryLevel.OK, batteryLevel(44.0, 43, 22))

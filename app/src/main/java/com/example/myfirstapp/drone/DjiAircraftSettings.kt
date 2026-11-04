@@ -54,11 +54,11 @@ class AircraftSetting(
 /** 탭 이름과 그 탭의 항목. 펌웨어 업데이트·GEO 잠금 해제는 본 앱에서 하지 않는다(7.2, 출동 전 Pilot 2). */
 fun djiAircraftSettingTabs(): List<Pair<String, List<AircraftSetting>>> = listOf(
     "비행 제어" to listOf(
-        number("RTH 고도", FlightControllerKey.KeyGoHomeHeight, 20..500, 10, "m", "전주·전선보다 충분히 높게. 법정 상한 150m"),
-        number("최고 고도", FlightControllerKey.KeyHeightLimit, 20..500, 10, "m", "법정 상한 150m"),
+        number("RTH 고도", FlightControllerKey.KeyGoHomeHeight, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", "전주·전선보다 충분히 높게. 법정 상한 150m"),
+        number("최고 고도", FlightControllerKey.KeyHeightLimit, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", "법정 상한 150m"),
         toggle("거리 제한", FlightControllerKey.KeyDistanceLimitEnabled),
         number("거리 제한 값", FlightControllerKey.KeyDistanceLimit, 15..8000, 100, "m"),
-        choice("신호 상실 동작", FlightControllerKey.KeyFailsafeAction, listOf(FailsafeAction.GOHOME to "RTH", FailsafeAction.HOVER to "호버", FailsafeAction.LANDING to "착륙")),
+        choice("신호 끊김 조치", FlightControllerKey.KeyFailsafeAction, listOf(FailsafeAction.GOHOME to "RTH", FailsafeAction.HOVER to "호버링", FailsafeAction.LANDING to "착륙")),
         action("홈포인트를 기체 위치로", FlightControllerKey.KeyHomeLocationUsingCurrentAircraftLocation, null),
         action("컴퍼스 캘리브레이션 시작", FlightControllerKey.KeyStartCompassCalibration, "기체를 들고 안내대로 돌려야 합니다. 시작할까요?"),
         action("IMU 캘리브레이션 시작", FlightControllerKey.KeyStartIMUCalibration, "평평한 곳에서 안내대로 기체 방향을 바꿔야 합니다. 시작할까요?"),
@@ -201,7 +201,7 @@ class PreflightSettings(
     }
 }
 
-/** 비행 전 점검 설정(실제 기체). RTH·최고 고도는 20~500m(M3E), 장애물 거리는 [AppConfig.Preflight.SENSING_RANGE_M]. */
+/** 비행 전 점검 설정(실제 기체). RTH·최고 고도는 [AppConfig.Preflight.ALTITUDE_RANGE_M](Pilot 2 20~1500m), 장애물 거리는 [AppConfig.Preflight.SENSING_RANGE_M]. */
 fun djiPreflightSettings() = PreflightSettings(
     rth = number("RTH 고도", FlightControllerKey.KeyGoHomeHeight, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", big = 100),
     maxAltitude = number("최고 고도", FlightControllerKey.KeyHeightLimit, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", big = 100),

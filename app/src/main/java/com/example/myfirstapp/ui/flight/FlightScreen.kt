@@ -77,6 +77,7 @@ import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.ui.theme.CardBg
+import com.example.myfirstapp.ui.theme.CardBgOpaque
 import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
@@ -169,14 +170,13 @@ private fun FlightContent(
     // 왼쪽 열(핀포인트 · 짐벌 메뉴 · AR · ZOOM)과 그 오른쪽 미션 칸(⏸/▶), 오른쪽 열(사진/영상 · 셔터 · 재생)과 세로 줌, 아래 가운데 내비 원판, 왼쪽 아래 지도.
     // 큰 지도(10.5.4, 미니맵 누름·RC C2)일 때는 오른쪽 열 대신 지도 도구, 오른쪽 아래 [라이브러리], 왼쪽 아래 칸은 카메라. RTH는 RC RTH 버튼(Pilot 2와 같음)
     val mapMain = s.mapMain
-    val paused = ui.state == ExecState.Paused
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val fpv: @Composable (Modifier) -> Unit = { m -> FpvView(s.simulated, m) }
         if (mapMain) FlightMap(s, interactive = true, pad = listOf(220.dp, 90.dp, 60.dp, 120.dp), Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack)
         else {
             fpv(Modifier.fillMaxSize())
-            // 탭 초점·초점 모드는 일시정지 중에만(지점 사진 초점을 건드리지 않게)
-            CameraOverlay(s.lens, s.zoomRatio, focusEnabled = paused, onFocus = vm::focusAt, Modifier.fillMaxSize())
+            // 탭 초점·초점 모드는 자동 비행 구간이 아닐 때만(지점 사진 초점을 건드리지 않게)
+            CameraOverlay(s.lens, s.zoomRatio, focusEnabled = s.cameraFree, onFocus = vm::focusAt, Modifier.fillMaxSize())
         }
         Column(Modifier.align(Alignment.BottomStart)) {
             // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
@@ -190,11 +190,11 @@ private fun FlightContent(
         TopBar(s, flightTitle(s.telemetry, "#$missionId$sortie"), onExit, onOpenSettings, onTitleClick = vm::openPreflight)
         if (!mapMain) {
             ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
-            ExposureStrip(s.camera, s.videoMode, focusEnabled = paused, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
+            ExposureStrip(s.camera, s.videoMode, focusEnabled = s.cameraFree, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
             CameraLeftColumn(s.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp))
             CameraColumn(
-                s = s, shutterEnabled = paused || s.recordingSinceMs != null, onShutter = vm::shutter,
-                cameraEnabled = paused, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
+                s = s, shutterEnabled = s.shutterFree, onShutter = vm::shutter,
+                cameraEnabled = s.cameraFree, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 6.dp), onAlbum = onAlbum,
             )
         }
@@ -202,12 +202,16 @@ private fun FlightContent(
         NoticeLines(notices, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 48.dp).widthIn(max = 300.dp))
         if (ui.state != ExecState.SortieDone) {
             MissionChip(s, vm, onShowResult, Modifier.align(Alignment.TopStart).padding(start = 48.dp, top = Dimens.TopBar + 19.dp))
-            if (s.simulated) MockRcControls(vm, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 168.dp))
+            // 모의 RC 줄은 오른쪽 아래(왼쪽 아래 마지막 사진·미니맵, 왼쪽 열 ZOOM과 겹치지 않게). 큰 지도면 [라이브러리] 위
+            if (s.simulated) MockRcControls(
+                vm, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = if (mapMain) 8.dp + Dimens.ButtonStd + 6.dp else 8.dp),
+            )
         }
 
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (s.telemetry?.landingConfirmNeeded == true) LandingConfirmButton(vm::confirmLanding)
-            s.telemetry?.let { NavDisplay(it, s.home, s.obstacles, s.nextWaypoint) }
+            // Pilot 2 지도 뷰에는 내비 원판이 없다(10.5.4)
+            if (!mapMain) s.telemetry?.let { NavDisplay(it, s.home, s.obstacles, s.nextWaypoint) }
         }
         if (mapMain) Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { LibraryButton(enabled = s.canExit, onLibrary) }
 
@@ -239,10 +243,11 @@ private fun TerrainFallbackDialog(vm: FlightViewModel) {
 private fun MissionChip(s: FlightUiState, vm: FlightViewModel, onShowResult: () -> Unit, modifier: Modifier) {
     val ui = s.exec
     val all = ui.visits
-    val done = all.count { it.status == VisitStatus.DONE || it.status == VisitStatus.SKIPPED || it.status == VisitStatus.FAILED }
-    val planned = s.params?.let { p -> all.sumOf { p.photosPerPole(it.pole) } } ?: all.size
-    val photos = all.sumOf { it.captureCount }
-    val pct = if (all.isEmpty()) 0 else done * 100 / all.size
+    // 미션 전체 수(홈·라이브러리와 같은 정의, [FlightUiState.missionPoles]): 이 화면을 열 때까지 + 이번 실행
+    val done = s.finishedBefore + all.count { it.status == VisitStatus.DONE || it.status == VisitStatus.SKIPPED || it.status == VisitStatus.FAILED }
+    val total = s.missionPoles
+    val photos = s.photosBefore + all.sumOf { it.captureCount }
+    val pct = if (total == 0) 0 else done * 100 / total
     val paused = ui.state == ExecState.Paused
     val canPause = ui.state.airborne && !paused && ui.state != ExecState.ReturningHome
     var open by rememberSaveable { mutableStateOf(false) }
@@ -265,7 +270,8 @@ private fun MissionChip(s: FlightUiState, vm: FlightViewModel, onShowResult: () 
         else -> stateLabel(ui.state, ui.remaining)
     }
     Column(
-        modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).border(2.dp, Brand, RoundedCornerShape(4.dp))
+        // 큰 지도 위에서는 위성 사진이 비치지 않게 더 짙게
+        modifier.width(Dimens.CardWidth).background(if (s.mapMain) CardBgOpaque else CardBg, RoundedCornerShape(4.dp)).border(2.dp, Brand, RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -277,8 +283,8 @@ private fun MissionChip(s: FlightUiState, vm: FlightViewModel, onShowResult: () 
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
-            CardFigure("전주", "$done", "/${all.size}")
-            CardFigure("사진", "$photos", "/$planned")
+            CardFigure("전주", "$done", "/$total")
+            CardFigure("사진", "$photos", "/${s.expectedPhotos}")
             Text(
                 ui.target?.pole?.displayName ?: "", Modifier.weight(1f), fontSize = FontSize.Caption, color = Color.White,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End,

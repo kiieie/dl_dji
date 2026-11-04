@@ -13,7 +13,7 @@ data class RouteSummary(val distanceM: Double, val durationSec: Double, val wayp
             distanceM = sorties.sumOf { it.estDistanceM },
             durationSec = sorties.sumOf { it.estDurationSec },
             waypoints = sorties.sumOf { it.poles.size } * if (params.shotMode == ShotMode.DIAGONAL4) 4 else 1,
-            photos = sorties.sumOf { s -> s.poles.sumOf(params::photosPerPole) },
+            photos = params.expectedPhotos(sorties.flatMap { it.poles }),
         )
     }
 }

@@ -3,7 +3,8 @@ package com.example.myfirstapp.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // 10.2 Pilot 2 토큰(2026-10-30 시안 확정): 검정 바탕, 회색 4단계(패널·컨트롤·선택·구분선), 채운 버튼 파랑 하나.
-// 흰 글자 대비 4.5:1 이상을 지킨다(버튼 #0A6CFF, 이상 버튼 #D70015). 다크 테마 하나만 쓴다.
+// 흰 글자 대비 4.5:1 이상을 지킨다(버튼 #0A6CFF, 이상 버튼 #D70015). 카메라 뷰·지도는 이 어두운 색,
+// 절차 화면(홈·라이브러리·비행 전 점검·체크리스트·설정·계획 패널·앨범)은 아래 밝은 색([LightScreen], 2026-11-04 사용자 결정)을 쓴다.
 val Primary = Color(0xFF0A6CFF)
 val OnPrimary = Color(0xFFFFFFFF)
 val PrimaryContainer = Color(0xFF0D2440)
@@ -44,6 +45,23 @@ val Warning = Color(0xFFFF9F0A)
 /** 일시정지 버튼, 이륙 지점 H, RTH 테두리. */
 val Caution = Color(0xFFFFC400)
 
+// 밝은 절차 화면(Pilot 2 홈·라이브러리·비행 전 점검·체크리스트, 10.1): 회색 바탕에 흰 카드, 검은 글자, 회색 조작 칸, 파랑 강조.
+val LightBackground = Color(0xFFF2F3F5)
+val LightSurface = Color(0xFFFFFFFF)
+val LightOnSurface = Color(0xFF1A1A1A)
+val LightOnSurfaceVariant = Color(0xFF6B6F76)
+/** 조작 칸 바탕(Pilot 2 스테퍼 값·고르기 칸 #EEE). */
+val LightControl = Color(0xFFEEEFF1)
+/** 스테퍼 ±칸(Pilot 2 #E4E4E4). */
+val LightControlHigh = Color(0xFFE2E3E6)
+val LightControlHighest = Color(0xFFD6D8DC)
+val LightOutline = Color(0xFFC3C6CB)
+val LightOutlineVariant = Color(0xFFE3E5E8)
+/** 홈 [카메라 뷰 입력](Pilot 2 짙은 회색 버튼). 파랑 채운 버튼은 우리 [미션 비행 시작] 하나. */
+val DarkButton = Color(0xFF45484D)
+/** 경로 그림 바탕(Pilot 2 라이브러리 썸네일의 지도 색). 카드가 그림과 글로 갈라져 보이지 않게 연한 지도 색을 깐다. */
+val MapThumbBg = Color(0xFFF1ECE2)
+
 /** 우리 앱 표지 고유색(왼쪽 위 `KEPCO 점검` 테두리, 10.5.1). Pilot 2와 구별하는 유일한 색. */
 val Brand = Color(0xFF8B5CF6)
 
@@ -51,6 +69,12 @@ val Brand = Color(0xFF8B5CF6)
 val CardBg = Color(0xE6121212)
 /** 영상 위 회색 버튼 바탕(Pilot 2 ZOOM 버튼·세로 줌, 시안 Flight3 rgba(40,40,40,.9)). */
 val ControlBg = Color(0xE6282828)
+/** 영상 위 반투명 판(Pilot 2 노출 띠): 검은 영상 위에서도 판이 보이는 회색 60%. */
+val OverlayPlate = Color(0x99383838)
+/** 내비 원판 바탕(Pilot 2 채운 어두운 원판). */
+val NavDiscBg = Color(0xE6161616)
+/** 지도가 큰 화면일 때 미션 칸 바탕(위성 위에서도 읽히게 더 짙게). */
+val CardBgOpaque = Color(0xF5121212)
 /** 꺼진 아이콘·신호 막대·셔터 테두리. */
 val Inactive = Color(0xFF555555)
 /** 상태를 모를 때의 점, 고르지 않은 칸 글자. */
@@ -83,3 +107,7 @@ const val MAP_AIRCRAFT = "#1C7CFF"
 const val MAP_RC = "#4DABF7"
 /** 기체 화살표·조종기 점 테두리. */
 const val MAP_STROKE_LIGHT = "#FFFFFF"
+
+/** 홈 기체 그림(우리 선 그림, DJI 그림은 쓰지 않음): 몸체·팔 짙은 회색, 프로펠러 끝 주황(Pilot 2 홈 그림의 색). */
+val AircraftBody = Color(0xFF3A3D42)
+val AircraftPropTip = Color(0xFFFF7A2F)
