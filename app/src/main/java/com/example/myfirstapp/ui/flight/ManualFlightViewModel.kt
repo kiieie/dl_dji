@@ -79,7 +79,11 @@ class ManualFlightViewModel(
     private val camera = CameraControl(viewModelScope, { drone }, { _state.value.flight }, { f -> _state.update { it.copy(flight = f(it.flight)) } }, "manual")
     private val tone = ToneNotifier()
     /** 셔터 사진의 마지막 사진 썸네일(9.6). 모델 설정이 없으면(시험) 만들지 않는다. */
-    private val live = settings?.let { LiveDetection(viewModelScope, File(appFilesDir, "models"), it) { p -> _state.update { s -> s.copy(flight = s.flight.copy(lastPhoto = p)) } } }
+    private val live = settings?.let {
+        LiveDetection(viewModelScope, File(appFilesDir, "models"), it, precise?.gpuCache, precise?.thermal) { p ->
+            _state.update { s -> s.copy(flight = s.flight.copy(lastPhoto = p)) }
+        }
+    }
 
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))

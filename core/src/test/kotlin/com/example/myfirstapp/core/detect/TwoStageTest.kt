@@ -90,6 +90,34 @@ class TwoStageTest {
     }
 
     @Test
+    fun `정밀 일꾼은 다 끝나도 잠시 모델을 열어 두고, 그 사이 온 사진은 다시 열지 않고 한다`() = runTest {
+        val db = Db(1)
+        val canRun = MutableStateFlow(true)
+        var idle = 0
+        val backfill = PreciseBackfill(canRun, { db.pending.toList() }, db::process, onIdle = { idle++ }, idleCloseMs = 60_000)
+        backgroundScope.launch { backfill.run() }
+        delay(30_000) // 1은 끝났고 새 사진을 기다리는 중
+        assertEquals(listOf(1L), db.processed)
+        assertEquals(0, idle)
+
+        db.pending += 2L // 착륙 뒤 한 장 더 받음
+        backfill.kick()
+        delay(1_500)
+        assertEquals(listOf(1L, 2L), db.processed)
+        assertEquals(0, idle) // 모델을 닫지 않고 이어 했다
+
+        canRun.value = false // 기다리는 중 이륙: 바로 닫는다
+        runCurrent()
+        assertEquals(1, idle)
+
+        canRun.value = true // 착륙: 할 것이 없으면 기다린 뒤 닫는다
+        delay(59_000)
+        assertEquals(1, idle)
+        delay(2_000)
+        assertEquals(2, idle)
+    }
+
+    @Test
     fun `비행 중 모델은 live 중 입력이 가장 작은 것, 정밀은 full, full이 없으면 비행 중 모델`() {
         val models = listOf(
             ModelChoice("f-1280", ModelPick.FULL, 1280), ModelChoice("f-960", ModelPick.LIVE, 960),
@@ -109,15 +137,42 @@ class TwoStageTest {
 
     @Test
     fun `가운데 자르기 상자는 원본 비율로, 축소 디코딩은 입력 이상만 남긴다`() {
-        val d = Detection("LP", 0.8f, 0f, 0.5f, 1f, 0.5f).fromCenterCrop(0.5f)
+        // M3E 광각 5280×3956, 가운데 0.5
+        val full = centerRegion(5280, 3956, 0.5f)
+        assertEquals(Region(1320, 989, 2640, 1978), full)
+        val d = Detection("LP", 0.8f, 0f, 0.5f, 1f, 0.5f).fromRegion(full, 5280, 3956)
         assertEquals(0.25f, d.x, 1e-6f)
         assertEquals(0.5f, d.y, 1e-6f)
         assertEquals(0.5f, d.w, 1e-6f)
         assertEquals(0.25f, d.h, 1e-6f)
+        // 9.7 O1: 원본 좌표로 가운데만 푼 상자(새)와 1/4로 전체를 풀어 자른 상자(옛)가 같은 자리로 간다(옛 쪽은 축소 픽셀 반올림만큼 어긋남)
+        val sampled = centerRegion(5280 / 4, 3956 / 4, 0.5f)
+        for (b in listOf(Detection("LP", 0.8f, 0.1f, 0.2f, 0.05f, 0.08f), Detection("SUS", 0.6f, 0.7f, 0.6f, 0.2f, 0.3f), d)) {
+            val new = b.fromRegion(full, 5280, 3956)
+            val old = b.fromRegion(sampled, 5280 / 4, 3956 / 4)
+            assertTrue(new.iou(old) >= 0.95f)
+        }
+        assertEquals(1, agreeing(listOf(d), listOf(d.copy(score = 0.81f), d.copy(label = "SUS")), 0.9f, 0.02f))
+        assertEquals(0, agreeing(listOf(d), listOf(d.copy(score = 0.85f)), 0.9f, 0.02f))
         // M3E 광각 5280: 1280 전체 → 4배(1320), 640 + 가운데 0.5 → 4배(자른 영역 660), 640 전체 → 8배(660)
         assertEquals(4, sampleSize(5280, 1f, 1280))
         assertEquals(4, sampleSize(5280, 0.5f, 640))
         assertEquals(8, sampleSize(5280, 1f, 640))
         assertEquals(1, sampleSize(640, 1f, 640))
+    }
+
+    @Test
+    fun `JPEG 기준·점진 구분은 첫 SOF 마커로`() {
+        fun jpeg(sof: Int) = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(),
+            0xFF.toByte(), 0xE1.toByte(), 0, 4, 1, 2, // APP1(EXIF 자리) 길이 4
+            0xFF.toByte(), 0xC4.toByte(), 0, 2, // DHT는 SOF가 아니다
+            0xFF.toByte(), sof.toByte(), 0, 2,
+        )
+        assertEquals(0xC0, jpegSof(jpeg(0xC0)))
+        assertFalse(isProgressiveJpeg(jpeg(0xC0)))
+        assertTrue(isProgressiveJpeg(jpeg(0xC2)))
+        assertEquals(null, jpegSof(byteArrayOf(1, 2, 3, 4, 5)))
+        assertFalse(isProgressiveJpeg(byteArrayOf(0xFF.toByte(), 0xD8.toByte())))
     }
 }

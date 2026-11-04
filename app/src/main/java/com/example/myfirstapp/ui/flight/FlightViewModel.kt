@@ -143,7 +143,9 @@ class FlightViewModel(
 
     private val notifier = ToneNotifier()
     /** 비행 중 최근 1장 탐지(9.6). 실행기는 사진을 저장만 하고, 저장한 사진을 여기에 넘긴다. */
-    private val live = LiveDetection(viewModelScope, File(appFilesDir, "models"), settings) { p -> _state.update { it.copy(lastPhoto = p) } }
+    private val live = LiveDetection(viewModelScope, File(appFilesDir, "models"), settings, precise?.gpuCache, precise?.thermal) { p ->
+        _state.update { it.copy(lastPhoto = p) }
+    }
     private var executor: InspectionExecutor? = null
     private var drone: DroneGateway? = null
     private var energy: EnergyModel? = null

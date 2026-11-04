@@ -45,8 +45,14 @@ class PreciseDetection(
     /** 모델 속도 측정 중이면 참(측정을 흐리지 않게 쉰다). */
     val benchRunning = MutableStateFlow(false)
 
+    /** 조종기 발열 상태(앱 수명 동안 하나, 비행 중 1장 탐지도 본다, 9.7 C). */
+    val thermal: StateFlow<Int> = watchThermal(context)
+
+    /** GPU 프로그램 캐시 폴더(9.7 O2). 앱을 새로 깔면 시스템이 비운다(`codeCacheDir`). */
+    val gpuCache = File(context.codeCacheDir, "gpu")
+
     /** 쉬는 이유. null이면 돌린다. */
-    val pauseReason: StateFlow<String?> = combine(flyingBy, benchRunning, watchThermal(context), rcBattery) { flying, bench, thermal, battery ->
+    val pauseReason: StateFlow<String?> = combine(flyingBy, benchRunning, thermal, rcBattery) { flying, bench, thermal, battery ->
         when {
             flying.isNotEmpty() -> "비행 중"
             bench -> "속도 측정 중"
@@ -56,7 +62,9 @@ class PreciseDetection(
         }
     }.stateIn(scope, SharingStarted.Eagerly, null)
 
-    private val backfill = PreciseBackfill(pauseReason.map { it == null }, ::remaining, ::process, onIdle = ::closeModel)
+    private val backfill = PreciseBackfill(
+        pauseReason.map { it == null }, ::remaining, ::process, onIdle = ::closeModel, idleCloseMs = AppConfig.Precise.IDLE_CLOSE_MS,
+    )
 
     /** 진행(판독 화면 "정밀 탐지 37/120"). */
     val progress: StateFlow<BackfillProgress> = backfill.progress
@@ -87,7 +95,7 @@ class PreciseDetection(
         // 실제 모델이 없으면 정밀 탐지를 하지 않는다: 모의 탐지기 결과(가짜 검출)가 실제 사진에 저장되면 안 된다
         val first = order.firstOrNull() ?: return emptyList()
         if (dao.capturesWithoutDetection(specs.getValue(first).version, since).isEmpty()) return emptyList()
-        val m = TfliteYoloDetector.openFirst(modelsDir, order, gpu = true) ?: return emptyList()
+        val m = TfliteYoloDetector.openFirst(modelsDir, order, gpu = true, gpuCache) ?: return emptyList()
         model = m
         OpLog.log("precise", "open", mapOf("model" to m.modelVersion, "delegate" to (m as? TfliteYoloDetector)?.delegate))
         return dao.capturesWithoutDetection(m.modelVersion, since)
@@ -106,7 +114,7 @@ class PreciseDetection(
         )
     }
 
-    /** 쉬거나 다 끝나면 모델을 닫아 메모리를 돌려준다(다음에 다시 연다, 설정에서 바꾼 모델도 그때 반영). */
+    /** 쉬거나 다 끝나고 [AppConfig.Precise.IDLE_CLOSE_MS]가 지나면 모델을 닫아 메모리를 돌려준다(다음에 다시 연다, 설정에서 바꾼 모델도 그때 반영). */
     private fun closeModel() {
         (model as? TfliteYoloDetector)?.close()
         model = null

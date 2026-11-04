@@ -222,8 +222,11 @@ object AppConfig {
         /** 조종기 배터리가 이보다 낮으면 쉰다(%). */
         const val MIN_RC_BATTERY_PCT = 20
 
-        /** 발열 상태(`PowerManager.THERMAL_STATUS_*`)가 이 값 이상이면 쉰다. 3 = SEVERE. */
+        /** 발열 상태(`PowerManager.THERMAL_STATUS_*`)가 이 값 이상이면 쉰다. 3 = SEVERE. 비행 중 1장 탐지도 같은 값으로 쉰다(9.7 C). */
         const val THERMAL_PAUSE_STATUS = 3
+
+        /** 다 끝낸 뒤 모델을 닫기 전에 새 사진을 기다리는 시간(ms, 9.7 O5). 착륙 뒤 한 장씩 받는 사진마다 다시 열지 않게. */
+        const val IDLE_CLOSE_MS = 60_000L
     }
 
     /** 모델 속도 측정(9.6, 검증 화면·adb `--es bench all`). */
@@ -239,6 +242,10 @@ object AppConfig {
 
         /** 연속 실행 중 발열 상태를 남기는 간격(회). */
         const val THERMAL_EVERY = 5
+
+        /** 가운데 영역 디코딩(9.7 O1)과 옛 전체 디코딩의 상자가 같다고 보는 IoU 하한과 점수 차 상한. */
+        const val BOX_MATCH_IOU = 0.9f
+        const val BOX_MATCH_SCORE = 0.02f
     }
 
     /** 비행 전 점검·웨이포인트 경로 체크리스트(10.5.5, Pilot 2 같은 범위). */
