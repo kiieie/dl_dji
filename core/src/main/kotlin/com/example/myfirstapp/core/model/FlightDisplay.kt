@@ -34,6 +34,28 @@ fun flightTitle(t: Telemetry?, suffix: String? = null): FlightTitle {
     return if (suffix.isNullOrBlank()) base else base.copy(text = "${base.text} · $suffix")
 }
 
+/**
+ * 상단 바 비행 모드 글자(10.5.10): RC 스위치 글자 [switch](N/S/F, 기체가 T·A로 주면 그대로), 다중 비행 모드 [multiMode], F 자리 모드 [fMode](T 또는 A).
+ * 다중 비행 모드가 꺼져 있으면 스위치가 S·F여도 N이다(매뉴얼 28쪽). F는 설정의 T/N/S · A/N/S에 따라 T 또는 A, 모르면 F.
+ */
+fun flightModeLetter(switch: Char?, multiMode: Boolean?, fMode: Char?): Char? = when {
+    switch == null -> null
+    multiMode == false -> 'N'
+    switch == 'F' -> fMode ?: 'F'
+    else -> switch
+}
+
+/** ⋯ 이미지 전송 설정의 신호 강도 글(Pilot 2 "강함"): 신호 품질(%)을 상단 바 RC 신호 막대와 같은 문턱으로 나눈다. */
+fun signalWord(pct: Int): String = when {
+    pct >= Tuning.Display.SIGNAL_GOOD_PCT -> "강함"
+    pct >= Tuning.Display.SIGNAL_FAIR_PCT -> "보통"
+    else -> "약함"
+}
+
+/** 다운링크 대역폭 글: SDK 이름 "BANDWIDTH_40MHZ" → "40MHz". 모르는 값(UNKNOWN 등)은 null. */
+fun bandwidthLabel(name: String): String? =
+    name.removePrefix("BANDWIDTH_").takeIf { it != name && it.endsWith("MHZ") }?.replace("MHZ", "MHz")
+
 /** 배터리 등급(10.5.1): 낮음 문턱 이하 주황, 심각 문턱 이하 빨강. */
 enum class BatteryLevel { OK, LOW, CRITICAL }
 
