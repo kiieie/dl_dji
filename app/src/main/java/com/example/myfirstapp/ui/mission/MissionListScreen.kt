@@ -60,6 +60,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.example.myfirstapp.R
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.currentSortie
 import com.example.myfirstapp.data.MissionSummary
 import com.example.myfirstapp.data.ProjectSummary
 import com.example.myfirstapp.data.flightParamsFromJson
@@ -197,11 +198,11 @@ private fun MissionCard(
                 if (s.selecting) Checkbox(checked, onCheckedChange = { vm.toggleCheck(m) }, modifier = Modifier.size(Dimens.TouchSmall))
                 else CardMenu(m, s.menuFor == m.id, vm)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                // Pilot 2 "기체 M3 · 카메라 M3E · 고도 0 m": 기체 · 페이로드 · 촬영 고도
-                CardSpec(SpecIcon.AIRCRAFT, "M3")
-                CardSpec(SpecIcon.CAMERA, "M3E")
-                CardSpec(SpecIcon.ALTITUDE, "${altitude.toInt()} m")
+            Row(Modifier.fillMaxWidth().padding(end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Pilot 2 "기체 M3 · 카메라 M3E · 고도 0 m": 기체 · 페이로드 · 촬영 고도를 줄에 고르게 펼침(p2s_lib), 끝에 우리 상태 배지
+                Box(Modifier.weight(1f)) { CardSpec(SpecIcon.AIRCRAFT, "M3") }
+                Box(Modifier.weight(1f)) { CardSpec(SpecIcon.CAMERA, "M3E") }
+                Box(Modifier.weight(1f)) { CardSpec(SpecIcon.ALTITUDE, "${altitude.toInt()} m") }
                 val c = statusColor(m.status)
                 Text(STATUS_TITLE[m.status] ?: m.status, fontSize = FontSize.Caption, color = c, modifier = Modifier.border(1.dp, c, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp))
             }
@@ -209,9 +210,10 @@ private fun MissionCard(
                 buildAnnotatedString {
                     append("전주 ")
                     withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = strong)) { append("${m.finishedCount}") }
+                    // 소티 지금/전체(10.5.11, 홈·상단 바와 같은 정의)
                     append("/${m.poleCount} · 소티 ")
-                    withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = strong)) { append("${m.sortieCount}") }
-                    append(" · 사진 ")
+                    withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = strong)) { append("${currentSortie(route.map { r -> r.count { !it.done } })}") }
+                    append("/${m.sortieCount} · 사진 ")
                     withStyle(numberStyle(FontSize.Label).toSpanStyle().copy(color = strong)) { append("${m.photoCount}") }
                     append("/$expectedPhotos")
                 },
@@ -348,11 +350,13 @@ private fun CardSpec(icon: SpecIcon, text: String) {
                     drawRect(c, Offset(size.width * 0.3f, size.height * 0.1f), Size(size.width * 0.4f, size.height * 0.15f))
                 }
                 SpecIcon.ALTITUDE -> {
-                    // 땅 위 세로 화살표(고도)
+                    // 땅 위에 뜬 기체(Pilot 2 고도 아이콘): 아래 땅 선, 위에 옆에서 본 기체(몸통 + 양쪽 프로펠러), 사이 점선
                     drawLine(c, Offset(0f, size.height * 0.95f), Offset(size.width, size.height * 0.95f), w)
-                    drawLine(c, Offset(size.width / 2, size.height * 0.8f), Offset(size.width / 2, size.height * 0.05f), w)
-                    drawLine(c, Offset(size.width / 2, size.height * 0.05f), Offset(size.width * 0.28f, size.height * 0.3f), w)
-                    drawLine(c, Offset(size.width / 2, size.height * 0.05f), Offset(size.width * 0.72f, size.height * 0.3f), w)
+                    drawRect(c, Offset(size.width * 0.35f, size.height * 0.18f), Size(size.width * 0.3f, size.height * 0.2f))
+                    drawLine(c, Offset(size.width * 0.05f, size.height * 0.12f), Offset(size.width * 0.35f, size.height * 0.12f), w)
+                    drawLine(c, Offset(size.width * 0.65f, size.height * 0.12f), Offset(size.width * 0.95f, size.height * 0.12f), w)
+                    drawLine(c, Offset(size.width / 2, size.height * 0.5f), Offset(size.width / 2, size.height * 0.62f), w)
+                    drawLine(c, Offset(size.width / 2, size.height * 0.72f), Offset(size.width / 2, size.height * 0.84f), w)
                 }
             }
         }

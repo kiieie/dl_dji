@@ -131,10 +131,19 @@ data class FlightUiState(
     val finishedBefore: Int = 0,
     val photosBefore: Int = 0,
     val expectedPhotos: Int = 0,
+    /**
+     * 소티 번호(10.5.11 "소티 지금/전체", 홈·라이브러리와 같은 정의): 실행기 소티 순번마다 미션 안 소티 번호(1부터)와 미션의 모든 소티 수.
+     * 실행기는 남은 전주가 있는 소티만 가지므로 순번과 번호가 다를 수 있다.
+     */
+    val sortieNumbers: List<Int> = emptyList(),
+    val sortieTotal: Int = 0,
+    /** 경로 이름(Pilot 2 미션 칸 이름): "<프로젝트> #<미션>". */
+    val routeName: String = "",
 ) {
     /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
-    val sortieCount get() = (exec.visits.maxOfOrNull { it.sortieIndex } ?: 0) + 1
+    /** 지금 소티의 미션 안 번호(1부터). */
+    val sortieNumber get() = sortieNumbers.getOrElse(exec.sortieIndex) { exec.sortieIndex + 1 }
 
     /** 줌·사진/영상·초점을 바꿔도 되는 때: 일시정지 중, 또는 자동 비행 구간이 아닐 때(땅·RTH, Pilot 2처럼 언제든). 지점 사진 중에는 막는다. */
     val cameraFree get() = exec.state == ExecState.Paused || !exec.state.airborne
@@ -292,6 +301,8 @@ class FlightViewModel(
                 simulated = drone is FakeDroneGateway,
                 missionPoles = all.size, finishedBefore = all.size - rows.size, photosBefore = dao.missionCaptures(missionId).size,
                 expectedPhotos = params.expectedPhotos(all.map { r -> r.toPole() }),
+                sortieNumbers = groups.map { (id, _) -> dbSorties.indexOfFirst { d -> d.id == id } + 1 }, sortieTotal = dbSorties.size,
+                routeName = "$projectName #$missionId",
             )
         }
         combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->

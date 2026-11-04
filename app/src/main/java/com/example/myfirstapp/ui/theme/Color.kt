@@ -59,6 +59,8 @@ val LightOutline = Color(0xFFC3C6CB)
 val LightOutlineVariant = Color(0xFFE3E5E8)
 /** 홈 [카메라 뷰 입력](Pilot 2 짙은 회색 버튼). 파랑 채운 버튼은 우리 [미션 비행 시작] 하나. */
 val DarkButton = Color(0xFF45484D)
+/** 홈 타일(비행 경로·앨범) 그림이 없을 때 바탕(Pilot 2 사진 타일의 회색 톤). 위에 흰 제목. */
+val HomeTileFallback = Color(0xFF8E949B)
 /** 경로 그림 바탕(Pilot 2 라이브러리 썸네일의 지도 색). 카드가 그림과 글로 갈라져 보이지 않게 연한 지도 색을 깐다. */
 val MapThumbBg = Color(0xFFF1ECE2)
 

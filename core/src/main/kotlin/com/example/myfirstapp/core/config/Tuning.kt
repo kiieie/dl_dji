@@ -84,6 +84,9 @@ object Tuning {
         /** 내비 짐벌 피치 막대의 위·아래 끝(°, M3E 짐벌 틸트 범위 +35 ~ -90). 파란 표지는 이 사이에서 움직인다. */
         const val GIMBAL_BAR_UP_DEG = 35.0
         const val GIMBAL_BAR_DOWN_DEG = -90.0
+
+        /** FPV 영상 크기를 모를 때(모의 기체·스트림 전) 보는 영상 비율: M3E 사진 모드 4:3(Pilot 2 카메라 뷰 양옆 검은 띠). */
+        const val VIDEO_ASPECT_DEFAULT = 4.0 / 3.0
     }
 
     /**

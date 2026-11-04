@@ -21,8 +21,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.RangeSlider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.RangeSliderState
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -68,7 +73,7 @@ import java.util.Locale
  * [onNext]에는 경고(빨 점)가 있었는지 넘긴다(운용자가 보고 넘어감 → 실행기 [StartIgnoringWarnings]와 같은 뜻).
  */
 @Composable
-fun PreflightPage(vm: PreflightViewModel, onClose: () -> Unit, onNext: (warned: Boolean) -> Unit, nextLabel: String = "다음") {
+fun PreflightPage(vm: PreflightViewModel, onClose: () -> Unit, onNext: (warned: Boolean) -> Unit, nextLabel: String = "다음", onHms: () -> Unit = {}) {
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(vm) { vm.reloadValues() }
     LifecycleResumeEffect(vm) {
@@ -80,23 +85,17 @@ fun PreflightPage(vm: PreflightViewModel, onClose: () -> Unit, onNext: (warned: 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         ProcedureHeader("비행 전 점검", onClose)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            StatusBlock(s)
+            StatusBlock(s, onHms)
             CautionBanner("참고: 기체 암이 완전히 펼쳐졌는지 확인하세요. 기체 암이 펼쳐져 있는 경우 이 메시지를 무시하세요.")
             s.checks.filter { !it.ok && it.blocking }.forEach { BlockingBanner(it.problem) }
             Column {
+                // 두 열은 줄마다 한 쌍(왼쪽·오른쪽 줄 선이 같은 높이, 11-04 3차)
+                TwoColumns(left = { NumberLine(set.rth, v(set.rth), vm) }, right = { ChoiceLine(set.lostAction, v(set.lostAction), vm) })
                 TwoColumns(
-                    left = {
-                        NumberLine(set.rth, v(set.rth), vm)
-                        NumberLine(set.maxAltitude, v(set.maxAltitude), vm)
-                        SettingLine("홈포인트") {
-                            HomeButton(StatusIcon.AIRCRAFT, "H", "홈포인트를 기체 위치로", s.report?.connected == true) { vm.change(set.homeAircraft, Unit) }
-                            HomeButton(StatusIcon.RC, "A", "홈포인트를 조종기 위치로", s.report?.connected == true) { vm.change(set.homeRc, Unit) }
-                        }
-                    },
+                    left = { NumberLine(set.maxAltitude, v(set.maxAltitude), vm) },
                     right = {
-                        ChoiceLine(set.lostAction, v(set.lostAction), vm)
                         // Pilot 2: 끄면 값 칸 없음, 켜면 값 칸만(누르면 숫자 키보드)
-                        SettingLine(set.distanceLimitOn.label, DISTANCE_HINT) {
+                        SettingLine(set.distanceLimitOn.label, DISTANCE_HINT, divider = false) {
                             val on = v(set.distanceLimitOn) as? Boolean
                             Switch(checked = on == true, enabled = on != null, onCheckedChange = { vm.change(set.distanceLimitOn, it) })
                             val k = set.distanceLimit.kind as AircraftSetting.Kind.Number
@@ -107,8 +106,16 @@ fun PreflightPage(vm: PreflightViewModel, onClose: () -> Unit, onNext: (warned: 
                                 }
                             } else Box(Modifier.width(120.dp))
                         }
-                        ChoiceLine(set.stickMode, v(set.stickMode), vm)
                     },
+                )
+                TwoColumns(
+                    left = {
+                        SettingLine("홈포인트", divider = false) {
+                            HomeButton(StatusIcon.AIRCRAFT, "H", "홈포인트를 기체 위치로", s.report?.connected == true) { vm.change(set.homeAircraft, Unit) }
+                            HomeButton(StatusIcon.RC, "A", "홈포인트를 조종기 위치로", s.report?.connected == true) { vm.change(set.homeRc, Unit) }
+                        }
+                    },
+                    right = { ChoiceLine(set.stickMode, v(set.stickMode), vm) },
                 )
                 RangeLine("배터리 경고 맞춤 설정", set.battery, v(set.battery), vm, toggle = null) { (a, b) -> "매우 낮음: ${a.toInt()}%   낮음: ${b.toInt()}%" }
                 SettingLine("장애물 회피") {
@@ -142,23 +149,26 @@ private val DISTANCE_HINT = com.example.myfirstapp.AppConfig.Preflight.DISTANCE_
 private fun m(v: Double) = String.format(Locale.ROOT, "%.1f", v)
 
 /**
- * 맨 위 줄(Pilot 2): 왼쪽 HMS 칸(확인할 항목이 없으면 녹 "표준", 있으면 주황 "경고 n"), 오른쪽 두 줄 상태(그림 + 값):
+ * 맨 위 줄(Pilot 2 0242): 왼쪽 HMS 칸(확인할 항목이 없으면 녹 "표준", 있으면 주황 "경고 n", 누르면 [onHms] 기체 점검), 오른쪽 두 줄 상태(그림 + 값):
  * 기체 배터리 % V · 조종기 배터리 · 비행 모드 · GNSS / 홈포인트(미설정 주황) · SD 남은 용량 · 모델 GPU(우리 것).
  */
 @Composable
-private fun StatusBlock(s: PreflightUiState) {
+private fun StatusBlock(s: PreflightUiState, onHms: () -> Unit) {
     val r = s.report
     val app = LocalContext.current.applicationContext as InspectionApp
     val rc by app.rcBattery.collectAsStateWithLifecycle()
     val gpu by app.gpuPrep.status.collectAsStateWithLifecycle()
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         val ok = s.warnings == 0
-        Row(
-            Modifier.width(180.dp).height(52.dp).background(if (ok) Tertiary else Warning, RoundedCornerShape(4.dp)).padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // 녹색 "표준 HMS ›" 칸(11-04 3차 RC 캡처에 안 보여 Surface로 다시 그림)
+        Surface(
+            onClick = onHms, modifier = Modifier.size(180.dp, 52.dp).semantics { contentDescription = "HMS ${if (ok) "표준" else "경고 ${s.warnings}"}, 기체 점검 열기" },
+            shape = RoundedCornerShape(4.dp), color = if (ok) Tertiary else Warning, contentColor = Color.White,
         ) {
-            Text(if (ok) "표준" else "경고 ${s.warnings}", Modifier.weight(1f), fontSize = FontSize.Number, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("HMS ›", fontSize = FontSize.Label, color = Color.White)
+            Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (ok) "표준" else "경고 ${s.warnings}", Modifier.weight(1f), fontSize = FontSize.Number, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("HMS ›", fontSize = FontSize.Label, color = Color.White)
+            }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -219,14 +229,14 @@ private fun OurChecks(s: PreflightUiState) {
 @Composable
 private fun NumberLine(a: AircraftSetting, value: Any?, vm: PreflightViewModel) {
     val k = a.kind as AircraftSetting.Kind.Number
-    SettingLine(a.label, "(${k.range.first}~${k.range.last} ${k.unit})") {
+    SettingLine(a.label, "(${k.range.first}~${k.range.last} ${k.unit})", divider = false) {
         StepperCells(value as? Int, k.step, k.big, k.range) { vm.change(a, it) }
     }
 }
 
 @Composable
 private fun ChoiceLine(a: AircraftSetting, value: Any?, vm: PreflightViewModel) {
-    SettingLine(a.label) { ChoiceField((a.kind as AircraftSetting.Kind.Choice).options, value as? Int) { vm.change(a, it) } }
+    SettingLine(a.label, divider = false) { ChoiceField((a.kind as AircraftSetting.Kind.Choice).options, value as? Int) { vm.change(a, it) } }
 }
 
 /** 홈포인트 버튼(Pilot 2 [기체 H][조종기 A]): 그림 + 글자 한 자. 설명은 [label]. */
@@ -244,8 +254,9 @@ private fun HomeButton(icon: StatusIcon, mark: String, label: String, enabled: B
 
 /**
  * 두 손잡이 줄(배터리 경고, 방향별 감지): 이름, (감지면 켜기 아이콘), 값 글, 슬라이더. 손을 떼면 기체에 쓴다.
- * 낮은 쪽이 빨강(매우 낮음·제동), 높은 쪽이 주황(낮음·경고)인 Pilot 2 막대와 같다.
+ * Pilot 2 막대(0242)처럼 가는 선: 0~낮은 손잡이 빨강(매우 낮음·제동), 두 손잡이 사이 주황(낮음·경고), 높은 손잡이~끝 회색. 손잡이는 작은 흰 둥근 칸.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RangeLine(
     label: String, a: AircraftSetting, value: Any?, vm: PreflightViewModel,
@@ -265,18 +276,51 @@ private fun RangeLine(
         }
         Text(drag?.let { text(it.start.toDouble() to it.endInclusive.toDouble()) } ?: "--", Modifier.width(210.dp), fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         val range = drag
+        val on = toggle?.second != false
         if (range == null) Box(Modifier.width(220.dp)) else RangeSlider(
             value = range, onValueChange = { drag = it }, valueRange = k.range.start.toFloat()..k.range.endInclusive.toFloat(),
             onValueChangeFinished = { drag?.let { vm.change(a, it.start.toDouble() to it.endInclusive.toDouble()) } },
-            enabled = toggle?.second != false, modifier = Modifier.width(220.dp),
-            colors = SliderDefaults.colors(activeTrackColor = Warning, thumbColor = MaterialTheme.colorScheme.onSurfaceVariant, inactiveTrackColor = Error),
+            enabled = on, modifier = Modifier.width(220.dp),
+            startThumb = { RangeHandle(if (on) Error else Inactive) },
+            endThumb = { RangeHandle(if (on) Warning else Inactive) },
+            track = { st -> RangeTrack(st, on) },
         )
     }
 }
 
-/** 홈 [카메라 뷰 입력]·수동 비행 상단 바의 비행 전 점검(10.5.5): 미션 없는 판정([PreflightEvaluator.manual]). [onNext]가 null이면 [다음] 대신 닫기만. */
+/** Pilot 2 가는 막대(0242): 0~시작 빨강 · 시작~끝 주황 · 끝~1 회색, 2dp. 꺼져 있으면 모두 회색. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PreflightScreen(onClose: () -> Unit, onNext: (() -> Unit)?) {
+private fun RangeTrack(st: RangeSliderState, on: Boolean) {
+    val span = (st.valueRange.endInclusive - st.valueRange.start).takeIf { it > 0f } ?: 1f
+    val a = ((st.activeRangeStart - st.valueRange.start) / span).coerceIn(0f, 1f)
+    val b = ((st.activeRangeEnd - st.valueRange.start) / span).coerceIn(a, 1f)
+    val rest = MaterialTheme.colorScheme.outline
+    Canvas(Modifier.fillMaxWidth().height(2.dp)) {
+        val y = size.height / 2
+        val w = size.height
+        drawLine(if (on) Error else rest, Offset(0f, y), Offset(size.width * a, y), w)
+        drawLine(if (on) Warning else rest, Offset(size.width * a, y), Offset(size.width * b, y), w)
+        drawLine(rest, Offset(size.width * b, y), Offset(size.width, y), w)
+    }
+}
+
+/** 손잡이(Pilot 2): 작은 흰 둥근 칸에 [mark] 색 세로 줄. */
+@Composable
+private fun RangeHandle(mark: Color) {
+    Box(
+        Modifier.size(10.dp, 18.dp).shadow(1.dp, RoundedCornerShape(3.dp)).background(Color.White, RoundedCornerShape(3.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(3.dp)),
+        contentAlignment = Alignment.Center,
+    ) { Box(Modifier.size(2.dp, 8.dp).background(mark)) }
+}
+
+/**
+ * 홈 [카메라 뷰 입력]·수동 비행 상단 바의 비행 전 점검(10.5.5): 미션 없는 판정([PreflightEvaluator.manual]). [onNext]가 null이면 [다음] 대신 닫기만.
+ * HMS 칸을 누르면 [onHms](기체 점검).
+ */
+@Composable
+fun PreflightScreen(onClose: () -> Unit, onNext: (() -> Unit)?, onHms: () -> Unit = {}) {
     val vm: PreflightViewModel = viewModel(factory = PreflightViewModel.factory())
-    PreflightPage(vm, onClose, onNext = { onNext?.invoke() ?: onClose() }, nextLabel = if (onNext != null) "카메라 뷰 입력" else "확인")
+    PreflightPage(vm, onClose, onNext = { onNext?.invoke() ?: onClose() }, nextLabel = if (onNext != null) "카메라 뷰 입력" else "확인", onHms = onHms)
 }

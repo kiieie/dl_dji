@@ -16,17 +16,17 @@ import com.example.myfirstapp.ui.theme.LightScreen
  * 점검은 실행기와 같은 기체·소티 판정을 쓴다. 뒤로 가기는 체크리스트면 점검으로, 점검이면 닫는다. 미션이 날기 시작하면 ViewModel이 닫는다.
  */
 @Composable
-internal fun ProcedurePages(s: FlightUiState, vm: FlightViewModel) {
+internal fun ProcedurePages(s: FlightUiState, vm: FlightViewModel, onHms: () -> Unit) {
     val pre: PreflightViewModel = viewModel(key = "preflight", factory = PreflightViewModel.factory(report = vm::preflightReport, checksOf = vm::checksFor))
     BackHandler { if (s.page == ProcedurePage.CHECKLIST) vm.backToPreflight() else vm.closeProcedure() }
     // 절차 화면은 밝은 바탕(Pilot 2, 2026-11-04 사용자 결정). 비행 화면 위를 덮는다
-    if (s.page != null) LightScreen { ProcedureContent(s, vm, pre) }
+    if (s.page != null) LightScreen { ProcedureContent(s, vm, pre, onHms) }
 }
 
 @Composable
-private fun ProcedureContent(s: FlightUiState, vm: FlightViewModel, pre: PreflightViewModel) {
+private fun ProcedureContent(s: FlightUiState, vm: FlightViewModel, pre: PreflightViewModel, onHms: () -> Unit) {
     when (s.page) {
-        ProcedurePage.PREFLIGHT -> PreflightPage(pre, onClose = vm::closeProcedure, onNext = vm::confirmPreflight)
+        ProcedurePage.PREFLIGHT -> PreflightPage(pre, onClose = vm::closeProcedure, onNext = vm::confirmPreflight, onHms = onHms)
         ProcedurePage.CHECKLIST -> {
             val p by pre.state.collectAsStateWithLifecycle()
             // 체크리스트에도 상태 줄·차단 배너가 있어 점검 값을 계속 읽는다(PreflightPage가 없으므로 여기서 켬)

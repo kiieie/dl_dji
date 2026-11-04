@@ -198,6 +198,7 @@ class MainActivity : ComponentActivity() {
                     PreflightScreen(
                         onClose = { nav.popBackStack() },
                         onNext = if (toCamera) ({ nav.navigate("camera") { popUpTo("preflight?camera={camera}") { inclusive = true } } }) else null,
+                        onHms = { nav.navigate("settings") { launchSingleTop = true } },
                     )
                 }
             }

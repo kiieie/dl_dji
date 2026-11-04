@@ -257,9 +257,9 @@ private fun Thumb(path: String?, label: String, symbols: List<PoleSymbol>, detec
     }
 }
 
-/** 사진 파일(작게 [sample]분의 1로 디코딩). 없으면 빈 칸. */
+/** 사진 파일(작게 [sample]분의 1로 디코딩). 없으면 빈 칸. 홈 앨범 타일 바탕에도 쓴다. */
 @Composable
-private fun Photo(path: String?, modifier: Modifier, sample: Int = 4) {
+internal fun Photo(path: String?, modifier: Modifier, sample: Int = 4) {
     val bitmap by produceState<ImageBitmap?>(null, path) {
         value = withContext(Dispatchers.IO) { path?.let { BitmapFactory.decodeFile(it, BitmapFactory.Options().apply { inSampleSize = sample }) }?.asImageBitmap() }
     }

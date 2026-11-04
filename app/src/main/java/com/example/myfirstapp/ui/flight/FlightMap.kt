@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -351,8 +352,8 @@ internal fun FlightMap(
             }
         }
         if (!interactive) return@Box
-        // 배경 출처: 오른쪽 아래 라이브러리 칸(36dp + 여백 8dp) 왼쪽
-        MapAttribution(s.background.attribution, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp + Dimens.TouchMedium + 6.dp, bottom = 10.dp))
+        // 배경 출처: 오른쪽 아래(라이브러리 칸은 폭 70% 자리라 겹치지 않음)
+        MapAttribution(s.background.attribution, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 10.dp))
         // 오른쪽 도구(10.5.4, 위에서 아래로): 검색 · N 잠금 · 레이어 · 지우개 · 과녁. 카메라 뷰의 오른쪽 열 자리
         Column(Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 37.dp, end = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val size = Dimens.TouchSmall
@@ -403,8 +404,8 @@ private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, onClose: () -> Unit, mo
 }
 
 /**
- * 오른쪽 아래 라이브러리(10.5.4, Pilot 2 경로 라이브러리 바로가기 p2s_7): 검은 칸에 경로 아이콘만. 비행경로 화면으로 간다.
- * 떠 있으면 끈다(화면을 떠나면 비행을 잃음).
+ * 아래 라이브러리(10.5.4, Pilot 2 경로 라이브러리 바로가기 p2s_7): 검은 칸에 경로 아이콘만. 비행경로 화면으로 간다.
+ * 떠 있으면 끈다(화면을 떠나면 비행을 잃음). 자리는 [LibraryButtonAlignment].
  */
 @Composable
 internal fun LibraryButton(enabled: Boolean, onClick: () -> Unit) {
@@ -412,6 +413,9 @@ internal fun LibraryButton(enabled: Boolean, onClick: () -> Unit) {
         Icon(painterResource(R.drawable.ic_route), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
     }
 }
+
+/** 큰 지도 라이브러리 바로가기 자리: Pilot 2 p2s_7처럼 아래, 가운데가 화면 폭의 약 70%(768dp에서 버튼 칸 52dp 기준). */
+internal val LibraryButtonAlignment = BiasAlignment(0.42f, 1f)
 
 /** 떠 있는 동안 기체 위치를 지도 비행 궤적(주황 선)에 더한다([FlightTrack]). */
 internal fun FlightUiState.withTrack(t: Telemetry) =

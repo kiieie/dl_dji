@@ -18,6 +18,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,15 +76,17 @@ fun ManualFlightScreen(
 
     // 자동 비행과 같은 틀(10.5.2). 왼쪽 위 [미션 이어서 비행](착륙 상태에서만)
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // FPV 프레임 크기(격자·줌 영역 사각형을 영상 자리에, 10.5.2). 모르면 4:3
+        var stream by remember { mutableStateOf<IntSize?>(null) }
         val fpv: @Composable (Modifier) -> Unit = { m ->
-            if (s.connected) DjiFpvView(m) else Box(m.background(Color.Black), contentAlignment = Alignment.Center) {
+            if (s.connected) DjiFpvView(m) { stream = it } else Box(m.background(Color.Black), contentAlignment = Alignment.Center) {
                 Text("기체 연결을 기다립니다", color = Color.White.copy(alpha = 0.5f), fontSize = FontSize.Body)
             }
         }
         if (mapMain) FlightMap(f, interactive = true, pad = List(4) { 90.dp }, Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack)
         else {
             fpv(Modifier.fillMaxSize())
-            CameraOverlay(f.lens, f.zoomRatio, focusEnabled = s.connected, onFocus = vm::focusAt, Modifier.fillMaxSize())
+            CameraOverlay(f.lens, f.zoomRatio, focusEnabled = s.connected, onFocus = vm::focusAt, Modifier.fillMaxSize(), stream)
         }
         Column(Modifier.align(Alignment.BottomStart)) {
             // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
@@ -114,7 +120,7 @@ fun ManualFlightScreen(
             // Pilot 2 지도 뷰에는 내비 원판이 없다(10.5.4)
             if (!mapMain) t?.let { NavDisplay(it, f.home, f.obstacles) }
         }
-        if (mapMain) Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { LibraryButton(enabled = t?.isFlying != true, onLibrary) }
+        if (mapMain) Box(Modifier.align(LibraryButtonAlignment).padding(8.dp)) { LibraryButton(enabled = t?.isFlying != true, onLibrary) }
     }
 }
 

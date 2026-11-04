@@ -18,7 +18,7 @@ class FlightDisplayTest {
         assertEquals("N 모드 - 수동 비행", flightTitle(ground.copy(flightMode = FlightMode.MANUAL)).text)
         assertEquals("S 모드 - 수동 비행", flightTitle(ground.copy(flightMode = FlightMode.MISSION_PAUSED, rcMode = 'S')).text)
         assertEquals(FlightTitle("N 모드 - 비전 포지셔닝", warn = true), flightTitle(ground.copy(gpsLevel = 0)))
-        assertEquals("비행 경로 수행 중 · #20 1/2", flightTitle(ground.copy(flightMode = FlightMode.MISSION), "#20 1/2").text)
+        assertEquals("비행 경로 수행 중 · #20 · 소티 2/5", flightTitle(ground.copy(flightMode = FlightMode.MISSION), "#20 · ${sortieLabel(2, 5)}").text)
         assertEquals("RTH 진행 중", flightTitle(ground.copy(flightMode = FlightMode.GO_HOME)).text)
         assertEquals("착륙", flightTitle(ground.copy(flightMode = FlightMode.LANDING)).text)
         assertTrue(flightTitle(null).warn)
@@ -61,6 +61,32 @@ class FlightDisplayTest {
         assertEquals(0.5, zoomFrameFraction(2.0), 1e-9)
         assertEquals(1.0 / 7, zoomFrameFraction(7.0), 1e-9)
         assertEquals(1.0, zoomFrameFraction(1.0), 1e-9)
+    }
+
+    @Test
+    fun `영상 자리는 비율을 지켜 가운데, 모르면 4대3`() {
+        // 16:9 화면(1920×1080)에 4:3 영상: 양옆 240px 검은 띠
+        assertEquals(ContentRect(240.0, 0.0, 1440.0, 1080.0), videoContentRect(1920.0, 1080.0, 1440, 1080))
+        assertEquals(ContentRect(240.0, 0.0, 1440.0, 1080.0), videoContentRect(1920.0, 1080.0, null, null))
+        // 16:9 영상은 화면을 채운다
+        assertEquals(ContentRect(0.0, 0.0, 1920.0, 1080.0), videoContentRect(1920.0, 1080.0, 1280, 720))
+        // 화면보다 넓은 영상은 위아래 띠
+        val wide = videoContentRect(800.0, 600.0, 1920, 1080)
+        assertEquals(0.0, wide.left, 1e-9)
+        assertEquals(450.0, wide.height, 1e-9)
+        assertEquals(75.0, wide.top, 1e-9)
+        assertEquals(ContentRect(0.0, 0.0, 0.0, 0.0), videoContentRect(0.0, 0.0, 4, 3))
+    }
+
+    @Test
+    fun `소티 번호는 남은 전주가 있는 첫 소티, 다 끝나면 전체`() {
+        assertEquals(1, currentSortie(listOf(3, 4, 2)))
+        assertEquals(2, currentSortie(listOf(0, 4, 2)))
+        // 건너뛴 소티가 있어도 남은 것이 있는 첫 소티
+        assertEquals(1, currentSortie(listOf(1, 0, 2)))
+        assertEquals(3, currentSortie(listOf(0, 0, 0)))
+        assertEquals(0, currentSortie(emptyList()))
+        assertEquals("소티 2/5", sortieLabel(2, 5))
     }
 
     @Test

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.ShotMode
+import com.example.myfirstapp.core.model.currentSortie
 import com.example.myfirstapp.data.MissionVisitRow
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.drone.AircraftStatus
@@ -40,6 +41,9 @@ data class LatestMission(
     val route: List<List<RoutePoint>> = emptyList(),
 ) {
     val remaining get() = total - done
+
+    /** 지금 소티(10.5.11 "소티 지금/전체"): 남은 전주가 있는 첫 소티, 다 끝났으면 전체 수. 전체는 [sorties]. */
+    val sortieNow get() = currentSortie(route.map { s -> s.count { !it.done } })
 }
 
 /**
@@ -60,7 +64,8 @@ suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     )
 }
 
-data class HomeUiState(val aircraft: AircraftStatus = AircraftStatus(), val latest: LatestMission? = null, val message: String? = null)
+/** [latestPhoto]: 가장 최근 사진 파일(앨범 타일 바탕). */
+data class HomeUiState(val aircraft: AircraftStatus = AircraftStatus(), val latest: LatestMission? = null, val message: String? = null, val latestPhoto: String? = null)
 
 /** 홈 화면(Pilot 2 홈페이지, 10장 ①). 기체 상태는 화면이 보이는 동안([active]) 2초마다 다시 읽는다. */
 class HomeViewModel(
@@ -92,7 +97,8 @@ class HomeViewModel(
     fun refresh() {
         viewModelScope.launch {
             val latest = loadLatestMission(dao)
-            _state.update { it.copy(latest = latest) }
+            val photo = dao.latestPhotoPath()
+            _state.update { it.copy(latest = latest, latestPhoto = photo) }
         }
     }
 
