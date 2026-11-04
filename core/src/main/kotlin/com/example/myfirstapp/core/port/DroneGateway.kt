@@ -1,5 +1,6 @@
 package com.example.myfirstapp.core.port
 
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
@@ -10,6 +11,7 @@ import com.example.myfirstapp.core.route.Viewpoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlin.math.abs
 
 /**
  * 기체 제어 포트. DJI SDK 호출은 이 인터페이스의 구현(`DjiDroneGateway`) 안에만 둔다.
@@ -94,10 +96,16 @@ val ZOOM_STEPS = listOf(1.0, 2.0, 4.0, 7.0, 14.0, 28.0)
 /** 기체 줌 범위 안의 단계: 범위 밖 단계는 범위 끝으로 모은다. */
 fun zoomSteps(range: ClosedFloatingPointRange<Double>?): List<Double> = if (range == null) ZOOM_STEPS else ZOOM_STEPS.map { it.coerceIn(range) }.distinct()
 
-/** [current]에서 한 단계 위([up]) 또는 아래. 단계 사이 값이면 가장 가까운 다음 단계로 간다. */
-fun nextZoom(current: Double, up: Boolean, steps: List<Double> = ZOOM_STEPS): Double =
-    if (up) steps.firstOrNull { it > current + 1e-6 } ?: steps.last()
-    else steps.lastOrNull { it < current - 1e-6 } ?: steps.first()
+/** [current]에서 한 단계 위([up]) 또는 아래. 단계 사이 값이면 가장 가까운 다음 단계로 간다. 단계에 아주 가까운 값(6.98)은 그 단계로 본다([snapZoom]). */
+fun nextZoom(current: Double, up: Boolean, steps: List<Double> = ZOOM_STEPS): Double {
+    val c = snapZoom(current, steps)
+    return if (up) steps.firstOrNull { it > c + 1e-6 } ?: steps.last()
+    else steps.lastOrNull { it < c - 1e-6 } ?: steps.first()
+}
+
+/** 기체가 돌려준 배율이 단계와 [Tuning.Photo.ZOOM_SNAP_RATIO] 안이면 그 단계(6.98 → 7): 다시 읽은 값으로 +/−가 같은 단계를 되풀이하지 않게. */
+fun snapZoom(actual: Double, steps: List<Double> = ZOOM_STEPS): Double =
+    steps.minByOrNull { abs(it - actual) }?.takeIf { abs(it - actual) <= it * Tuning.Photo.ZOOM_SNAP_RATIO } ?: actual
 
 /** 구간 미션: 현재 위치에서 이동 고도로 목표 상공까지 간 뒤 점검 고도로 내려간다(6.2). */
 data class LegMission(

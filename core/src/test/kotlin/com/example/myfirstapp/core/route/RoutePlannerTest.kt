@@ -73,6 +73,17 @@ class RoutePlannerTest {
     }
 
     @Test
+    fun `왕복은 예산 안이어도 사선 둘레까지 넣어 혼자서도 넘으면 배터리 초과로 뺀다`() {
+        // 사선 거리를 크게 해 전주 둘레(3·d·√2)만으로 예산을 넘게 한다. 옛 판정(왕복만)은 통과시켜 예산을 넘는 소티를 만들었다
+        val params = FlightParams(shotMode = ShotMode.DIAGONAL4, diagonalDistanceM = 3_000.0)
+        val model = EnergyModel(EnergyParams(), params)
+        assertTrue(model.sortieCost(2 * 100.0, 1) <= model.budget())
+        val plan = RoutePlanner(model).plan(home, listOf(pole("WIDE", 100.0, 0.0)))
+        assertTrue(plan.sorties.isEmpty())
+        assertEquals(UnreachablePole.Reason.BATTERY_EXCEEDED, plan.unreachable.single().reason)
+    }
+
+    @Test
     fun `영역 안 전주만 고른다`() {
         val area = Polygon.rectangle(proj.toGeo(Enu(-50.0, -50.0)), proj.toGeo(Enu(150.0, 150.0)))
         val poles = listOf(pole("IN", 100.0, 100.0), pole("OUT", 200.0, 0.0))

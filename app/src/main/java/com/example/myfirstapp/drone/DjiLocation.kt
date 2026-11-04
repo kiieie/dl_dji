@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.os.SystemClock
 import androidx.core.os.CancellationSignal
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
@@ -52,6 +53,7 @@ suspend fun djiPositions(): LivePositions = runCatching {
 
 /**
  * 조종기(RC Pro) 안드로이드 GPS: 마지막 위치(GPS·네트워크 중 새것), 없고 [fresh]면 GPS로 새 위치를 한 번 기다린다(10.5.5 셋째 대안).
+ * 마지막 위치가 [AppConfig.Checks.LOCATION_MAX_AGE_MS]보다 오래되었으면 버린다(어제 다른 곳 위치가 이륙 지점이 되지 않게).
  * 새 위치는 GPS 공급자만 켠다(네트워크 위치는 외부 서버에 묻기 때문, 데이터 주권). 권한이 없거나 못 찾으면 null.
  */
 @SuppressLint("MissingPermission") // 권한은 바로 위에서 확인한다
@@ -59,7 +61,9 @@ suspend fun deviceLocation(context: Context, fresh: Boolean): GeoPoint? = runCat
     if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return null
     val lm = context.getSystemService(LocationManager::class.java) ?: return null
     val last = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-        .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }
+        .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+        .filter { SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos <= AppConfig.Checks.LOCATION_MAX_AGE_MS * 1_000_000 }
+        .maxByOrNull { it.elapsedRealtimeNanos }
     val loc = last ?: if (fresh && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
         withTimeoutOrNull(AppConfig.Timeouts.DEVICE_LOCATION_MS) {
             suspendCancellableCoroutine { c ->

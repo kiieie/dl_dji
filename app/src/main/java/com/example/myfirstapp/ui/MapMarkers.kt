@@ -9,6 +9,8 @@ import android.graphics.Typeface
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.toColorInt
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.ui.theme.Dimens
+import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.MAP_AIRCRAFT
 import com.example.myfirstapp.ui.theme.MAP_HOME
 import com.example.myfirstapp.ui.theme.MAP_RC
@@ -72,23 +74,23 @@ internal fun Style.setMarkers(m: MapMarkers) {
 
 private val dp get() = Resources.getSystem().displayMetrics.density
 
-/** 홈: 노란 원(22dp)에 검은 테두리와 "H". */
+/** 홈: 노란 원([Dimens.MarkerHome])에 검은 테두리와 "H". */
 private fun homeBitmap(): Bitmap {
-    val size = (22 * dp).toInt()
+    val size = (Dimens.MarkerHome.value * dp).toInt()
     return createBitmap(size, size).also { b ->
         val c = Canvas(b)
         val r = size / 2f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         c.drawCircle(r, r, r - dp, paint.apply { color = MAP_HOME.toColorInt(); style = Paint.Style.FILL })
         c.drawCircle(r, r, r - dp, paint.apply { color = MAP_STROKE_DARK.toColorInt(); style = Paint.Style.STROKE; strokeWidth = 1.5f * dp })
-        paint.apply { style = Paint.Style.FILL; color = android.graphics.Color.BLACK; textSize = 13 * dp; typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
+        paint.apply { style = Paint.Style.FILL; color = android.graphics.Color.BLACK; textSize = FontSize.MapMarkerHome.value * dp; typeface = Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
         c.drawText("H", r, r - (paint.ascent() + paint.descent()) / 2, paint)
     }
 }
 
-/** 기체: 위(기수)를 가리키는 파란 화살촉(28dp), 흰 테두리. 지도에서 기수 각도만큼 돌린다. */
+/** 기체: 위(기수)를 가리키는 파란 화살촉([Dimens.MarkerAircraft]), 흰 테두리. 지도에서 기수 각도만큼 돌린다. */
 private fun aircraftBitmap(): Bitmap {
-    val size = (28 * dp).toInt()
+    val size = (Dimens.MarkerAircraft.value * dp).toInt()
     val s = size.toFloat()
     val arrow = Path().apply {
         moveTo(s / 2, s * 0.06f)

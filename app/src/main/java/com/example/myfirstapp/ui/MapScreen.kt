@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -175,6 +176,11 @@ fun MapScreen(
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
+    // 지금 위치는 이 화면이 보이는 동안만 읽는다(비행 화면이 덮으면 멈춤)
+    LifecycleResumeEffect(vm) {
+        vm.setActive(true)
+        onPauseOrDispose { vm.setActive(false) }
+    }
     val inArea = s.inArea
     // 화면 배치 상태(UI 전용): 배경 지도 보이기, 전체 보기 요청
     var showBackground by rememberSaveable { mutableStateOf(true) }

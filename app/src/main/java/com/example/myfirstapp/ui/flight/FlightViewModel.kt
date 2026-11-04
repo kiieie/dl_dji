@@ -55,6 +55,7 @@ import com.example.myfirstapp.detect.TfliteYoloDetector
 import com.example.myfirstapp.sound.ToneNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -292,11 +293,20 @@ class FlightViewModel(
     }
 
     fun endMission() = send(Command.EndMission)
-    /** 재개(화면 ▶·RC C1): 영상 모드였으면 사진 모드로 돌린 뒤 재개한다(지점 사진을 놓치지 않게). */
+    private var resuming: Job? = null
+
+    /**
+     * 재개(화면 ▶·RC C1): 영상 모드였으면 사진 모드로 돌린 뒤 재개한다(지점 사진을 놓치지 않게).
+     * 카메라가 답하지 않아도 [AppConfig.Timeouts.RESUME_CAMERA_MS] 뒤에는 재개한다. 기다리는 동안 다시 누른 것은 무시한다.
+     */
     fun resume() {
-        viewModelScope.launch {
-            camera.backToPhotoAndWait()
-            flightParams?.takeIf { Lens.ZOOM in it.lenses }?.let { camera.restoreZoom(it.zoomRatio) }
+        if (resuming?.isActive == true) return
+        resuming = viewModelScope.launch {
+            withTimeoutOrNull(AppConfig.Timeouts.RESUME_CAMERA_MS) {
+                camera.backToPhotoAndWait()
+                flightParams?.takeIf { Lens.ZOOM in it.lenses }?.let { camera.restoreZoom(it.zoomRatio) }
+                true
+            } ?: OpLog.log("flight", "resumeCameraTimeout")
             send(Command.Resume)
         }
     }

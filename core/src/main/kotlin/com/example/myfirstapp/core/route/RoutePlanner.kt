@@ -30,14 +30,16 @@ class RoutePlanner(
         val origin = Enu(0.0, 0.0)
         val budget = energy.budget(startBatteryPct)
 
-        // 1) 도달 불가 전주 분류(5.4): 가시권 밖이거나 단독 왕복도 예산을 넘는 전주
+        // 1) 도달 불가 전주 분류(5.4): 가시권 밖이거나 단독 소티도 예산을 넘는 전주. 단독 소티 비용은 분할(3)과 같은 셈이다
+        //    (이륙 지점 왕복 + 사선 전주 둘레 + 설비 조준 촬영). 왕복만 보면 혼자서도 예산을 넘는 소티가 계획되었다(11-04 리뷰).
         val unreachable = mutableListOf<UnreachablePole>()
         val reachable = mutableListOf<Pole>()
         for (p in poles) {
             val dHome = proj.toEnu(p.position).distanceTo(origin)
             when {
                 dHome > energy.flight.vlosRadiusM -> unreachable += UnreachablePole(p, UnreachablePole.Reason.VLOS_EXCEEDED)
-                energy.sortieCost(2 * dHome, 1) > budget -> unreachable += UnreachablePole(p, UnreachablePole.Reason.BATTERY_EXCEEDED)
+                energy.sortieCost(energy.pathM(dHome + dHome, 0.0, 1), 1, 0, energy.equipmentShots(listOf(p))) > budget ->
+                    unreachable += UnreachablePole(p, UnreachablePole.Reason.BATTERY_EXCEEDED)
                 else -> reachable += p
             }
         }
@@ -67,7 +69,7 @@ class RoutePlanner(
                 }
                 val dist = energy.pathM(enu[i - 1].distanceTo(origin) + enu[j - 1].distanceTo(origin), inner, j - i + 1)
                 val c = energy.sortieCost(dist, j - i + 1, jumps, extra[j] - extra[i - 1])
-                // 전주를 더할수록 비용이 줄지 않으므로(삼각 부등식) 중단. 전주 1개 소티는 늘 둔다(도달 불가 판정을 넘었으므로, 분할이 끊기지 않게).
+                // 전주를 더할수록 비용이 줄지 않으므로(삼각 부등식) 중단. 전주 1개 소티는 도달 불가 판정과 같은 셈이라 늘 예산 안이다(j > i는 분할이 끊기지 않게 하는 안전장치).
                 if (c > budget && j > i) break
                 cost[i][j] = c
             }

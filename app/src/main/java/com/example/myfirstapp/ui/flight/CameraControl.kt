@@ -4,8 +4,10 @@ import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.ZOOM_STEPS
 import com.example.myfirstapp.core.port.nextZoom
+import com.example.myfirstapp.core.port.snapZoom
 import com.example.myfirstapp.core.port.zoomSteps
 import com.example.myfirstapp.data.OpLog
+import com.example.myfirstapp.drone.DjiTimeoutException
 import com.example.myfirstapp.drone.djiDetail
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -52,7 +54,8 @@ internal class CameraControl(
         call("줌", { if (it.zoomRatio == ratio) it.copy(zoomRatio = s.zoomRatio) else it }, read = {
             zoomRatio()?.let { actual ->
                 OpLog.log(tag, "cameraRead", mapOf("what" to "줌", "want" to ratio, "actual" to actual))
-                val fix: (FlightUiState) -> FlightUiState = { st -> if (st.zoomRatio == ratio || st.zoomRatio == s.zoomRatio) st.copy(zoomRatio = actual) else st }
+                // 기체 값(6.98 등)은 가까운 단계로 맞춘다: 다음 +/−가 같은 단계를 다시 고르지 않게
+                val fix: (FlightUiState) -> FlightUiState = { st -> if (st.zoomRatio == ratio || st.zoomRatio == s.zoomRatio) st.copy(zoomRatio = snapZoom(actual, steps)) else st }
                 fix
             }
         }) {
@@ -123,7 +126,10 @@ internal class CameraControl(
         { e -> OpLog.log(tag, "cameraFail", mapOf("what" to what, "error" to e.djiDetail())) },
     )
 
-    /** [block]을 차례대로 보내고 결과를 남긴다. 실패면 [undo], 그다음 [read]로 기체 실제 값을 읽어 화면에 맞춘다. */
+    /**
+     * [block]을 차례대로 보내고 결과를 남긴다. 실패면 [undo], 그다음 [read]로 기체 실제 값을 읽어 화면에 맞춘다.
+     * 응답 없음(시간 초과)이면 읽기도 답이 없을 것이라 건너뛴다(차례를 그만큼 오래 잡지 않게).
+     */
     private fun call(
         what: String,
         undo: (FlightUiState) -> FlightUiState,
@@ -136,7 +142,7 @@ internal class CameraControl(
                 val r = d.block()
                 logResult(what, r)
                 if (r.isFailure) set(undo)
-                read?.let { d.it() }?.let(set)
+                if (r.exceptionOrNull() !is DjiTimeoutException) read?.let { d.it() }?.let(set)
             }
         }
     }
