@@ -52,6 +52,8 @@ fun ManualFlightScreen(
     dao: ProjectDao, onExit: () -> Unit, onOpenSettings: () -> Unit, onOpenMission: (LatestMission) -> Unit, onAlbum: () -> Unit = {},
     /** 큰 지도 [라이브러리](10.5.4): 비행경로 화면. 떠 있으면 끈다. */
     onLibrary: () -> Unit = {},
+    /** 상단 바 비행 상태 글자(10.5.1): 비행 전 점검. */
+    onPreflight: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
@@ -82,7 +84,7 @@ fun ManualFlightScreen(
             }
         }
 
-        TopBar(f, onExit, onOpenSettings, label = "수동 비행", canExit = true)
+        TopBar(f, onExit, onOpenSettings, label = "수동 비행", canExit = true, onTitleClick = onPreflight)
         if (!mapMain) ZoomBox(f.lens, f.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
 
         Column(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

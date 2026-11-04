@@ -12,6 +12,9 @@ import com.example.myfirstapp.core.model.ObstacleDirection
 import com.example.myfirstapp.core.model.ObstacleWarning
 import com.example.myfirstapp.core.model.Obstacles
 import com.example.myfirstapp.core.executor.ExecutorConfig
+import com.example.myfirstapp.core.port.PreflightReport
+import com.example.myfirstapp.core.route.RouteSummary
+import com.example.myfirstapp.ui.procedure.ProcedurePage
 import com.example.myfirstapp.data.TelemetrySampleEntity
 import com.example.myfirstapp.drone.DjiDroneGateway
 import com.example.myfirstapp.drone.djiAircraftConnected
@@ -51,6 +54,7 @@ import com.example.myfirstapp.data.MapSource
 import com.example.myfirstapp.data.pickMapSource
 import com.example.myfirstapp.data.mapBackgroundRetrying
 import com.example.myfirstapp.data.toEntity
+import com.example.myfirstapp.data.toJson
 import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.detect.LastPhoto
 import com.example.myfirstapp.detect.LiveDetection
@@ -69,6 +73,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+
+/** 미션이 날기 시작하면(또는 공중 상태가 되면) 절차 화면을 닫는다(10.5.5). */
+private val CLOSES_PROCEDURE = setOf(ExecState.FlyingLeg, ExecState.Paused, ExecState.ReturningHome, ExecState.LinkLost)
 
 /** 모의 기체의 시간 배속. 시연과 스모크 시험이 몇 분 안에 끝나게 한다. 실제 기체에는 해당 없음. */
 const val FAKE_TIME_SCALE = 5.0
@@ -98,8 +105,8 @@ data class FlightUiState(
     val videoMode: Boolean = false,
     /** 녹화를 시작한 시각. 녹화 중이 아니면 null. */
     val recordingSinceMs: Long? = null,
-    /** 비행 전 점검 체크리스트(Pilot 2): [비행 시작]을 누르면 채워지고, 확인하면 비운다. */
-    val preflight: List<PreflightCheck>? = null,
+    /** 열린 절차 화면(10.5.5): 비행 전 점검 → 웨이포인트 경로 체크리스트. 닫혀 있으면 null. */
+    val page: ProcedurePage? = null,
     /** 미션 파라미터(촬영 방식 포함). 미니맵에 실제 촬영 지점 경로를 그린다. */
     val params: FlightParams? = null,
     /** 충돌 경고(13번): 방향별 등급·거리. 내비 원판 부채꼴과 상단 상태 칸에 보인다. */
@@ -108,7 +115,7 @@ data class FlightUiState(
     val track: List<GeoPoint> = emptyList(),
 ) {
     /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
-    val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
+    val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
     val sortieCount get() = (exec.visits.maxOfOrNull { it.sortieIndex } ?: 0) + 1
 }
 
@@ -174,6 +181,7 @@ class FlightViewModel(
     private suspend fun load() {
         val mission = dao.mission(missionId) ?: return _state.update { it.copy(loading = false, error = "미션을 찾을 수 없습니다") }
         val params = flightParamsFromJson(mission.flightParams)
+        projectName = dao.projectName(projectId).orEmpty()
         val energy = EnergyModel(EnergyParams(), params).also { energy = it }
         val home = GeoPoint(mission.homeLat, mission.homeLon)
         val dbSorties = dao.sorties(missionId)
@@ -255,7 +263,7 @@ class FlightViewModel(
             val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, home) } ?: 0.0).toInt()
             val wasPaused = paused
             precise?.setFlying("auto", ui.state.airborne || t.isFlying)
-            _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need).withTrack(t) }
+            _state.update { it.copy(exec = ui, telemetry = t, returnNeedPct = need).withTrack(t).let { s -> if (ui.state in CLOSES_PROCEDURE) s.copy(page = null) else s } }
             // RC 재개 등으로 일시정지를 벗어나면 녹화를 멈추고 사진 모드로(10.4.3)
             if (wasPaused && ui.state != ExecState.Paused) camera.backToPhoto()
         }
@@ -277,33 +285,70 @@ class FlightViewModel(
 
     fun start() = send(Command.Start)
 
-    /** [비행 시작]: Pilot 2처럼 먼저 비행 전 점검 체크리스트를 보여 준다(판정은 실행기도 다시 한다, 6.7). */
-    fun openPreflight() {
-        val d = drone ?: return
-        val p = flightParams ?: return
-        viewModelScope.launch {
-            val ui = _state.value.exec
-            val index = plans.indices.firstOrNull { i -> ui.visits.any { it.sortieIndex == i && it.status == VisitStatus.PENDING } } ?: ui.sortieIndex
-            val plan = plans.getOrNull(index)
-            val first = ui.visits.firstOrNull { it.sortieIndex == index && it.status == VisitStatus.PENDING }?.pole?.position
-            val list = PreflightEvaluator.checklist(d.preflight(), p, plan?.estBatteryPct ?: 0.0, first)
-            OpLog.log("preflight", "checklist", list.associate { it.label to "${if (it.ok) "OK" else "WARN"} ${it.value}" })
-            _state.update { it.copy(preflight = list) }
-        }
+    /** [비행 시작]·상단 바 비행 상태 글자: Pilot 2처럼 비행 전 점검 화면을 연다(판정은 실행기도 다시 한다, 6.7). */
+    fun openPreflight() = _state.update { it.copy(page = ProcedurePage.PREFLIGHT) }
+
+    fun closeProcedure() = _state.update { it.copy(page = null) }
+
+    /** 비행 전 점검 화면이 읽는 기체 값: 실행기와 같은 기체(모의 기체면 모의 값). */
+    suspend fun preflightReport(): PreflightReport? = drone?.preflight()
+
+    /** 비행 전 점검 판정(6.7): 다음 소티의 배터리 예상·첫 전주까지 거리 포함. */
+    fun checksFor(report: PreflightReport): List<PreflightCheck> {
+        val p = flightParams ?: return PreflightEvaluator.manual(report)
+        val ui = _state.value.exec
+        val index = nextSortieIndex()
+        val first = ui.visits.firstOrNull { it.sortieIndex == index && it.status == VisitStatus.PENDING }?.pole?.position
+        return PreflightEvaluator.checklist(report, p, plans.getOrNull(index)?.estBatteryPct ?: 0.0, first)
     }
 
-    fun closePreflight() = _state.update { it.copy(preflight = null) }
-
-    /** 체크리스트 확인 → 업로드·시작. [ignoreWarnings]면 ▲ 항목을 운용자가 확인하고 그대로 시작한다(기체 연결은 필요). */
+    /**
+     * 비행 전 점검 [다음] → 웨이포인트 경로 체크리스트(10.5.5). [ignoreWarnings]면 경고 항목을 운용자가 보고 넘어간 것이다
+     * (업로드 때 실행기에 넘긴다, 기체 연결·LDM은 여전히 필요). 폴더 이름이 없으면 "<프로젝트>-#<미션>".
+     */
     fun confirmPreflight(ignoreWarnings: Boolean = false) {
-        closePreflight()
-        send(if (ignoreWarnings) Command.StartIgnoringWarnings else Command.Start)
+        OpLog.log("preflight", "next", mapOf("warned" to ignoreWarnings))
+        warned = ignoreWarnings
+        flightParams?.takeIf { it.photoFolder == null }?.let { updateChecklist(it.copy(photoFolder = "$projectName-#$missionId")) }
+        _state.update { it.copy(page = ProcedurePage.CHECKLIST) }
     }
 
-    /** 배터리를 교체했다고 보고 다음 소티를 시작한다(모의 기체는 배터리를 100%로 채운다). */
+    /** 체크리스트 [뒤로] → 비행 전 점검. */
+    fun backToPreflight() = _state.update { it.copy(page = ProcedurePage.PREFLIGHT) }
+
+    /** 체크리스트 값(안전한 이륙 고도·시작 위치로 상승·속도·완료 동작·신호 끊김·폴더)을 고친다. 미션 JSON에 남긴다. 올린 뒤에는 바꾸지 않는다. */
+    fun updateChecklist(p: FlightParams) {
+        if (_state.value.exec.state !in setOf(ExecState.Idle, ExecState.SortieDone)) return
+        flightParams = p
+        _state.update { it.copy(params = p) }
+        viewModelScope.launch { dao.setMissionParams(missionId, p.toJson()) }
+    }
+
+    /** 체크리스트 [비행 임무 업로드]: 점검 → 업로드까지(실행기 [ExecState.Uploaded]). */
+    fun upload() = send(Command.Upload(flightParams, warned))
+
+    /** 체크리스트 [시작]: 올린 미션을 이륙·시작. */
+    fun startUploaded() = send(Command.Start)
+
+    /** 체크리스트 [업로드 취소]: 시작하지 않고 대기로(값을 다시 고칠 수 있음). */
+    fun cancelUpload() = send(Command.CancelUpload)
+
+    /** 체크리스트 요약(거리·예상 시간·웨이포인트·사진): 다음 소티. */
+    fun checklistSummary(): RouteSummary? = flightParams?.let { p -> plans.getOrNull(nextSortieIndex())?.let { RouteSummary.of(listOf(it), p) } }
+
+    private fun nextSortieIndex(): Int {
+        val ui = _state.value.exec
+        return plans.indices.firstOrNull { i -> ui.visits.any { it.sortieIndex == i && it.status == VisitStatus.PENDING } } ?: ui.sortieIndex
+    }
+
+    /** 비행 전 점검에서 경고를 보고 넘어왔는지. */
+    private var warned = false
+    private var projectName = ""
+
+    /** 배터리를 교체했다고 보고 다음 소티: 비행 전 점검 → 체크리스트(10.5.5). 모의 기체는 배터리를 100%로 채운다. */
     fun nextSortie() {
         (drone as? FakeDroneGateway)?.setBattery(100.0)
-        send(Command.Start)
+        openPreflight()
     }
 
     fun endMission() = send(Command.EndMission)

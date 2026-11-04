@@ -14,10 +14,12 @@ import com.example.myfirstapp.core.executor.ExecState.PreparingLeg
 import com.example.myfirstapp.core.executor.ExecState.ReturningHome
 import com.example.myfirstapp.core.executor.ExecState.SortieDone
 import com.example.myfirstapp.core.executor.ExecState.Takeoff
+import com.example.myfirstapp.core.executor.ExecState.Uploaded
 import com.example.myfirstapp.core.executor.ExecState.Waiting
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.CaptureSource
 import com.example.myfirstapp.core.model.Detection
+import com.example.myfirstapp.core.model.FinishAction
 import com.example.myfirstapp.core.model.FlightMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
@@ -153,8 +155,12 @@ class InspectionExecutor(
     private var terrainFallbackAsk = false
     private var shutterBusy = false
 
+    /** 체크리스트 두 단계(10.5.5): [uploadOnly]면 점검 → 업로드까지만 하고 [Uploaded]로, [uploaded]면 기체의 미션이 [missionPoints]와 같아 시작만 하면 된다. */
+    private var uploadOnly = false
+    private var uploaded = false
+
     /** 실행기가 기체를 움직이지 않는 상태(떠 있으면 조종사가 수동 조종 중). */
-    private val REST = setOf(Idle, SortieDone, MissionDone)
+    private val REST = setOf(Idle, Uploaded, SortieDone, MissionDone)
 
     private var arrivalToken = 0
     private var arrivalJob: Job? = null
@@ -214,10 +220,20 @@ class InspectionExecutor(
             Command.Start, Command.StartIgnoringWarnings -> when (state) {
                 Idle, SortieDone -> {
                     ignoreWarnings = c == Command.StartIgnoringWarnings
+                    uploadOnly = false
                     startSortie()
                 }
+                // 체크리스트 [시작]: 이륙(KMZ가 하면 바로 통과) → 올린 미션 시작
+                Uploaded -> enter(Takeoff, "체크리스트 시작")
                 else -> Unit
             }
+            is Command.Upload -> if (state == Idle || state == SortieDone) {
+                ignoreWarnings = c.ignoreWarnings
+                c.params?.let { params = it }
+                uploadOnly = true
+                startSortie()
+            }
+            Command.CancelUpload -> if (state == Uploaded) enter(Idle, "업로드 취소")
             Command.Pause -> requestPause("화면 일시정지 버튼", byRc = false)
             Command.Resume -> resume()
             Command.ReturnHome -> when {
@@ -282,9 +298,18 @@ class InspectionExecutor(
             is DroneEvent.PhotoTaken -> if (missionPoints.isNotEmpty()) onPhoto(e.index, e.capture)
             DroneEvent.MissionFinished -> if (missionActive) {
                 missionActive = false
-                if (state == FlyingLeg) {
-                    appInitiatedRth = false // KMZ 완료 동작(goHome)이 기체에서 이어진다
-                    enter(ReturningHome, "소티 미션 완료")
+                when {
+                    state != FlyingLeg -> Unit
+                    params.finishAction == FinishAction.GO_HOME -> {
+                        appInitiatedRth = false // KMZ 완료 동작(goHome)이 기체에서 이어진다
+                        enter(ReturningHome, "소티 미션 완료")
+                    }
+                    // 체크리스트 완료 동작이 RTH가 아니면(호버링·착륙·첫 지점) 기체는 그 동작을 하고 조종사가 이어 받는다. 착륙하면 소티 종료
+                    else -> {
+                        settleInProgress()
+                        message = "소티 미션 완료 — 완료 동작: ${params.finishAction.label}. 수동 조종하거나 RTH 하세요."
+                        enter(Paused, "소티 미션 완료(완료 동작 ${params.finishAction.name})")
+                    }
                 }
             }
             is DroneEvent.LegFailed -> if (state == FlyingLeg) pauseWithWarning("구간 실패: ${e.reason}")
@@ -337,14 +362,19 @@ class InspectionExecutor(
                 if (r.failures.isEmpty() || (ignoreWarnings && !r.blocked)) {
                     if (r.failures.isNotEmpty()) message = "점검 경고 ${r.failures.size}개를 확인하고 시작했습니다."
                     home = r.home
-                    enter(Takeoff, "비행 전 점검 통과")
+                    // 체크리스트 [업로드]는 이륙 없이 올리기만 한다(이륙은 [시작] 뒤)
+                    enter(if (uploadOnly) PreparingLeg else Takeoff, "비행 전 점검 통과")
                 } else {
                     message = "비행 전 점검 실패"
                     enter(Idle, "비행 전 점검 실패: ${r.failures.joinToString()}")
                 }
             }
             is StepResult.TakeoffDone -> if (r.ok) enter(PreparingLeg, "이륙 완료") else pauseWithWarning("이륙 실패")
-            is StepResult.LegReady -> if (r.ok) {
+            is StepResult.LegReady -> if (r.ok && uploadOnly) {
+                uploadOnly = false
+                uploaded = true
+                enter(Uploaded, "미션 업로드 완료")
+            } else if (r.ok) {
                 if (config.sortieMission) {
                     missionActive = true
                     recorder.recordHeightMode(params.terrainFollow)
@@ -695,20 +725,28 @@ class InspectionExecutor(
             .forEach { setStatus(it, if (it.captureCount > 0) VisitStatus.DONE else VisitStatus.PENDING) }
     }
 
-    private suspend fun prepareSortie(points: List<Viewpoint>, stopFirst: Boolean): StepResult {
+    /** 소티 미션 올리기(+시작). [uploadOnly]면 올리기만 한다(체크리스트 [비행 임무 업로드], 시작은 [startUploadedStep]). */
+    private suspend fun prepareSortie(points: List<Viewpoint>, stopFirst: Boolean, uploadOnly: Boolean = false): StepResult {
         if (stopFirst) drone.stopMission()
         if (!storage.hasEnoughSpace()) return StepResult.LegReady(false, "저장 공간 부족")
         repeat(config.legRetries + 1) { attempt ->
-            val r = drone.startSortie(points, params)
+            val r = if (uploadOnly) drone.uploadSortie(points, params) else drone.startSortie(points, params)
             if (r.isSuccess) return StepResult.LegReady(true, "")
             // 올라갔는데 시작만 거절: 같은 KMZ는 다시 올려도 같다. 지형 추적이면 운용자에게 이륙 기준을 묻는다
-            if (r.exceptionOrNull() is MissionStartRejected && params.terrainFollow) {
-                return StepResult.LegReady(false, "지형 추적으로 시작하지 못했습니다. 이륙 지점 기준으로 다시 올리고 시작할까요?", terrainRejected = true)
-            }
+            if (r.exceptionOrNull() is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, TERRAIN_ASK, terrainRejected = true)
             if (attempt < config.legRetries) delay(config.legRetryDelayMs)
         }
         return StepResult.LegReady(false, "미션 업로드 실패(재시도 ${config.legRetries}회 초과)")
     }
+
+    /** 체크리스트 [시작]: 올려 둔 미션을 시작한다. 거절은 다시 올려도 같으므로 재시도하지 않는다. */
+    private suspend fun startUploadedStep(): StepResult {
+        val e = drone.startUploaded().exceptionOrNull() ?: return StepResult.LegReady(true, "")
+        if (e is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, TERRAIN_ASK, terrainRejected = true)
+        return StepResult.LegReady(false, "미션 시작 실패: ${e.message}")
+    }
+
+    private val TERRAIN_ASK = "지형 추적으로 시작하지 못했습니다. 이륙 지점 기준으로 다시 올리고 시작할까요?"
 
     // ---------------------------------------------------------------- RTH
 
@@ -754,6 +792,11 @@ class InspectionExecutor(
         if (to in setOf(Paused, LinkLost, ReturningHome, SortieDone, MissionDone, Idle)) cancelRthPrompt()
         if (to == Paused || to == LinkLost) pausePending = false
         if (to != Paused && to != Idle) terrainFallbackAsk = false
+        // 대기·소티 끝으로 돌아오면 두 단계(업로드 → 시작) 흐름도 끝난다
+        if (to in REST && to != Uploaded) {
+            uploadOnly = false
+            uploaded = false
+        }
 
         when (to) {
             PreflightCheck -> {
@@ -768,7 +811,11 @@ class InspectionExecutor(
             Takeoff -> launchStep {
                 StepResult.TakeoffDone(drone.telemetry.value.isFlying || drone.takeoff().isSuccess)
             }
-            PreparingLeg -> if (config.sortieMission) {
+            PreparingLeg -> if (config.sortieMission && uploaded) {
+                // 체크리스트 [시작]: 이미 올린 미션을 시작만 한다
+                uploaded = false
+                launchStep { startUploadedStep() }
+            } else if (config.sortieMission) {
                 // 방식 A: 이 소티의 남은 전주 전체를 촬영 지점으로 펼쳐 미션 하나로 올린다
                 val remaining = visits.filter {
                     it.sortieIndex == sortieIndex && (it.status == VisitStatus.PENDING || it.status == VisitStatus.IN_PROGRESS)
@@ -783,7 +830,8 @@ class InspectionExecutor(
                 val stopFirst = stopMissionBeforeLeg || drone.telemetry.value.flightMode == FlightMode.MISSION
                 stopMissionBeforeLeg = false
                 val points = missionPoints
-                launchStep { prepareSortie(points, stopFirst) }
+                val only = uploadOnly
+                launchStep { prepareSortie(points, stopFirst, only) }
             } else {
                 val visit = nextTarget() ?: return startRth("남은 전주 없음")
                 target = visit

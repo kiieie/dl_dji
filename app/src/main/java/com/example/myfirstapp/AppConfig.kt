@@ -241,6 +241,38 @@ object AppConfig {
         const val THERMAL_EVERY = 5
     }
 
+    /** 비행 전 점검·웨이포인트 경로 체크리스트(10.5.5, Pilot 2 같은 범위). */
+    object Preflight {
+        /** RTH·최고 고도 범위(m, M3E). */
+        val ALTITUDE_RANGE_M = 20..500
+
+        /** 최대 비행 거리 범위(m). */
+        val DISTANCE_RANGE_M = 15..8000
+
+        /** 배터리 경고 손잡이 범위(%): 매우 낮음 ~ 낮음. */
+        val BATTERY_WARN_RANGE = 10.0..50.0
+
+        /** 장애물 제동·경고 거리 손잡이 범위(m). */
+        val SENSING_RANGE_M = 0.5..16.0
+
+        /** 상태 줄(배터리·홈·SD·점검 항목) 다시 읽기 간격. */
+        const val STATUS_MS = 2_000L
+
+        /** 체크리스트 비행 임무 속도 범위(m/s, Pilot 2 1.0~15.0, 우리 검증은 [com.example.myfirstapp.core.model.FlightParams.validate]). */
+        val SPEED_RANGE_MPS = 2.0..15.0
+
+        /** 기체가 없을 때(모의 기체) 비행 전 점검 설정의 처음 값. 이름은 `PreflightSettings` 항목 이름. */
+        val FAKE_VALUES: kotlin.collections.Map<String, Any> = mapOf(
+            "RTH 고도" to 100, "최고 고도" to 120, "신호 끊김 조치" to 0, "최대 비행 거리" to false, "최대 비행 거리 값" to 5000,
+            "조종 스틱 모드" to 1, "배터리 경고" to (22.0 to 43.0), "장애물 회피" to 0,
+            "수평 감지" to true, "수평 감지 거리" to (10.0 to 13.8), "상향 감지" to true, "상향 감지 거리" to (1.5 to 7.0),
+            "하향 감지" to true, "하향 감지 거리" to (2.0 to 6.3),
+        )
+
+        /** 모의 기체 배터리 전압(V). */
+        const val FAKE_VOLTAGE_V = 16.9
+    }
+
     object Rth {
         /** RTH 버튼을 이만큼 길게 눌러야 귀환한다. */
         const val HOLD_MS = 1_000L

@@ -1,6 +1,7 @@
 package com.example.myfirstapp.ui.home
 
 import com.example.myfirstapp.AppConfig
+import com.example.myfirstapp.data.OpLog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -53,12 +54,14 @@ suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     )
 }
 
-data class HomeUiState(val aircraft: AircraftStatus = AircraftStatus(), val latest: LatestMission? = null)
+data class HomeUiState(val aircraft: AircraftStatus = AircraftStatus(), val latest: LatestMission? = null, val message: String? = null)
 
 /** 홈 화면(Pilot 2 홈페이지, 10장 ①). 기체 상태는 화면이 보이는 동안([active]) 2초마다 다시 읽는다. */
 class HomeViewModel(
     private val dao: ProjectDao,
     private val readAircraft: suspend () -> AircraftStatus,
+    /** 데이터 보호 [캐시·로그 삭제]: 지운 파일 수. */
+    private val clearCaches: suspend () -> Int = { 0 },
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -87,8 +90,19 @@ class HomeViewModel(
         }
     }
 
+    /** 데이터 보호(10.5.5): 지도 캐시·임시 파일·운용 로그를 지운다. 미션·사진·지도 파일은 둔다. */
+    fun clearCacheAndLogs() {
+        OpLog.log("home", "clearCacheAndLogs")
+        viewModelScope.launch {
+            val n = runCatching { clearCaches() }
+            _state.update { it.copy(message = n.fold({ c -> "캐시·로그를 지웠습니다(파일 ${c}개, 지도 캐시)." }, { e -> "지우지 못했습니다: ${e.message}" })) }
+        }
+    }
+
+    fun dismissMessage() = _state.update { it.copy(message = null) }
+
     companion object {
-        fun factory(dao: ProjectDao, readAircraft: suspend () -> AircraftStatus) =
-            viewModelFactory { initializer { HomeViewModel(dao, readAircraft) } }
+        fun factory(dao: ProjectDao, readAircraft: suspend () -> AircraftStatus, clearCaches: suspend () -> Int) =
+            viewModelFactory { initializer { HomeViewModel(dao, readAircraft, clearCaches) } }
     }
 }

@@ -3,6 +3,7 @@ package com.example.myfirstapp.core.fake
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.FinishAction
 import com.example.myfirstapp.core.model.FlightMode
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
@@ -139,8 +140,14 @@ class FakeDroneGateway(
         return Result.success(Unit)
     }
 
-    /** 방식 A: 지점을 차례로 날며 도착·촬영을 알리고, 끝나면 RTH(KMZ 완료 동작과 같음). */
-    override suspend fun startSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> {
+    /** [uploadSortie]로 올린 소티(지점, 파라미터). */
+    private var uploaded: Pair<List<Viewpoint>, FlightParams>? = null
+
+    /** 방식 A: 지점을 차례로 날며 도착·촬영을 알리고, 끝나면 KMZ 완료 동작(기본 RTH, 그 밖은 제자리 호버). */
+    override suspend fun startSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> =
+        uploadSortie(points, params).mapCatching { runUploaded().getOrThrow() }
+
+    override suspend fun uploadSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> {
         calls += "startSortie:${points.size}"
         if (!connected()) return Result.failure(IllegalStateException("연결 없음"))
         delay(config.legStartMs)
@@ -149,7 +156,19 @@ class FakeDroneGateway(
             return Result.failure(IllegalStateException("모의 업로드 실패"))
         }
         calls += "terrain:${params.terrainFollow}"
+        uploaded = points to params
+        return Result.success(Unit)
+    }
+
+    override suspend fun startUploaded(): Result<Unit> {
+        calls += "startUploaded"
+        return runUploaded()
+    }
+
+    private fun runUploaded(): Result<Unit> {
+        val (points, params) = uploaded ?: return Result.failure(IllegalStateException("올린 미션 없음"))
         if (rejectTerrainStarts && params.terrainFollow) return Result.failure(MissionStartRejected("모의 지형 추적 시작 거절"))
+        uploaded = null
         missionPaused = false
         _telemetry.update { it.copy(flightMode = FlightMode.MISSION) }
         motionJob?.cancel()
@@ -178,7 +197,9 @@ class FakeDroneGateway(
                 }
             }
             _events.emit(DroneEvent.MissionFinished)
-            startGoHome()
+            // ponytail: 착륙·첫 지점으로 같은 다른 완료 동작은 제자리 호버로만 흉내 낸다
+            if (params.finishAction == FinishAction.GO_HOME) startGoHome()
+            else _telemetry.update { it.copy(flightMode = FlightMode.MANUAL, speedMps = 0.0) }
         }
         return Result.success(Unit)
     }

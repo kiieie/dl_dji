@@ -41,6 +41,16 @@ interface DroneGateway {
     suspend fun startSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> =
         Result.failure(UnsupportedOperationException("소티 미션 미지원"))
 
+    /**
+     * 웨이포인트 경로 체크리스트 [비행 임무 업로드](10.5.5): 소티 미션을 만들어 올리기만 한다. 시작은 [startUploaded].
+     * 기본은 [startSortie]가 한 번에 하므로 지원하지 않는다.
+     */
+    suspend fun uploadSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> =
+        Result.failure(UnsupportedOperationException("업로드만 하기 미지원"))
+
+    /** 체크리스트 [시작]: [uploadSortie]로 올린 미션을 시작한다. 기체가 거절하면 [MissionStartRejected]. */
+    suspend fun startUploaded(): Result<Unit> = Result.failure(UnsupportedOperationException("올린 미션 시작 미지원"))
+
     /** 미션을 멈추고 제자리 호버(화면 일시정지). */
     suspend fun pauseMission(): Result<Unit> = stopMission()
 

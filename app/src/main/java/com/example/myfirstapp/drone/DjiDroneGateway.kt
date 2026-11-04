@@ -38,8 +38,6 @@ import dji.sdk.keyvalue.value.gimbal.GimbalResetType
 import dji.sdk.keyvalue.value.camera.DateTime
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.EmptyMsg
-import dji.sdk.keyvalue.value.flightcontroller.FailsafeAction
-import dji.sdk.keyvalue.value.flightcontroller.GPSSignalLevel
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.manager.KeyManager
@@ -54,7 +52,6 @@ import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.manager.datacenter.media.MediaFileDownloadListener
 import dji.v5.manager.datacenter.media.MediaFileListDataSource
 import dji.v5.manager.datacenter.media.PullMediaFileListParam
-import dji.v5.manager.ldm.LDMManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -176,7 +173,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(FlightControllerKey.KeyGPSSatelliteCount) { n -> _telemetry.update { it.copy(satellites = n ?: 0) } }
         on(AirLinkKey.KeySignalQuality) { q -> _telemetry.update { it.copy(signalPct = q) } }
         on(BatteryKey.KeyChargeRemainingInPercent) { b -> _telemetry.update { it.copy(batteryPct = (b ?: 0).toDouble()) } }
-        on(FlightControllerKey.KeyGPSSignalLevel) { g -> _telemetry.update { it.copy(gpsLevel = gpsLevel(g)) } }
+        on(FlightControllerKey.KeyGPSSignalLevel) { g -> _telemetry.update { it.copy(gpsLevel = gpsLevelOf(g)) } }
         on(FlightControllerKey.KeyHomeLocation) { h ->
             _telemetry.update { it.copy(home = h?.takeIf { validGeo(h.latitude, h.longitude) }?.let { GeoPoint(h.latitude, h.longitude) }) }
         }
@@ -286,45 +283,22 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         _events.tryEmit(DroneEvent.ConnectionRestored)
     }
 
-    private fun gpsLevel(g: GPSSignalLevel?) = when (g) {
-        GPSSignalLevel.LEVEL_1 -> 1
-        GPSSignalLevel.LEVEL_2 -> 2
-        GPSSignalLevel.LEVEL_3 -> 3
-        GPSSignalLevel.LEVEL_4 -> 4
-        GPSSignalLevel.LEVEL_5, GPSSignalLevel.LEVEL_10 -> 5
-        else -> 0
-    }
-
-    private suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(AppConfig.Timeouts.GATEWAY_KEY_READ_MS) {
-        val key = if (index == null) KeyTools.createKey(info) else KeyTools.createKey(info, index)
-        runCatching { djiValue<T> { keys.getValue(key, it) } }.getOrNull()
-    }
-
-    override suspend fun preflight(): PreflightReport {
-        val t = _telemetry.value
-        val home = read(FlightControllerKey.KeyHomeLocation)?.takeIf { validGeo(it.latitude, it.longitude) }
-        return PreflightReport(
-            connected = t.connected,
-            gpsSatellites = read(FlightControllerKey.KeyGPSSatelliteCount) ?: 0,
-            gpsLevel = t.gpsLevel,
-            homeRecorded = read(FlightControllerKey.KeyIsHomeLocationSet) == true,
-            batteryPct = t.batteryPct,
-            batteryTempC = read(BatteryKey.KeyBatteryTemperature) ?: 0.0,
-            sdFreeMb = (read(CameraKey.KeySDCardRemainSpace, camera) ?: 0).toLong(),
-            ldmEnabled = LDMManager.getInstance().isLDMEnabled,
-            obstacleAvoidanceOn = runCatching { djiValue<Boolean> { PerceptionManager.getInstance().getOverallObstacleAvoidanceEnabled(it) } }.getOrDefault(false),
-            rthAltitudeM = (read(FlightControllerKey.KeyGoHomeHeight) ?: 0).toDouble(),
-            lostLinkActionIsRth = read(FlightControllerKey.KeyFailsafeAction) == FailsafeAction.GOHOME,
-            home = home?.let { GeoPoint(it.latitude, it.longitude) },
-        )
-    }
+    override suspend fun preflight(): PreflightReport = djiPreflightReport()
 
     // ponytail: 방식 A는 KMZ의 이륙 안전 고도(takeOffSecurityHeight)로 미션이 직접 이륙한다. 방식 B를 붙일 때 KeyStartTakeoff로 바꾼다.
     override suspend fun takeoff(): Result<Unit> = Result.success(Unit)
 
     override suspend fun startLeg(leg: LegMission): Result<Unit> = Result.failure(UnsupportedOperationException("방식 B 미구현(6.1)"))
 
-    override suspend fun startSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> = runCatching {
+    /** 방식 A 한 번에: 올리고 바로 시작(재개·복구·이륙 기준 다시 올리기). 체크리스트는 [uploadSortie] → [startUploaded] 두 단계(10.5.5). */
+    override suspend fun startSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> =
+        uploadSortie(points, params).mapCatching { startUploaded().getOrThrow() }
+
+    /** [uploadSortie]로 올리고 아직 시작하지 않은 미션 이름과 그 고도 방식(시작 실패 로그용). */
+    @Volatile private var uploadedName: String? = null
+    @Volatile private var uploadedTerrain = false
+
+    override suspend fun uploadSortie(points: List<Viewpoint>, params: FlightParams): Result<Unit> = runCatching {
         kmzDir.mkdirs()
         val previousKmz = lastKmzName() // 새 KMZ를 쓰기 전에(옛 미션을 끝낼 때 쓸 이름)
         val name = "sortie_${System.currentTimeMillis()}"
@@ -369,24 +343,60 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             }.orEmpty()
         }
         OpLog.log("mission", "photoActions", mapOf("perLens" to perLens, "multiFile" to multiFile, "stuck" to stuck?.joinToString(), "first" to points.firstOrNull()?.let { WpmlWriter.photoActions(it, params, perLens).size }))
+        params.photoFolder?.takeIf { it.isNotBlank() }?.let { setPhotoFolder(it) }
+        uploadedName = name
+        uploadedTerrain = params.terrainFollow
+        Log.i(TAG, "소티 미션 올림 $name 촬영 지점 ${points.size}개, 웨이포인트 ${wps.size}개")
+        Unit
+    }.onFailure { e ->
+        uploadedName = null
+        logMissionFailure("uploadSortie", e, params.terrainFollow)
+    }
+
+    override suspend fun startUploaded(): Result<Unit> = runCatching {
+        val name = uploadedName ?: error("올린 미션 없음")
         missionName = name
         // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
         runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected("미션 시작 거절: ${it.message}", it) }
-        Log.i(TAG, "소티 미션 시작 $name 촬영 지점 ${points.size}개, 웨이포인트 ${wps.size}개")
+        uploadedName = null
+        Log.i(TAG, "소티 미션 시작 $name")
         Unit
     }.onFailure { e ->
         missionName = null
-        Log.w(TAG, "소티 미션 실패: ${e.message}")
-        // 거절 이유를 알 수 있게 SDK 오류 코드 전체와 올린 KMZ의 DJI 검사 결과를 남긴다(11-03 현장 "Unknown error", 4.4)
+        logMissionFailure("startSortie", e, uploadedTerrain)
+    }
+
+    /** 거절 이유를 알 수 있게 SDK 오류 코드 전체와 올린 KMZ의 DJI 검사 결과를 남긴다(11-03 현장 "Unknown error", 4.4). */
+    private fun logMissionFailure(what: String, e: Throwable, terrainFollow: Boolean) {
+        Log.w(TAG, "소티 미션 실패($what): ${e.message}")
         val kmz = lastKmzName()?.let { File(kmzDir, "$it.kmz") }
         OpLog.log(
-            "error", "startSortie",
+            "error", what,
             mapOf(
                 "message" to e.message, "sdk" to (e.cause ?: e).djiDetail(), "kmz" to kmz?.name,
                 "kmzCheck" to kmz?.let { checkKmz(it.path).ifEmpty { listOf("NoError") }.joinToString() },
-                "terrainFollow" to params.terrainFollow,
+                "terrainFollow" to terrainFollow,
             ),
         )
+    }
+
+    /**
+     * 체크리스트 폴더 만들기(10.5.5): SD 사진 폴더 이름 뒤에 붙는 사용자 이름(DJI 맞춤 폴더 이름). 실패해도 미션은 간다.
+     * ponytail: priority 값의 뜻과 한글 이름이 그대로 쓰이는지는 실기 확인 전(Pilot 2는 한글 폴더 "경천1"을 만든다).
+     */
+    private suspend fun setPhotoFolder(folder: String) {
+        val r = runCatching {
+            djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) {
+                keys.setValue(
+                    KeyTools.createKey(CameraKey.KeyCustomExpandDirectoryNameSettings, camera),
+                    dji.sdk.keyvalue.value.camera.CustomExpandNameSettings(
+                        dji.sdk.keyvalue.value.common.EnCodingType.UTF8, dji.sdk.keyvalue.value.common.RelativePosition.POSITION_END, folder, 0, true,
+                    ),
+                    it,
+                )
+            }
+        }
+        OpLog.log("camera", "photoFolder", mapOf("name" to folder, "ok" to r.isSuccess, "error" to r.exceptionOrNull()?.djiDetail()))
     }
 
     /** 앱 재시작으로 이름을 잃은 채 멈춘 옛 미션(마지막 KMZ 이름). 다음 [stopMission]이 기체 모드와 상관없이 이 이름으로 끝낸다. */

@@ -5,6 +5,7 @@ import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Pole
+import com.example.myfirstapp.core.model.RcLostAction
 import com.example.myfirstapp.core.model.ShotMode
 import java.io.OutputStream
 import java.util.Locale
@@ -131,13 +132,17 @@ object WpmlWriter {
     /** WPML 기수는 -180~180. */
     private fun heading(deg: Double) = n(if (deg > 180.0) deg - 360.0 else deg)
 
+    /** 안전한 이륙 고도(10.5.5): 체크리스트 값, 없으면 첫 지점 고도와 기본값 중 큰 값. */
+    fun takeoffSecurityM(points: List<Waypoint>, p: FlightParams) = p.takeoffSecurityM ?: maxOf(Tuning.Safety.TAKEOFF_SECURITY_M, points.first().altitudeM)
+
+    /** 미션 설정: 체크리스트(10.5.5)의 시작 위치로 상승·완료 동작·신호 끊김 조치·안전한 이륙 고도. */
     private fun missionConfig(points: List<Waypoint>, p: FlightParams) = """
   <wpml:missionConfig>
-    <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
-    <wpml:finishAction>goHome</wpml:finishAction>
-    <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
-    <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-    <wpml:takeOffSecurityHeight>${n(maxOf(Tuning.Safety.TAKEOFF_SECURITY_M, points.first().altitudeM))}</wpml:takeOffSecurityHeight>
+    <wpml:flyToWaylineMode>${if (p.climbToStart) "safely" else "pointToPoint"}</wpml:flyToWaylineMode>
+    <wpml:finishAction>${p.finishAction.wpml}</wpml:finishAction>
+    <wpml:exitOnRCLost>${if (p.rcLostAction == RcLostAction.CONTINUE) "goContinue" else "executeLostAction"}</wpml:exitOnRCLost>
+    <wpml:executeRCLostAction>${if (p.rcLostAction == RcLostAction.CONTINUE) RcLostAction.GO_BACK.wpml else p.rcLostAction.wpml}</wpml:executeRCLostAction>
+    <wpml:takeOffSecurityHeight>${n(takeoffSecurityM(points, p))}</wpml:takeOffSecurityHeight>
     <wpml:globalTransitionalSpeed>${n(p.speedMps)}</wpml:globalTransitionalSpeed>
     <wpml:droneInfo><wpml:droneEnumValue>$DRONE_ENUM</wpml:droneEnumValue><wpml:droneSubEnumValue>$DRONE_SUB_ENUM</wpml:droneSubEnumValue></wpml:droneInfo>
     <wpml:payloadInfo><wpml:payloadEnumValue>$PAYLOAD_ENUM</wpml:payloadEnumValue><wpml:payloadSubEnumValue>0</wpml:payloadSubEnumValue><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex></wpml:payloadInfo>

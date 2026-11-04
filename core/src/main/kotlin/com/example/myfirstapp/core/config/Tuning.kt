@@ -142,6 +142,9 @@ object Tuning {
 
         /** KMZ 이륙 안전 고도 최솟값(m, WPML `takeOffSecurityHeight`). */
         const val TAKEOFF_SECURITY_M = 20.0
+
+        /** 체크리스트에서 고르는 안전한 이륙 고도 범위(m, Pilot 2 체크리스트·WPML 상한 1500m). */
+        val TAKEOFF_SECURITY_RANGE_M = 2.0..1500.0
     }
 
     /** 경로 계획·전주 가져오기. */

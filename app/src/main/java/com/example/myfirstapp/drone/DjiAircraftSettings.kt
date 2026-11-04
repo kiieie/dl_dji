@@ -14,6 +14,7 @@ import dji.sdk.keyvalue.value.camera.CameraStorageLocation
 import dji.sdk.keyvalue.value.camera.PhotoFileFormat
 import dji.sdk.keyvalue.value.camera.PhotoRatio
 import dji.sdk.keyvalue.value.common.ComponentIndexType
+import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.sdk.keyvalue.value.common.EmptyMsg
 import dji.sdk.keyvalue.value.flightcontroller.FailsafeAction
 import dji.sdk.keyvalue.value.remotecontroller.ControlMode
@@ -25,7 +26,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 기체 설정 항목 하나(Pilot 2 설정 탭, 매뉴얼 57쪽). 값은 종류마다 정해진 형으로 오간다:
- * [Kind.Number]는 Int, [Kind.Toggle]은 Boolean, [Kind.Choice]는 선택지 번호(Int), [Kind.Info]는 글(String), [Kind.Action]은 값 없음.
+ * [Kind.Number]는 Int, [Kind.Toggle]은 Boolean, [Kind.Choice]는 선택지 번호(Int), [Kind.Info]는 글(String), [Kind.Range]는 `Pair<Double, Double>`, [Kind.Action]은 값 없음.
  */
 class AircraftSetting(
     val label: String,
@@ -35,10 +36,13 @@ class AircraftSetting(
     internal val write: (suspend (Any) -> Unit)? = null,
 ) {
     sealed interface Kind {
-        data class Number(val range: IntRange, val step: Int, val unit: String) : Kind
+        /** [big]이 있으면 Pilot 2 스테퍼처럼 −big −step 값 +step +big(10.5.5). */
+        data class Number(val range: IntRange, val step: Int, val unit: String, val big: Int? = null) : Kind
         data object Toggle : Kind
         data class Choice(val options: List<String>) : Kind
         data object Info : Kind
+        /** 두 손잡이 값(낮은 쪽, 높은 쪽): 배터리 경고(매우 낮음·낮음), 장애물 제동·경고 거리(10.5.5). 값은 `Pair<Double, Double>`. */
+        data class Range(val range: ClosedFloatingPointRange<Double>, val unit: String) : Kind
         /** [confirm]이 있으면 실행 전에 확인을 묻는다(되돌릴 수 없는 동작). */
         data class Action(val confirm: String?) : Kind
     }
@@ -131,8 +135,8 @@ private suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = n
 
 private suspend fun <T> write(info: DJIKeyInfo<T>, value: T, index: ComponentIndexType? = null) = djiDone { keys.setValue(key(info, index), value, it) }
 
-private fun number(label: String, info: DJIKeyInfo<Int>, range: IntRange, step: Int, unit: String, note: String? = null) =
-    AircraftSetting(label, AircraftSetting.Kind.Number(range, step, unit), note, read = { read(info) }, write = { v -> write(info, v as Int) })
+private fun number(label: String, info: DJIKeyInfo<Int>, range: IntRange, step: Int, unit: String, note: String? = null, big: Int? = null) =
+    AircraftSetting(label, AircraftSetting.Kind.Number(range, step, unit, big), note, read = { read(info) }, write = { v -> write(info, v as Int) })
 
 private fun toggle(label: String, info: DJIKeyInfo<Boolean>, note: String? = null, index: ComponentIndexType? = null) =
     AircraftSetting(label, AircraftSetting.Kind.Toggle, note, read = { read(info, index) }, write = { v -> write(info, v as Boolean, index) })
@@ -164,5 +168,79 @@ private fun distance(label: String, warning: Boolean) = AircraftSetting(
             if (warning) perception.setObstacleAvoidanceWarningDistance((v as Int).toDouble(), PerceptionDirection.HORIZONTAL, it)
             else perception.setObstacleAvoidanceBrakingDistance((v as Int).toDouble(), PerceptionDirection.HORIZONTAL, it)
         }
+    },
+)
+
+/**
+ * 비행 전 점검 화면의 설정(10.5.5, Pilot 2 "비행 전 점검" 순서). 값은 기체 설정 탭과 같은 키로 읽고 쓴다.
+ * [sensing]은 방향마다 (감지 켜기, 제동·경고 거리).
+ */
+class PreflightSettings(
+    val rth: AircraftSetting,
+    val maxAltitude: AircraftSetting,
+    val lostAction: AircraftSetting,
+    val distanceLimitOn: AircraftSetting,
+    val distanceLimit: AircraftSetting,
+    val stickMode: AircraftSetting,
+    val homeAircraft: AircraftSetting,
+    val homeRc: AircraftSetting,
+    val battery: AircraftSetting,
+    val avoidance: AircraftSetting,
+    val sensing: List<Pair<AircraftSetting, AircraftSetting>>,
+) {
+    val all get() = listOf(rth, maxAltitude, lostAction, distanceLimitOn, distanceLimit, stickMode, homeAircraft, homeRc, battery, avoidance) + sensing.flatMap { it.toList() }
+
+    /** 기체가 없을 때(모의 기체): 같은 항목을 메모리 값으로 읽고 쓴다. 처음 값은 [AppConfig.Preflight.FAKE_VALUES]. */
+    fun inMemory(): PreflightSettings {
+        val store: MutableMap<String, Any> = AppConfig.Preflight.FAKE_VALUES.toMutableMap()
+        fun AircraftSetting.mem() = AircraftSetting(label, kind, note, read = { store[label] }, write = { v -> if (kind !is AircraftSetting.Kind.Action) store[label] = v })
+        return PreflightSettings(
+            rth.mem(), maxAltitude.mem(), lostAction.mem(), distanceLimitOn.mem(), distanceLimit.mem(), stickMode.mem(),
+            homeAircraft.mem(), homeRc.mem(), battery.mem(), avoidance.mem(), sensing.map { (a, b) -> a.mem() to b.mem() },
+        )
+    }
+}
+
+/** 비행 전 점검 설정(실제 기체). RTH·최고 고도는 20~500m(M3E), 장애물 거리는 [AppConfig.Preflight.SENSING_RANGE_M]. */
+fun djiPreflightSettings() = PreflightSettings(
+    rth = number("RTH 고도", FlightControllerKey.KeyGoHomeHeight, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", big = 100),
+    maxAltitude = number("최고 고도", FlightControllerKey.KeyHeightLimit, AppConfig.Preflight.ALTITUDE_RANGE_M, 10, "m", big = 100),
+    lostAction = choice("신호 끊김 조치", FlightControllerKey.KeyFailsafeAction, listOf(FailsafeAction.GOHOME to "RTH", FailsafeAction.HOVER to "호버링", FailsafeAction.LANDING to "착륙")),
+    distanceLimitOn = toggle("최대 비행 거리", FlightControllerKey.KeyDistanceLimitEnabled),
+    distanceLimit = number("최대 비행 거리 값", FlightControllerKey.KeyDistanceLimit, AppConfig.Preflight.DISTANCE_RANGE_M, 100, "m"),
+    stickMode = choice("조종 스틱 모드", RemoteControllerKey.KeyControlMode, listOf(ControlMode.JP to "모드 1", ControlMode.USA to "모드 2", ControlMode.CH to "모드 3")),
+    homeAircraft = action("홈포인트를 기체 위치로", FlightControllerKey.KeyHomeLocationUsingCurrentAircraftLocation, null),
+    homeRc = AircraftSetting("홈포인트를 조종기 위치로", AircraftSetting.Kind.Action(null), write = {
+        val g = read(RemoteControllerKey.KeyRcGPSInfo)?.takeIf { it.isValid == true } ?: error("조종기 GPS 없음")
+        djiValue<EmptyMsg> { keys.performAction(KeyTools.createKey(FlightControllerKey.KeyHomeLocationUsingCurrentRemoteControllerLocation), LocationCoordinate2D(g.location.latitude, g.location.longitude), it) }
+    }),
+    battery = AircraftSetting(
+        "배터리 경고", AircraftSetting.Kind.Range(AppConfig.Preflight.BATTERY_WARN_RANGE, "%"),
+        read = { (read(FlightControllerKey.KeySeriousLowBatteryWarningThreshold) ?: error("값 없음")).toDouble() to (read(FlightControllerKey.KeyLowBatteryWarningThreshold) ?: error("값 없음")).toDouble() },
+        write = { v ->
+            val (serious, low) = v as Pair<*, *>
+            write(FlightControllerKey.KeySeriousLowBatteryWarningThreshold, (serious as Double).toInt())
+            write(FlightControllerKey.KeyLowBatteryWarningThreshold, (low as Double).toInt())
+        },
+    ),
+    avoidance = AircraftSetting(
+        "장애물 회피", AircraftSetting.Kind.Choice(listOf("정지", "회피", "꺼짐")),
+        read = { avoidance.indexOf(djiValue<ObstacleAvoidanceType> { perception.getObstacleAvoidanceType(it) }) },
+        write = { v -> djiDone { perception.setObstacleAvoidanceType(avoidance[v as Int], it) } },
+    ),
+    sensing = listOf(PerceptionDirection.HORIZONTAL to "수평", PerceptionDirection.UPWARD to "상향", PerceptionDirection.DOWNWARD to "하향").map { (d, name) ->
+        AircraftSetting(
+            "$name 감지", AircraftSetting.Kind.Toggle,
+            read = { djiValue<Boolean> { perception.getObstacleAvoidanceEnabled(d, it) } },
+            write = { v -> djiDone { perception.setObstacleAvoidanceEnabled(v as Boolean, d, it) } },
+        ) to AircraftSetting(
+            "$name 감지 거리", AircraftSetting.Kind.Range(AppConfig.Preflight.SENSING_RANGE_M, "m"),
+            read = { djiValue<Double> { perception.getObstacleAvoidanceBrakingDistance(d, it) } to djiValue<Double> { perception.getObstacleAvoidanceWarningDistance(d, it) } },
+            write = { v ->
+                val (brake, warn) = v as Pair<*, *>
+                djiDone { perception.setObstacleAvoidanceBrakingDistance(brake as Double, d, it) }
+                djiDone { perception.setObstacleAvoidanceWarningDistance(warn as Double, d, it) }
+            },
+        )
     },
 )

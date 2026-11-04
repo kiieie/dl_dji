@@ -16,6 +16,17 @@ import java.util.zip.ZipOutputStream
 /** 내보내기 결과: ZIP 파일과 담은 사진 수. */
 data class ExportResult(val zip: File, val poleCount: Int, val imageCount: Int)
 
+/** 내보낸 ZIP들을 운용자가 고른 폴더(SAF 트리)로 복사한다(라이브러리 다중 내보내기, 10.5.8). 복사한 개수를 돌려준다. */
+suspend fun copyZipsToTree(resolver: android.content.ContentResolver, tree: android.net.Uri, files: List<File>): Int = withContext(Dispatchers.IO) {
+    val parent = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, android.provider.DocumentsContract.getTreeDocumentId(tree))
+    files.count { f ->
+        runCatching {
+            val doc = android.provider.DocumentsContract.createDocument(resolver, parent, "application/zip", f.name) ?: return@runCatching false
+            resolver.openOutputStream(doc)?.use { out -> f.inputStream().use { it.copyTo(out) } } != null
+        }.getOrDefault(false)
+    }
+}
+
 private val timeFormat get() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT)
 
 private fun csvField(v: Any?): String {

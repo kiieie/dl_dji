@@ -18,6 +18,9 @@ object PreflightEvaluator {
     /** 배터리 항목 이름. 비행 전 점검 화면이 이 줄을 한 줄 전체로 크게 보인다. */
     const val BATTERY = "배터리"
 
+    /** 첫 전주 거리 항목 이름(미션이 없는 수동 비행에는 빠진다). */
+    const val FIRST_POLE = "첫 전주 거리"
+
     /** 모든 항목. 기체가 연결되지 않았으면 연결 항목 하나만 돌려준다. */
     fun checklist(
         report: PreflightReport,
@@ -53,11 +56,15 @@ object PreflightEvaluator {
             PreflightCheck("RTH 고도", "${report.rthAltitudeM.toInt()}m", report.rthAltitudeM <= Tuning.Safety.MAX_ALTITUDE_M, "RTH 고도가 150m를 넘습니다(${report.rthAltitudeM}m)."),
             PreflightCheck("신호 상실 동작", if (report.lostLinkActionIsRth) "RTH" else "RTH 아님", report.lostLinkActionIsRth, "통신 상실 동작이 RTH가 아닙니다."),
             PreflightCheck(
-                "첫 전주 거리", firstDist?.let { "${it.toInt()}m" } ?: "--",
+                FIRST_POLE, firstDist?.let { "${it.toInt()}m" } ?: "--",
                 firstDist == null || firstDist <= params.vlosRadiusM, "첫 전주가 가시권 반경 밖입니다(${firstDist?.toInt()}m, 반경 ${params.vlosRadiusM.toInt()}m).",
             ),
         )
     }
+
+    /** 수동 비행(미션 없음, 10.5.5 [카메라 뷰 입력])의 항목: 소티 배터리 예상·첫 전주 거리를 뺀다. */
+    fun manual(report: PreflightReport): List<PreflightCheck> =
+        checklist(report, FlightParams(), 0.0, null).filterNot { it.label == BATTERY || it.label == FIRST_POLE }
 
     /** 경고를 확인해도 시작할 수 없는 실패가 있는지. */
     fun blocked(checks: List<PreflightCheck>) = checks.any { !it.ok && it.blocking }

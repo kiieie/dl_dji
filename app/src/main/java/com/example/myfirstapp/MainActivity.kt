@@ -39,9 +39,9 @@ import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
 import com.example.myfirstapp.ui.flight.ManualFlightScreen
+import com.example.myfirstapp.ui.procedure.PreflightScreen
 import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.album.AlbumScreen
-import com.example.myfirstapp.ui.mission.MissionListScreen
 import com.example.myfirstapp.ui.result.ResultScreen
 import com.example.myfirstapp.ui.settings.SettingsHub
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
@@ -167,7 +167,8 @@ class MainActivity : ComponentActivity() {
                     onAlbum = { _, _ -> nav.navigate("album") },
                     onFlight = ::openFlight,
                     onNewPlan = { pid -> nav.navigate("map/$pid") },
-                    onCamera = { nav.navigate("camera") },
+                    // Pilot 2 [카메라 뷰 입력] → 비행 전 점검 → 카메라 뷰(10.5.5)
+                    onCamera = { nav.navigate("preflight?camera=true") },
                     onSettings = { nav.navigate("settings?general=true") { launchSingleTop = true } },
                     onAircraftCheck = { nav.navigate("settings") { launchSingleTop = true } },
                     onVerification = { nav.navigate("verify") },
@@ -182,6 +183,15 @@ class MainActivity : ComponentActivity() {
                     onOpenMission = { m -> openFlight(m.projectId, m.missionId) },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                     onLibrary = { nav.navigate("projects") { popUpTo("home") } },
+                    onPreflight = { nav.navigate("preflight?camera=false") { launchSingleTop = true } },
+                )
+            }
+            // 비행 전 점검(10.5.5): camera면 [카메라 뷰 입력]으로 수동 비행 카메라 뷰(점검 화면은 스택에서 뺌), 아니면 닫기만
+            composable("preflight?camera={camera}", listOf(navArgument("camera") { type = NavType.BoolType; defaultValue = false })) { e ->
+                val toCamera = e.arguments!!.getBoolean("camera")
+                PreflightScreen(
+                    onClose = { nav.popBackStack() },
+                    onNext = if (toCamera) ({ nav.navigate("camera") { popUpTo("preflight?camera={camera}") { inclusive = true } } }) else null,
                 )
             }
             // 비행경로(마스터-디테일). pid가 있으면 그 프로젝트를 고른 채 연다
@@ -194,24 +204,30 @@ class MainActivity : ComponentActivity() {
                     onFlight = { pid, mid -> nav.navigate("flight/$pid/$mid") { launchSingleTop = true } },
                     onReplan = { pid, mid -> nav.navigate("map/$pid?replan=$mid") },
                     onResult = { pid, mid -> nav.navigate("result/$pid/$mid") },
+                    onCopy = { pid, mid -> nav.navigate("map/$pid?copy=$mid") },
                 )
             }
             composable(
-                "map/{pid}?replan={replan}",
-                listOf(navArgument("pid") { type = NavType.LongType }, navArgument("replan") { type = NavType.LongType; defaultValue = -1L }),
+                "map/{pid}?replan={replan}&copy={copy}",
+                listOf(
+                    navArgument("pid") { type = NavType.LongType }, navArgument("replan") { type = NavType.LongType; defaultValue = -1L },
+                    navArgument("copy") { type = NavType.LongType; defaultValue = -1L },
+                ),
             ) { e ->
                 val pid = e.arguments!!.getLong("pid")
                 val replan = e.arguments!!.getLong("replan").takeIf { it > 0 }
-                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it") { launchSingleTop = true } }, replanFrom = replan)
+                val copy = e.arguments!!.getLong("copy").takeIf { it > 0 }
+                // ▶·[저장하고 수행]: 비행 화면을 비행 전 점검을 연 채로(10.5.5 → 체크리스트)
+                MapScreen(pid, dao, onBack = { nav.popBackStack() }, onStartFlight = { nav.navigate("flight/$pid/$it?pre=true") { launchSingleTop = true } }, replanFrom = replan, copyFrom = copy)
             }
-            composable("flight/{pid}/{mid}", ids) { e ->
+            composable("flight/{pid}/{mid}?pre={pre}", ids + navArgument("pre") { type = NavType.BoolType; defaultValue = false }) { e ->
                 val pid = e.arguments!!.getLong("pid")
                 val mid = e.arguments!!.getLong("mid")
                 FlightScreen(
-                    pid, mid, dao,
+                    pid, mid, dao, openPreflight = e.arguments!!.getBoolean("pre"),
                     onExit = { nav.popBackStack() },
                     // 미션이 끝나면 비행 화면을 스택에서 빼고 결과로 간다(뒤로 가면 계획 화면)
-                    onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}") { inclusive = true } } },
+                    onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}?pre={pre}") { inclusive = true } } },
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                     // 지도 [라이브러리]: 비행 화면을 닫고 그 프로젝트의 비행경로로(떠 있을 때는 버튼이 꺼짐)

@@ -9,7 +9,6 @@ import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.ProductKey
 import dji.sdk.keyvalue.key.RemoteControllerKey
 import dji.sdk.keyvalue.value.common.ComponentIndexType
-import dji.sdk.keyvalue.value.flightcontroller.RemoteControllerFlightMode
 import dji.v5.manager.KeyManager
 import dji.v5.manager.ldm.LDMManager
 import kotlinx.coroutines.withTimeoutOrNull
@@ -60,13 +59,7 @@ suspend fun djiAircraftCheck(rthNeedM: Double? = null): AircraftCheck = runCatch
     if (!keys.getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false)) {
         return AircraftCheck(rcSerial = rcSerial, rcFirmware = rcFirmware, items = listOf(CheckItem("기체 연결", "연결 안 됨", ERROR), ldmItem))
     }
-    val mode = when (read(FlightControllerKey.KeyRemoteControllerFlightMode)) {
-        RemoteControllerFlightMode.P -> 'N'
-        RemoteControllerFlightMode.S -> 'S'
-        RemoteControllerFlightMode.F -> 'F'
-        RemoteControllerFlightMode.T -> 'T'
-        else -> null
-    }
+    val mode = read(FlightControllerKey.KeyRemoteControllerFlightMode).letter()
     val compassError = read(FlightControllerKey.KeyCompassHasError)
     val imuWarming = read(FlightControllerKey.KeyIsIMUWarmingUp)
     val pct = read(BatteryKey.KeyChargeRemainingInPercent)
