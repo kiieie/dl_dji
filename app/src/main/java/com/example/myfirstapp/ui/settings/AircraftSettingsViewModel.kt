@@ -7,13 +7,18 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.myfirstapp.drone.AircraftCheck
 import com.example.myfirstapp.drone.AircraftSetting
+import com.example.myfirstapp.data.MapSource
+import com.example.myfirstapp.data.SettingsStore
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** 기체 설정 탭 화면 상태. [values]는 항목 이름 → 읽은 값(못 읽으면 없음). [confirming]은 확인을 기다리는 동작. */
+/** 기체 설정 탭 화면 상태. [values]는 항목 `id` → 읽은 값(못 읽으면 없음). [confirming]은 확인을 기다리는 동작. */
 data class AircraftSettingsUiState(
     val tab: Int = 0,
     val values: Map<String, Any?> = emptyMap(),
@@ -26,7 +31,7 @@ data class AircraftSettingsUiState(
     val checking: Boolean = false,
 )
 
-/** Pilot 2식 기체 설정(10장 ⑥, 매뉴얼 57쪽). 탭을 열 때 그 탭의 값을 기체에서 읽고, 바꾸면 쓰고 다시 읽는다. */
+/** Pilot 2식 ⋯ 설정(10.5.6, 매뉴얼 57쪽). 탭을 열 때 그 탭의 값을 기체에서 읽고, 바꾸면 쓰고 다시 읽는다. */
 class AircraftSettingsViewModel(
     val tabs: List<Pair<String, List<AircraftSetting>>>,
     private val readCheck: suspend () -> AircraftCheck = { AircraftCheck() },
@@ -56,7 +61,8 @@ class AircraftSettingsViewModel(
         val items = tabs.getOrNull(_state.value.tab)?.second ?: return
         viewModelScope.launch {
             _state.update { it.copy(loading = true) }
-            val values = items.associate { it.label to it.load() }
+            // 함께 읽는다: 기체가 모르는 키는 시간 제한까지 기다리므로 차례로 읽으면 탭이 늦게 뜬다
+            val values = items.map { async { it.id to it.load() } }.awaitAll().toMap()
             _state.update { it.copy(values = values, loading = false) }
         }
     }
@@ -89,3 +95,17 @@ class AircraftSettingsViewModel(
             viewModelFactory { initializer { AircraftSettingsViewModel(tabs(), readCheck) } }
     }
 }
+
+/**
+ * ⋯ 일반 탭 앞의 앱 항목(10.5.6, Pilot 2 일반 지도 전환 · 현재 비행경로 표시 · GPS 표시 · 단위 설정). 지도 전환은 배경 지도 설정(7.4)이고,
+ * 나머지는 우리 앱이 정해 둔 표시라 바꾸는 칸이 없다.
+ */
+fun appGeneralSettings(store: SettingsStore) = listOf(
+    AircraftSetting(
+        "지도 전환", AircraftSetting.Kind.Choice(MapSource.entries.map { it.title }, dropdown = true), "모든 지도의 레이어 버튼과 같은 값",
+        read = { store.mapSource.first().ordinal }, write = { v -> store.setMapSource(MapSource.entries[v as Int]) },
+    ),
+    AircraftSetting("현재 비행경로 표시", AircraftSetting.Kind.Info, "비행 지도의 주황 궤적(10.5.4)", read = { "늘 표시" }),
+    AircraftSetting("GPS 표시", AircraftSetting.Kind.Info, read = { "WGS84 십진 도" }),
+    AircraftSetting("단위 설정", AircraftSetting.Kind.Info, read = { "미터법(m · m/s)" }),
+)

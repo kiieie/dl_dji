@@ -241,7 +241,7 @@ private fun ChoiceLine(a: AircraftSetting, value: Any?, vm: PreflightViewModel) 
 
 /** 홈포인트 버튼(Pilot 2 [기체 H][조종기 A]): 그림 + 글자 한 자. 설명은 [label]. */
 @Composable
-private fun HomeButton(icon: StatusIcon, mark: String, label: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun HomeButton(icon: StatusIcon, mark: String, label: String, enabled: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.height(Dimens.TouchMedium).border(1.dp, if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
             .clickable(enabled = enabled, onClickLabel = label, onClick = onClick).padding(horizontal = 12.dp).semantics { contentDescription = label },

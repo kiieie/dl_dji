@@ -87,6 +87,10 @@ object Tuning {
 
         /** FPV 영상 크기를 모를 때(모의 기체·스트림 전) 보는 영상 비율: M3E 사진 모드 4:3(Pilot 2 카메라 뷰 양옆 검은 띠). */
         const val VIDEO_ASPECT_DEFAULT = 4.0 / 3.0
+
+        /** 영상 전송 신호 품질(%) 문턱: 이 이상 강함(흰 막대 3), [SIGNAL_FAIR_PCT] 이상 보통(노랑 2), 아래 약함(빨강 1). Pilot 2 매뉴얼 56쪽. */
+        const val SIGNAL_GOOD_PCT = 60
+        const val SIGNAL_FAIR_PCT = 30
     }
 
     /**

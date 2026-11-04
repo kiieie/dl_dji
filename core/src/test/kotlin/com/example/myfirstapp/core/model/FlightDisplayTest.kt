@@ -26,6 +26,31 @@ class FlightDisplayTest {
     }
 
     @Test
+    fun `비행 모드 글자는 다중 비행 모드와 F 자리 설정을 따른다`() {
+        assertEquals('N', flightModeLetter('S', multiMode = false, fMode = 'T'))
+        assertEquals('N', flightModeLetter('F', multiMode = false, fMode = 'A'))
+        assertEquals('S', flightModeLetter('S', multiMode = true, fMode = 'T'))
+        assertEquals('T', flightModeLetter('F', multiMode = true, fMode = 'T'))
+        assertEquals('A', flightModeLetter('F', multiMode = true, fMode = 'A'))
+        assertEquals('N', flightModeLetter('N', multiMode = true, fMode = 'A'))
+        // 설정을 못 읽으면 스위치 글자 그대로
+        assertEquals('F', flightModeLetter('F', multiMode = null, fMode = null))
+        assertEquals('T', flightModeLetter('T', multiMode = null, fMode = null))
+        assertNull(flightModeLetter(null, multiMode = true, fMode = 'T'))
+    }
+
+    @Test
+    fun `신호 강도 글과 대역폭 글`() {
+        assertEquals("강함", signalWord(60))
+        assertEquals("보통", signalWord(59))
+        assertEquals("보통", signalWord(30))
+        assertEquals("약함", signalWord(29))
+        assertEquals("40MHz", bandwidthLabel("BANDWIDTH_40MHZ"))
+        assertEquals("5MHz", bandwidthLabel("BANDWIDTH_5MHZ"))
+        assertNull(bandwidthLabel("UNKNOWN"))
+    }
+
+    @Test
     fun `배터리 띠는 땅에서 초록 하나, 떠 있으면 착륙 빨강 RTH 주황 그 위 초록`() {
         val ground = batteryBand(70.0, flying = false, rthPct = 18, landPct = 8, criticalPct = 22)
         assertEquals(listOf(BandSegment(0f, 0.7f, BatteryLevel.OK)), ground)

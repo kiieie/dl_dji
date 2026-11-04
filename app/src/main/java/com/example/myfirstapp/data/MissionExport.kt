@@ -1,5 +1,8 @@
 package com.example.myfirstapp.data
 
+import com.example.myfirstapp.AppConfig
+import com.example.myfirstapp.core.model.Annotations
+import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.ReviewVerdict
 import com.example.myfirstapp.core.model.TargetLabels
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +41,7 @@ private fun csvField(v: Any?): String {
  * 미션 결과를 ZIP으로 묶는다(F-16, 10장 ⑤). 들어가는 것:
  * - `result.csv`: 전주별 결과와 1차 판독(UTF-8 BOM, 엑셀에서 한글이 깨지지 않게). 2차 판독(다른 플랫폼)의 입력이다
  * - `mission.json`: 미션·소티·파라미터와 전주별 사진·탐지
+ * - `annotations.geojson`: 미션 둘레의 핀포인트·선·영역(10.4.7, 2차 판독 플랫폼이 이상 위치·메모로 쓴다)
  * - `images/`: 받은 사진(파일이 없는 사진은 JSON에만 남는다)
  * - `logs/`: 미션 기간의 운용 로그(4.4)
  */
@@ -66,6 +70,8 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
     }
 
     val images = captures.mapNotNull { c -> c.filePath?.let(::File)?.takeIf { it.isFile } }
+    val around = rows.map { GeoPoint(it.lat, it.lon) } + GeoPoint(mission.homeLat, mission.homeLon)
+    val notes = Annotations.near(dao.annotations().map { it.toAnnotation() }, around, AppConfig.Annotation.EXPORT_MARGIN_M)
     val json = JSONObject()
         .put("missionId", mission.id)
         .put("project", dao.projectName(mission.projectId))
@@ -107,6 +113,7 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
         ZipOutputStream(zip.outputStream().buffered()).use { out ->
             out.putNextEntry(ZipEntry("result.csv")); out.write(csv.toByteArray()); out.closeEntry()
             out.putNextEntry(ZipEntry("mission.json")); out.write(json.toString(2).toByteArray()); out.closeEntry()
+            out.putNextEntry(ZipEntry("annotations.geojson")); out.write(annotationsGeoJson(notes).toString(2).toByteArray()); out.closeEntry()
             images.forEach { f ->
                 out.putNextEntry(ZipEntry("images/${f.name}")); f.inputStream().use { it.copyTo(out) }; out.closeEntry()
             }

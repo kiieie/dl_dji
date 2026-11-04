@@ -205,7 +205,7 @@ private fun FlightContent(
         if (!mapMain) {
             ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
             ExposureStrip(s.camera, s.videoMode, focusEnabled = s.cameraFree, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
-            CameraLeftColumn(s.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp))
+            CameraLeftColumn(s.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), s.telemetry)
             CameraColumn(
                 s = s, shutterEnabled = s.shutterFree, onShutter = vm::shutter,
                 cameraEnabled = s.cameraFree, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,

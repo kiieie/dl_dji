@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -95,6 +94,7 @@ import com.example.myfirstapp.core.model.batteryLevel
 import com.example.myfirstapp.core.model.remainingFlightSec
 import com.example.myfirstapp.core.model.videoContentRect
 import com.example.myfirstapp.core.model.zoomFrameFraction
+import com.example.myfirstapp.ui.PinpointButton
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.CardBg
 import com.example.myfirstapp.ui.theme.Caution
@@ -580,16 +580,13 @@ private fun LockGlyph(locked: Boolean) {
 }
 
 /**
- * 왼쪽 열(Pilot 2, 10.5.7): 핀포인트(H묶음 전까지 꺼 둠) · 짐벌 메뉴(짐벌 중앙 / 짐벌 아래 -90°) · AR(꺼 둠) · ZOOM/WIDE 전환.
+ * 왼쪽 열(Pilot 2, 10.5.7): 핀포인트(누름 = 기체 위치, 길게 = 설정, 10.4.7 [PinpointButton]) · 짐벌 메뉴(짐벌 중앙 / 짐벌 아래 -90°) · AR(꺼 둠) · ZOOM/WIDE 전환.
  * 미션 칸·[미션 이어서 비행]은 화면이 핀포인트 오른쪽(x 48dp)에 따로 둔다.
  */
 @Composable
-internal fun CameraLeftColumn(lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boolean) -> Unit, modifier: Modifier) {
+internal fun CameraLeftColumn(lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boolean) -> Unit, modifier: Modifier, telemetry: Telemetry?) {
     Box(modifier) {
-        Canvas(Modifier.offset(y = 4.dp).size(Dimens.TouchSmall).padding(6.dp).alpha(0.4f).semantics { contentDescription = "핀포인트(준비 중)" }) {
-            val p = Path().apply { moveTo(size.width / 2, 0f); lineTo(size.width, size.height / 2); lineTo(size.width / 2, size.height); lineTo(0f, size.height / 2); close() }
-            drawPath(p, Accent, style = Stroke(2.dp.toPx()))
-        }
+        PinpointButton(telemetry, Modifier.offset(y = 4.dp))
         var gimbal by remember { mutableStateOf(false) }
         Box(Modifier.offset(y = 68.dp)) {
             Box(
@@ -835,7 +832,7 @@ private fun MenuItem(label: String, c: Color, onClick: () -> Unit, icon: @Compos
 
 /**
  * Pilot 2 안내문(10.5.7, 11-04 녹화 0256·0258·0266): 검은 반투명 판에 흰 글. 가운데 큰 글(위에서 273dp, 파노라마 불가),
- * 가운데 작은 글(252dp, 촬영 중 조작 금지), 왼쪽 열 핀포인트 옆 두 줄(위치 레코딩 실패). [AppConfig.CameraView.NOTICE_MS] 뒤 ViewModel이 지운다.
+ * 가운데 작은 글(252dp, 촬영 중 조작 금지), 왼쪽 열 핀포인트 옆 두 줄(위치 레코딩 실패, 핀포인트 안내와 같은 모양). [AppConfig.CameraView.NOTICE_MS] 뒤 ViewModel이 지운다.
  */
 @Composable
 internal fun BoxScope.CameraNoticeView(n: CameraNotice?) {
@@ -843,10 +840,11 @@ internal fun BoxScope.CameraNoticeView(n: CameraNotice?) {
     val (place, size) = when (n.kind) {
         NoticeKind.CENTER -> Modifier.align(Alignment.TopCenter).padding(top = 273.dp) to FontSize.Title
         NoticeKind.SMALL -> Modifier.align(Alignment.TopCenter).padding(top = 252.dp) to FontSize.Caption
-        NoticeKind.PINPOINT -> Modifier.align(Alignment.TopStart).padding(start = 54.dp, top = 106.dp).widthIn(max = 208.dp) to FontSize.Body
+        // 핀포인트 안내(`AnnotationNotice`, 왼쪽 열 핀포인트 + (46, 55))와 같은 자리·폭
+        NoticeKind.PINPOINT -> Modifier.align(Alignment.TopStart).padding(start = 54.dp, top = Dimens.TopBar + 78.dp).width(Dimens.CardWidth + 64.dp) to FontSize.Body
     }
     Text(
-        n.text, place.background(CardBg, RoundedCornerShape(3.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+        n.text, place.background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
         color = Color.White, fontSize = size, maxLines = 2,
     )
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 선 주석(10.4.7, Pilot 2 지도 왼쪽): 끝점 둘을 잇는 사선. 색은 Icon tint로 정한다 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M5,5L19,19" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M2.5,4a1.5,1.5 0,1 0,3,0a1.5,1.5 0,1 0,-3,0M18.5,20a1.5,1.5 0,1 0,3,0a1.5,1.5 0,1 0,-3,0" />
+</vector>

@@ -10,6 +10,7 @@ import com.example.myfirstapp.core.model.CameraStatus
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FocusMode
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.flightModeLetter
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.PhotoModes
@@ -224,7 +225,14 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(FlightControllerKey.KeyWindSpeed) { w -> _telemetry.update { it.copy(windSpeedMps = w?.div(10.0)) } }
         on(FlightControllerKey.KeyWindDirection) { d -> _telemetry.update { it.copy(windDirDeg = windDeg(d)) } }
         on(FlightControllerKey.KeyHeightAboveSeaLevel) { h -> _telemetry.update { it.copy(altitudeAslM = h?.height) } }
-        on(FlightControllerKey.KeyRemoteControllerFlightMode) { m -> _telemetry.update { it.copy(rcMode = m.letter()) } }
+        // 상단 바 비행 모드(10.5.10): 스위치 F는 다중 비행 모드·T/N/S·A/N/S 설정에 따라 T 또는 A
+        var rcSwitch: Char? = null
+        var multiMode: Boolean? = null
+        var fMode: Char? = null
+        fun rcMode() = _telemetry.update { it.copy(rcMode = flightModeLetter(rcSwitch, multiMode, fMode)) }
+        on(FlightControllerKey.KeyRemoteControllerFlightMode) { m -> rcSwitch = m.letter(); rcMode() }
+        on(FlightControllerKey.KeyMultipleFlightModeEnabled) { m -> multiMode = m; rcMode() }
+        on(FlightControllerKey.KeyCustomFunctionMode) { m -> fMode = m.fLetter(); rcMode() }
         // 노출 띠(10.5.2). ponytail: 렌즈를 정하지 않은 키(기본 렌즈)로 읽는다. 망원 보기에서 값이 광각 것이면 렌즈별 키로 바꾼다(실기 확인)
         on(CameraKey.KeyExposureSettings, camera) { e ->
             _camera.update {
