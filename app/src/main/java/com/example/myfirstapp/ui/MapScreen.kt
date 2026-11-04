@@ -278,7 +278,7 @@ fun MapScreen(
                 // 오른쪽 지도 도구(10.5.4): 검색 · 전체 보기 · 레이어(배경 지도 고르기, 배경 끄기) · 지우기(영역) · 과녁(기체·조종기 위치로)
                 Column(Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val searchable = remember(s.poles) { s.poles.orEmpty().map { it.toPole() } }
-                    MapSearchButton(searchable, Dimens.TouchMedium, notes = notes.items, onPickNote = { vm.focusOn(it.points[0]) }) { vm.focusOn(it.position, it.poleId) }
+                    MapSearchButton(searchable, Dimens.TouchMedium, notes = notes.items, onPickNote = { vm.focusOn(it.points[0]) }, onPickPoint = { vm.focusOn(it) }) { vm.focusOn(it.position, it.poleId) }
                     MapTool("전체 보기", onClick = { fitRequest++ }) { tint -> Icon(painterResource(R.drawable.ic_fit), contentDescription = null, tint = tint, modifier = Modifier.size(16.dp)) }
                     MapLayerButton(s.background.source, Dimens.TouchMedium, vm::setMapSource, background = showBackground, onToggleBackground = { showBackground = !showBackground })
                     MapTool("지우기", enabled = s.vertices.isNotEmpty(), onClick = vm::clearArea) { tint ->
