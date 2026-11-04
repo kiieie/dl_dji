@@ -1,6 +1,7 @@
 package com.example.myfirstapp.core.detect
 
 import com.example.myfirstapp.core.model.Detection
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -24,11 +25,60 @@ fun sampleSize(longSide: Int, crop: Float, input: Int): Int {
     return s
 }
 
-/** 가운데 [fraction] 영역(가로·세로 같은 비율)에서 찾은 상자를 원본 대비 0~1 비율로 옮긴다(9.6 실시간 가운데 자르기). */
-fun Detection.fromCenterCrop(fraction: Float): Detection {
-    val o = (1 - fraction) / 2
-    return copy(x = o + x * fraction, y = o + y * fraction, w = w * fraction, h = h * fraction)
+/** 이미지 안 직사각형(픽셀). */
+data class Region(val left: Int, val top: Int, val width: Int, val height: Int)
+
+/** [w]×[h] 이미지 가운데 [fraction] 영역(가로·세로 같은 비율, 9.6 실시간 가운데 자르기). */
+fun centerRegion(w: Int, h: Int, fraction: Float): Region {
+    val cw = (w * fraction).toInt()
+    val ch = (h * fraction).toInt()
+    return Region((w - cw) / 2, (h - ch) / 2, cw, ch)
 }
+
+/**
+ * [r] 영역(원본 [imageW]×[imageH] 픽셀 기준) 안에서 0~1 비율로 찾은 상자를 원본 대비 0~1 비율로 옮긴다.
+ * 축소해 푼 전체에서 자른 영역(옛 방식)이든, 원본 좌표로 가운데만 푼 영역(9.7 O1)이든 같은 식이다.
+ */
+fun Detection.fromRegion(r: Region, imageW: Int, imageH: Int) = copy(
+    x = (r.left + x * r.width) / imageW,
+    y = (r.top + y * r.height) / imageH,
+    w = w * r.width / imageW,
+    h = h * r.height / imageH,
+)
+
+/** 두 상자의 IoU. 0~1 비율 좌표여도 픽셀 IoU와 같다(가로·세로 배율이 교집합·합집합에 똑같이 곱해진다). */
+fun Detection.iou(o: Detection): Float {
+    val iw = max(0f, min(x + w, o.x + o.w) - max(x, o.x))
+    val ih = max(0f, min(y + h, o.y + o.h) - max(y, o.y))
+    val inter = iw * ih
+    val union = w * h + o.w * o.h - inter
+    return if (union <= 0f) 0f else inter / union
+}
+
+/** [a]의 상자 중 [b]에 라벨이 같고 IoU [minIou] 이상, 점수 차 [maxScoreDiff] 이하인 짝이 있는 수(9.7 O1 디코딩 방식 대조). */
+fun agreeing(a: List<Detection>, b: List<Detection>, minIou: Float, maxScoreDiff: Float): Int =
+    a.count { d -> b.any { it.label == d.label && it.iou(d) >= minIou && abs(it.score - d.score) <= maxScoreDiff } }
+
+/**
+ * JPEG의 첫 SOF 마커(0xC0 기준, 0xC2 점진 등). JPEG가 아니거나 SOF 전에 끝나면 null.
+ * 점진 JPEG는 영역 디코딩도 결국 전체를 풀어야 해서 옛 방식으로 간다(9.7 O1).
+ */
+fun jpegSof(b: ByteArray): Int? {
+    if (b.size < 4 || b[0] != 0xFF.toByte() || b[1] != 0xD8.toByte()) return null
+    var i = 2
+    while (i + 3 < b.size) {
+        if (b[i] != 0xFF.toByte()) return null
+        val m = b[i + 1].toInt() and 0xFF
+        if (m == 0xFF) { i++; continue } // 채움 바이트
+        if (m in 0xC0..0xCF && m != 0xC4 && m != 0xC8 && m != 0xCC) return m
+        if (m == 0xDA || m == 0xD9) return null // SOF 없이 영상 시작·끝
+        i += 2 + ((b[i + 2].toInt() and 0xFF) shl 8 or (b[i + 3].toInt() and 0xFF))
+    }
+    return null
+}
+
+/** 점진(progressive) JPEG이면 참(SOF2·6·10·14). */
+fun isProgressiveJpeg(b: ByteArray) = jpegSof(b) in setOf(0xC2, 0xC6, 0xCA, 0xCE)
 
 /**
  * YOLO(v8/11) 출력 `1×(4+C)×N`을 탐지 목록으로 바꾼다(9.3 4단계).
@@ -62,24 +112,15 @@ class YoloDecoder(
             val y1 = ((cy + h / 2 - box.padY) / box.scale / box.imageH).coerceIn(0f, 1f)
             Detection(labels[best], score, x0, y0, x1 - x0, y1 - y0, labels[best] in alertLabels)
         }
-        return nms(candidates, box)
+        return nms(candidates)
     }
 
     /** 클래스별 NMS: 점수 순으로 고르고 같은 라벨에서 IoU가 기준을 넘는 상자를 버린다. */
-    private fun nms(list: List<Detection>, box: Letterbox): List<Detection> {
+    private fun nms(list: List<Detection>): List<Detection> {
         val kept = mutableListOf<Detection>()
         for (d in list.sortedByDescending { it.score }) {
-            if (kept.none { it.label == d.label && iou(it, d, box) > iouThreshold }) kept += d
+            if (kept.none { it.label == d.label && it.iou(d) > iouThreshold }) kept += d
         }
         return kept
-    }
-
-    /** 픽셀 기준 IoU(비율 좌표는 가로세로 배율이 달라 원본 크기를 곱한다). */
-    private fun iou(a: Detection, b: Detection, box: Letterbox): Float {
-        val iw = max(0f, min(a.x + a.w, b.x + b.w) - max(a.x, b.x)) * box.imageW
-        val ih = max(0f, min(a.y + a.h, b.y + b.h) - max(a.y, b.y)) * box.imageH
-        val inter = iw * ih
-        val union = (a.w * a.h + b.w * b.h) * box.imageW * box.imageH - inter
-        return if (union <= 0f) 0f else inter / union
     }
 }

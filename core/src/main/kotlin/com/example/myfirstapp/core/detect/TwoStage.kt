@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 // 두 단계 탐지(9.6): 비행 중에는 가장 최근 사진 한 장만 가볍게, 착륙 뒤에는 모든 사진을 정밀 모델로.
 
@@ -39,13 +40,15 @@ data class BackfillProgress(val done: Int = 0, val total: Int = 0, val running: 
  * - [canRun]이 거짓이 되면(이륙·발열·배터리·속도 측정) 처리 중인 사진을 취소하고 쉰다. 다시 참이 되면 남은 것부터 한다(끝낸 사진은 [remaining]에 없다).
  * - 다 끝내면 [kick](새 사진 저장·착륙)까지 기다린다. 앱을 다시 켜도 [remaining]이 DB를 보므로 남은 것부터 한다.
  * - 한 사진이 실패하면 이번 실행 동안은 건너뛴다(같은 사진에서 맴돌지 않게). 앱을 다시 켜면 다시 해 본다.
- * [onIdle]은 쉬거나 다 끝냈을 때 부른다(모델을 닫아 메모리를 돌려줌).
+ * [onIdle]은 쉬거나 다 끝냈을 때 부른다(모델을 닫아 메모리를 돌려줌). 다 끝냈을 때는 [idleCloseMs] 동안 새 사진을 기다렸다가 부른다
+ * (착륙 뒤 한 장씩 받는 사진마다 모델을 다시 열지 않게, 9.7 O5). 쉴 때(이륙·발열·배터리·속도 측정)는 바로 부른다.
  */
 class PreciseBackfill(
     private val canRun: Flow<Boolean>,
     private val remaining: suspend () -> List<Long>,
     private val process: suspend (Long) -> Unit,
     private val onIdle: () -> Unit = {},
+    private val idleCloseMs: Long = 0,
 ) {
     private val kicks = Channel<Unit>(Channel.CONFLATED)
     private val failed = mutableSetOf<Long>()
@@ -73,8 +76,10 @@ class PreciseBackfill(
                     if (next.isEmpty()) {
                         done = 0
                         _progress.value = BackfillProgress()
-                        onIdle()
-                        kicks.receive()
+                        if (withTimeoutOrNull(idleCloseMs) { kicks.receive() } == null) {
+                            onIdle()
+                            kicks.receive()
+                        }
                         continue
                     }
                     _progress.value = BackfillProgress(done, done + next.size, running = true)
