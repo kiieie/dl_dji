@@ -14,7 +14,7 @@ class EnergyModelTest {
     @Test
     fun `복귀 필요량은 수평 이동에 RTH 고도까지 오르기와 내려앉기를 더한다`() {
         // 이동 50m → RTH 60m, 사선 촬영 27m: (60 − 27 + 60)m / 3m/s를 호버로
-        val vertical = (60.0 - 27.0 + 60.0) / 3.0 * (100.0 / (28 * 60))
+        val vertical = (60.0 - 27.0 + 60.0) / 3.0 * (100.0 / (31 * 60))
         assertEquals(diagonal.move(500.0) + vertical, diagonal.returnPct(500.0), 1e-9)
     }
 
@@ -33,5 +33,15 @@ class EnergyModelTest {
         assertEquals(4, diagonal.equipmentShots(listOf(bank)))
         assertEquals(0, overhead.equipmentShots(listOf(bank)))
         assertTrue(diagonal.sortieCost(1000.0, 1, 0, 4) > diagonal.sortieCost(1000.0, 1))
+    }
+
+    @Test
+    fun `2026-11-03 현장 미션 두 번을 실측보다 조금 많게(0~15%) 추정한다`() {
+        // 실제로 난 거리(미션 + 복귀)와 사진 수로 셈(tools/energy_fit.py, docs/evidence/2026-11-03-field/energy.md)
+        val m19 = EnergyModel(EnergyParams(), FlightParams(speedMps = 5.0, transitAltitudeM = 50.0, diagonalAltitudeM = 27.0, shotMode = ShotMode.DIAGONAL4))
+        val m20 = EnergyModel(EnergyParams(), FlightParams(speedMps = 8.0, transitAltitudeM = 30.0, diagonalAltitudeM = 30.0, shotMode = ShotMode.DIAGONAL4))
+        listOf(m19.sortieCost(452.0, 4, longJumps = 1) to 13.0, m20.sortieCost(1394.0, 15, extraShots = 4) to 29.0).forEach { (est, used) ->
+            assertTrue("예상 $est%, 실측 $used%", est in used..used * 1.15)
+        }
     }
 }

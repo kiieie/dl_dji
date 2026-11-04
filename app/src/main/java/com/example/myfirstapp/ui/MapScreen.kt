@@ -514,7 +514,7 @@ internal fun Stepper(label: String, value: String, modifier: Modifier, enabled: 
     }
 }
 
-/** 소티별 예상 시간·배터리(F-08)와 도달 불가 전주(5.4). 패널 스크롤 아래쪽. */
+/** 소티별 예상 시간(F-08)과 도달 불가 전주(5.4). 패널 스크롤 아래쪽. 배터리 %는 업로드 전 비행 전 점검에서만 보인다(5.5, 2026-11-04). */
 @Composable
 private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
     Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -522,7 +522,7 @@ private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.size(8.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(SORTIE_COLORS[i % SORTIE_COLORS.size]))))
                 Text(
-                    "소티 ${i + 1} · ${s.poles.size}개 · ${mmss(s.estDurationSec)} · 배터리 ${s.estBatteryPct.toInt()}%",
+                    "소티 ${i + 1} · ${s.poles.size}개 · ${mmss(s.estDurationSec)}",
                     fontSize = FontSize.Caption, color = TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }

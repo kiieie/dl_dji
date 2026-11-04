@@ -44,13 +44,13 @@ class RoutePlannerTest {
 
     @Test
     fun `소티 분할은 고르게 - 이륙 지점 옆 1개만 떼는 1 + 25 분할을 하지 않는다`() {
-        // 11-03 현장: 26개를 1 + 25로 나눴다(비용 합 최소). 일직선 40m 간격 26개가 같은 분할을 만든다.
+        // 11-03 현장: 26개를 1 + 25로 나눴다(비용 합 최소). 11-03 보정(소모율 낮춤) 뒤에는 일직선 40m 간격 32개가 두 소티가 된다.
         val model = EnergyModel(EnergyParams(), FlightParams())
-        val poles = List(26) { pole("P$it", 30.0 + 40.0 * it, 0.0) }
+        val poles = List(32) { pole("P$it", 30.0 + 40.0 * it, 0.0) }
         val plan = RoutePlanner(model).plan(home, poles)
         val sizes = plan.sorties.map { it.poles.size }
         assertEquals(2, sizes.size)
-        assertEquals(26, sizes.sum())
+        assertEquals(32, sizes.sum())
         assertTrue("고르지 않음: $sizes", sizes.min() >= 10)
         plan.sorties.forEach { assertTrue(it.estBatteryPct <= model.budget() + 1e-9) }
         val costs = plan.sorties.map { it.estBatteryPct }
