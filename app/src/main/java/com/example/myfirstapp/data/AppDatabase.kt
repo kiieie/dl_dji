@@ -484,6 +484,10 @@ interface ProjectDao {
     @Query("SELECT * FROM telemetry_sample WHERE sortieId = :sortieId ORDER BY at")
     suspend fun telemetry(sortieId: Long): List<TelemetrySampleEntity>
 
+    /** 가장 최근 비행의 마지막 기체 위치(수동 비행 미니맵이 맞출 곳, 위치를 모를 때). */
+    @Query("SELECT * FROM telemetry_sample WHERE lat IS NOT NULL AND lon IS NOT NULL ORDER BY at DESC LIMIT 1")
+    suspend fun lastTelemetryPosition(): TelemetrySampleEntity?
+
     @Insert
     suspend fun insertCapture(capture: CaptureEntity): Long
 

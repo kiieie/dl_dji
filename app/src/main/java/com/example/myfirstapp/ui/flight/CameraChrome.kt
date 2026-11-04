@@ -1,13 +1,17 @@
 package com.example.myfirstapp.ui.flight
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,148 +27,255 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onLongClick
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.AppConfig
+import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.R
 import com.example.myfirstapp.core.executor.ExecState
+import com.example.myfirstapp.core.model.BatteryLevel
+import com.example.myfirstapp.core.model.CameraStatus
+import com.example.myfirstapp.core.model.FlightTitle
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ObstacleLevel
+import com.example.myfirstapp.core.model.Telemetry
+import com.example.myfirstapp.core.model.batteryBand
+import com.example.myfirstapp.core.model.batteryLevel
+import com.example.myfirstapp.core.model.remainingFlightSec
+import com.example.myfirstapp.core.model.zoomFrameFraction
+import com.example.myfirstapp.ui.theme.Accent
+import com.example.myfirstapp.ui.theme.CardBg
 import com.example.myfirstapp.ui.theme.Caution
+import com.example.myfirstapp.ui.theme.ControlBg
+import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.Error
-import com.example.myfirstapp.ui.theme.TextSoft
+import com.example.myfirstapp.ui.theme.FontSize
+import com.example.myfirstapp.ui.theme.Inactive
+import com.example.myfirstapp.ui.theme.Muted
+import com.example.myfirstapp.ui.theme.SurfaceContainerHigh
+import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 import com.example.myfirstapp.ui.theme.Tertiary
+import com.example.myfirstapp.ui.theme.TextSoft
 import com.example.myfirstapp.ui.theme.Warning
 import com.example.myfirstapp.ui.theme.numberStyle
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.compose.ui.unit.TextUnit
-import com.example.myfirstapp.ui.theme.CardBg
-import com.example.myfirstapp.ui.theme.Dimens
-import com.example.myfirstapp.ui.theme.FontSize
-import com.example.myfirstapp.ui.theme.Inactive
-import com.example.myfirstapp.ui.theme.Muted
-import com.example.myfirstapp.ui.theme.SurfaceContainerHigh
-import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
 
-// 카메라 뷰 공통 틀(10.4.3 자동·수동 비행 시안, Pilot 2 54~57쪽). 자동 비행([FlightScreen])과 수동 비행([ManualFlightScreen])이 같이 쓴다.
+// 카메라 뷰 공통 틀(10.5.1~10.5.3, Pilot 2 카메라 뷰와 같은 배치, 시안 Flight3). 자동 비행([FlightScreen])과 수동 비행([ManualFlightScreen])이 같이 쓴다.
 // 크기는 [Dimens](상단 바 높이 [Dimens.TopBar], 카드 폭 [Dimens.CardWidth]), 카드 바탕은 [CardBg](ui/theme).
 
+/** 상단 상태 칸 경고 한 줄. [severe]면 빨강 바탕. */
+internal data class TopWarning(val text: String, val severe: Boolean)
+
+/** 상단 상태 칸 경고 목록(10.5.1): 연결 끊김·충돌·배터리·RTH 카운트다운·GNSS·점검 실패. 없으면 "정상". */
+internal fun topWarnings(s: FlightUiState): List<TopWarning> {
+    val t = s.telemetry
+    val lost = s.exec.state == ExecState.LinkLost || t?.connected == false
+    return buildList {
+        if (lost) add(TopWarning("연결 끊김", true))
+        s.obstacles.text?.let { add(TopWarning(it, s.obstacles.level == ObstacleLevel.DANGER)) }
+        s.exec.rthCountdownSec?.let { add(TopWarning("배터리 부족 · ${it}초 뒤 RTH", true)) }
+        if (t != null && t.connected) {
+            when (batteryLevel(t.batteryPct, t.lowPct, t.criticalPct)) {
+                BatteryLevel.CRITICAL -> add(TopWarning("배터리 심각 · ${t.batteryPct.toInt()}%", true))
+                BatteryLevel.LOW -> add(TopWarning("배터리 낮음 · ${t.batteryPct.toInt()}%", false))
+                BatteryLevel.OK -> Unit
+            }
+            if (t.gpsLevel < 3) add(TopWarning("GNSS 약함 · 주의해서 비행", false))
+        }
+        s.exec.preflightFailures.forEach { add(TopWarning("점검 실패: $it", false)) }
+    }.sortedByDescending { it.severe }
+}
+
 /**
- * 상단 바(Pilot 2 56쪽 순서): 뒤로 · 시스템 상태 칸(196dp, 경고는 빨강) · 가운데 제목 · 현재 시각 · GNSS · RC 신호 · 기체 배터리 · RC 배터리 · 설정.
- * 아래에 배터리 띠(빨강 0~10%, 노랑 10~20%, 초록 그 위, H는 복귀에 필요한 양).
+ * 상단 바(Pilot 2 순서, 10.5.1): 뒤로 · 표지 · 시스템 상태 칸(경고는 깜박임, 누르면 목록) · 가운데 비행 상태([title], 누르면 비행 전 점검) ·
+ * 현재 시각 · 위성 수(0이면 빨강) · RC 신호(흰 3 / 노랑 2 / 빨강 1, 누르면 신호) · 기체 배터리 %·V(누르면 잔량·전압·온도) · RC 배터리 · ⋯ 설정.
+ * 아래에 배터리 띠([BatteryBand]).
  */
 @Composable
 internal fun TopBar(
-    s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> Unit, label: String? = null, canExit: Boolean = s.canExit,
+    s: FlightUiState, title: FlightTitle, onExit: () -> Unit, onOpenSettings: () -> Unit, canExit: Boolean = s.canExit,
     /** 가운데 비행 상태 글자를 누르면(Pilot 2: 비행 전 점검을 엶, 10.5.1). */
     onTitleClick: (() -> Unit)? = null,
 ) {
     val t = s.telemetry
-    val state = s.exec.state
-    val lost = state == ExecState.LinkLost || t?.connected == false
-    val weakGnss = t != null && t.connected && t.gpsLevel < 3
-    val warn = s.exec.rthCountdownSec != null || weakGnss
-    // 충돌 경고(13번): 위험은 빨강 바탕, 주의는 주황 점
-    val obstacle = s.obstacles.text
-    val (status, alarm) = when {
-        lost -> "연결 끊김" to true
-        obstacle != null && s.obstacles.level == ObstacleLevel.DANGER -> obstacle to true
-        s.exec.rthCountdownSec != null -> "배터리 부족 · ${s.exec.rthCountdownSec}초 뒤 RTH" to true
-        weakGnss -> "GNSS 약함 · 주의해서 비행" to true
-        obstacle != null -> obstacle to false
-        t == null -> "기체 없음" to false
-        state == ExecState.Paused -> "일시정지 · 수동 비행" to false
-        state == ExecState.ReturningHome -> "복귀 중" to false
-        else -> "정상 · 비행 가능" to false
-    }
-    val dot = when {
-        warn || lost -> Color.White
-        t == null -> Muted
-        obstacle != null -> Warning
-        state == ExecState.Paused || state == ExecState.ReturningHome -> Warning
-        else -> Tertiary
-    }
+    val warnings = topWarnings(s)
+    val alarm = warnings.any { it.severe }
+    val rc by (LocalContext.current.applicationContext as InspectionApp).rcBattery.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().height(Dimens.HeaderCamera).background(Color.Black)) {
-            Row(Modifier.fillMaxSize().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = onExit, enabled = canExit, modifier = Modifier.size(Dimens.TouchSmall)) {
-                    Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(14.dp), tint = if (canExit) Color.White else Inactive)
-                }
-                com.example.myfirstapp.ui.AppBadge()
-                Row(
-                    Modifier.width(Dimens.StatusBox).height(22.dp).background(if (alarm) Error else SurfaceContainerHigh, RoundedCornerShape(3.dp)).padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (alarm) Icon(painterResource(R.drawable.ic_warning), contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
-                    else Box(Modifier.size(6.dp).clip(CircleShape).background(dot))
-                    Text(status, fontSize = FontSize.Caption, fontWeight = if (alarm) FontWeight.Bold else FontWeight.Normal, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Box(Modifier.weight(1f))
-                val now by produceState(clock()) { while (true) { delay(15_000); value = clock() } }
-                Text(now, style = numberStyle(FontSize.Title), color = Color.White, modifier = Modifier.semantics { contentDescription = "현재 시각" })
-                Box(Modifier.width(1.dp).height(16.dp).background(SurfaceContainerHighest))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Icon(painterResource(R.drawable.ic_gnss), contentDescription = "GNSS", modifier = Modifier.size(13.dp), tint = if (weakGnss) Warning else Color.White)
-                    Text(t?.satellites?.toString() ?: "--", style = numberStyle(FontSize.Label), color = if (weakGnss) Warning else Color.White)
-                }
+        Row(
+            Modifier.fillMaxWidth().height(Dimens.HeaderCamera).background(Color.Black).padding(end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            IconButton(onClick = onExit, enabled = canExit, modifier = Modifier.size(Dimens.TouchSmall)) {
+                Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(14.dp), tint = if (canExit) Color.White else Inactive)
+            }
+            com.example.myfirstapp.ui.AppBadge()
+            StatusBox(warnings, alarm, connected = t != null)
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text(
+                    title.text + if (s.simulated) " · 모의 ×${FAKE_TIME_SCALE.toInt()}" else "",
+                    Modifier.clickable(enabled = onTitleClick != null, onClickLabel = "비행 전 점검") { onTitleClick?.invoke() },
+                    fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = if (title.warn) Warning else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val now by produceState(clock()) { while (true) { delay(15_000); value = clock() } }
+            Text(now, style = numberStyle(FontSize.Title), color = Color.White, modifier = Modifier.semantics { contentDescription = "현재 시각" })
+            Box(Modifier.width(1.dp).height(16.dp).background(SurfaceContainerHighest))
+            val sats = t?.satellites
+            val satColor = when {
+                t == null -> Color.White
+                sats == 0 -> Error
+                t.gpsLevel < 3 -> Warning
+                else -> Color.White
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Icon(painterResource(R.drawable.ic_gnss), contentDescription = "GNSS 위성", modifier = Modifier.size(13.dp), tint = satColor)
+                Text(sats?.toString() ?: "--", style = numberStyle(FontSize.Label), color = satColor)
+            }
+            PopupItem("RC 신호", listOf("신호 품질" to (t?.signalPct?.let { "$it%" } ?: if (t?.connected == true) "연결됨" else "연결 안 됨"))) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("RC", fontSize = FontSize.Caption, fontWeight = FontWeight.SemiBold, color = Color.White)
                     SignalBars(t?.signalPct, t?.connected == true)
                 }
-                BatteryIcon(t?.batteryPct)
-                // 조종기 자체 배터리(안드로이드 시스템 값). 기체 배터리와 같은 그림, 충전 중이면 ⚡
-                val rc by (LocalContext.current.applicationContext as InspectionApp).rcBattery.collectAsStateWithLifecycle()
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("RC", fontSize = FontSize.Caption, fontWeight = FontWeight.SemiBold, color = Color.White)
-                    BatteryIcon(rc?.pct?.toDouble(), charging = rc?.charging == true)
-                }
-                IconButton(onClick = onOpenSettings, modifier = Modifier.size(Dimens.TouchSmall)) {
-                    Icon(painterResource(R.drawable.ic_settings), contentDescription = "설정", modifier = Modifier.size(15.dp), tint = Color.White)
-                }
             }
-            Text(
-                listOfNotNull(label ?: stateLabel(state, s.exec.remaining), if (s.simulated) "모의 ×${FAKE_TIME_SCALE.toInt()}" else null).joinToString(" · "),
-                Modifier.align(Alignment.Center).clickable(enabled = onTitleClick != null, onClickLabel = "비행 전 점검") { onTitleClick?.invoke() },
-                fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1,
-            )
+            AircraftBattery(t, s.returnNeedPct)
+            // 조종기 자체 배터리(안드로이드 시스템 값). 기체 배터리와 같은 그림, 충전 중이면 ⚡
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("RC", fontSize = FontSize.Caption, fontWeight = FontWeight.SemiBold, color = Color.White)
+                BatteryIcon(rc?.pct?.toDouble(), if ((rc?.pct ?: 100) < AppConfig.Checks.BATTERY_MIN_PCT) Error else Tertiary)
+                Text((if (rc?.charging == true) "⚡" else "") + (rc?.pct?.let { "$it%" } ?: "--%"), style = numberStyle(FontSize.Body), color = Color.White)
+            }
+            Box(
+                Modifier.size(Dimens.TouchSmall).clickable(onClickLabel = "설정", onClick = onOpenSettings).semantics { contentDescription = "설정" },
+                contentAlignment = Alignment.Center,
+            ) { Text("⋯", fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = Color.White) }
         }
-        BatteryBand(t?.batteryPct, s.returnNeedPct)
+        BatteryBand(t, s.returnNeedPct)
     }
 }
 
 private fun clock() = SimpleDateFormat("HH:mm", Locale.KOREA).format(Date())
+
+/** 시스템 상태 칸(Pilot 2 "정상"): 경고가 있으면 첫 경고를 깜박이고(빨강 바탕은 심각), 누르면 경고 목록. */
+@Composable
+private fun StatusBox(warnings: List<TopWarning>, alarm: Boolean, connected: Boolean) {
+    var open by remember { mutableStateOf(false) }
+    // 경고가 있을 때만 깜박인다(없으면 애니메이션을 돌리지 않음)
+    val blink = if (warnings.isEmpty()) 1f
+    else rememberInfiniteTransition(label = "status").animateFloat(1f, 0.35f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "blink").value
+    Box {
+        Row(
+            Modifier.width(Dimens.StatusBox).height(22.dp).clip(RoundedCornerShape(3.dp))
+                .background(if (alarm) Error.copy(alpha = blink) else SurfaceContainerHigh)
+                .clickable(onClickLabel = "경고 목록") { open = true }.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            val first = warnings.firstOrNull()
+            if (first != null) Icon(painterResource(R.drawable.ic_warning), contentDescription = null, modifier = Modifier.size(12.dp).alpha(blink), tint = if (alarm) Color.White else Warning)
+            Text(
+                first?.text ?: if (connected) "정상" else "기체 없음", Modifier.alpha(if (first != null && !alarm) blink else 1f),
+                fontSize = FontSize.Caption, fontWeight = if (first != null) FontWeight.Bold else FontWeight.Normal,
+                color = if (first == null && !connected) Muted else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        DropdownMenu(open, onDismissRequest = { open = false }, containerColor = CardBg) {
+            if (warnings.isEmpty()) DropdownMenuItem({ Text("경고 없음", fontSize = FontSize.Body, color = TextSoft) }, onClick = { open = false })
+            warnings.forEach { w ->
+                DropdownMenuItem({ Text(w.text, fontSize = FontSize.Body, color = if (w.severe) Error else Warning) }, onClick = { open = false })
+            }
+        }
+    }
+}
+
+/** 누르면 값 목록이 뜨는 상단 바 항목(배터리·RC 신호, 10.5.7). */
+@Composable
+private fun PopupItem(label: String, rows: List<Pair<String, String>>, content: @Composable () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.clickable(onClickLabel = label) { open = true }) {
+        content()
+        DropdownMenu(open, onDismissRequest = { open = false }, containerColor = CardBg) {
+            rows.forEach { (k, v) ->
+                DropdownMenuItem({
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(k, Modifier.width(72.dp), fontSize = FontSize.Body, color = TextSoft)
+                        Text(v, style = numberStyle(FontSize.Body), color = Color.White)
+                    }
+                }, onClick = { open = false })
+            }
+        }
+    }
+}
+
+/** 기체 배터리(10.5.1): 그림 + %와 전압 두 줄. 낮음 문턱 이하 주황, 심각 이하 빨강. 누르면 잔량·전압·온도·RTH 필요·남은 시간. */
+@Composable
+private fun AircraftBattery(t: Telemetry?, returnNeedPct: Int) {
+    val pct = t?.takeIf { it.connected }?.batteryPct
+    val c = when (pct?.let { batteryLevel(it, t.lowPct, t.criticalPct) }) {
+        null -> Inactive
+        BatteryLevel.CRITICAL -> Error
+        BatteryLevel.LOW -> Warning
+        BatteryLevel.OK -> Tertiary
+    }
+    val need = t?.rthBatteryPct ?: returnNeedPct
+    val rows = listOf(
+        "잔량" to (pct?.let { "${it.toInt()}%" } ?: "--"),
+        "전압" to (t?.batteryVoltageV?.let { "%.1fV".format(it) } ?: "--"),
+        "온도" to (t?.batteryTempC?.let { "%.0f℃".format(it) } ?: "--"),
+        "RTH 필요" to (if (pct != null && need > 0) "$need%" else "--"),
+        "남은 비행" to (t?.let { remainingFlightSec(it, need) }?.let(::mmss) ?: "--"),
+    )
+    PopupItem("기체 배터리", rows) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            BatteryIcon(pct, c)
+            Column {
+                Text(pct?.let { "${it.toInt()}%" } ?: "--%", style = numberStyle(FontSize.Body), color = if (c == Tertiary) Color.White else c)
+                Text(t?.batteryVoltageV?.let { "%.1fV".format(it) } ?: "--V", style = numberStyle(FontSize.Micro), color = TextSoft)
+            }
+        }
+    }
+}
+
+internal fun mmss(sec: Int) = "%02d:%02d".format(sec / 60, sec % 60)
 
 /** 신호 막대 3개(Pilot 2 6번): 강함 흰 3개, 중간 노랑 2개, 약함 빨강 1개, 끊김 회색. 품질값이 없으면 연결 여부만. */
 @Composable
@@ -179,46 +290,50 @@ private fun SignalBars(q: Int?, connected: Boolean) {
         val w = size.width / 5
         for (i in 0..2) {
             val h = size.height * (i + 1) / 3
-            drawRect(if (i < n) c else Inactive, Offset(i * 2 * w, size.height - h), androidx.compose.ui.geometry.Size(w, h))
+            drawRect(if (i < n) c else Inactive, Offset(i * 2 * w, size.height - h), Size(w, h))
         }
     }
 }
 
-/** 배터리 그림과 %. 30% 아래는 빨강. [charging]이면 % 앞에 ⚡(RC 배터리). */
+/** 배터리 그림. 남은 양만큼 [fill] 색으로 채운다. */
 @Composable
-private fun BatteryIcon(pct: Double?, charging: Boolean = false) {
-    val c = when {
-        pct == null -> Inactive
-        pct < 30 -> Error
-        else -> Tertiary
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Canvas(Modifier.size(9.dp, 15.dp)) {
-            val u = size.width / 9
-            drawRect(Color.White, Offset(2.5f * u, 0f), androidx.compose.ui.geometry.Size(4 * u, 2 * u))
-            drawRect(Color.White, Offset(0.5f * u, 2 * u), androidx.compose.ui.geometry.Size(8 * u, size.height - 2.5f * u), style = androidx.compose.ui.graphics.drawscope.Stroke(u))
-            val full = size.height - 5 * u
-            val h = full * ((pct ?: 0.0) / 100).toFloat().coerceIn(0f, 1f)
-            drawRect(c, Offset(2 * u, 4 * u + full - h), androidx.compose.ui.geometry.Size(5 * u, h))
-        }
-        Text((if (charging) "⚡" else "") + (pct?.let { "${it.toInt()}%" } ?: "--%"), style = numberStyle(FontSize.Body), color = if (pct != null && pct < 30) Error else Color.White)
+private fun BatteryIcon(pct: Double?, fill: Color) {
+    Canvas(Modifier.size(9.dp, 15.dp)) {
+        val u = size.width / 9
+        drawRect(Color.White, Offset(2.5f * u, 0f), Size(4 * u, 2 * u))
+        drawRect(Color.White, Offset(0.5f * u, 2 * u), Size(8 * u, size.height - 2.5f * u), style = Stroke(u))
+        val full = size.height - 5 * u
+        val h = full * ((pct ?: 0.0) / 100).toFloat().coerceIn(0f, 1f)
+        drawRect(fill, Offset(2 * u, 4 * u + full - h), Size(5 * u, h))
     }
 }
 
-/** 배터리 띠 3dp(Pilot 2 4번). 남은 양까지 빨강·노랑·초록, H 점은 복귀에 필요한 양. */
+/**
+ * 배터리 띠 3dp(Pilot 2): 0~심각 빨강, 심각~낮음 주황, 그 위 초록으로 남은 양까지([batteryBand]). 노란 H는 RTH에 필요한 양
+ * (기체 값, 없으면 앱 추정 [returnNeedPct]), 초록 끝에 남은 비행 시간(mm:ss).
+ */
 @Composable
-private fun BatteryBand(pct: Double?, returnNeed: Int) {
+private fun BatteryBand(t: Telemetry?, returnNeedPct: Int) {
     BoxWithConstraints(Modifier.fillMaxWidth().height(3.dp).background(SurfaceContainerHigh)) {
-        val p = ((pct ?: 0.0) / 100).toFloat().coerceIn(0f, 1f)
-        listOf(Triple(0f, 0.1f, Error), Triple(0.1f, 0.2f, Caution), Triple(0.2f, 1f, Tertiary)).forEach { (a, b, c) ->
-            val end = minOf(b, p)
-            if (end > a) Box(Modifier.offset(x = maxWidth * a).width(maxWidth * (end - a)).fillMaxHeight().background(c))
+        if (t == null || !t.connected) return@BoxWithConstraints
+        batteryBand(t.batteryPct, t.lowPct, t.criticalPct).forEach { seg ->
+            val c = when (seg.level) { BatteryLevel.CRITICAL -> Error; BatteryLevel.LOW -> Warning; BatteryLevel.OK -> Tertiary }
+            Box(Modifier.offset(x = maxWidth * seg.from).width(maxWidth * (seg.to - seg.from)).fillMaxHeight().background(c))
         }
-        if (pct != null && returnNeed > 0) {
+        val need = t.rthBatteryPct ?: returnNeedPct
+        if (need > 0) {
             Box(
-                Modifier.offset(x = maxWidth * (returnNeed / 100f).coerceIn(0f, 1f) - 4.5.dp, y = (-3).dp).size(9.dp).clip(CircleShape).background(Caution),
+                Modifier.offset(x = maxWidth * (need / 100f).coerceIn(0f, 1f) - 5.dp, y = (-4).dp).size(10.dp).clip(CircleShape).background(Caution)
+                    .semantics { contentDescription = "RTH 필요 $need%" },
                 contentAlignment = Alignment.Center,
-            ) { Text("H", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Color.Black) }
+            ) { Text("H", style = numberStyle(FontSize.Micro, FontWeight.Bold), color = Color.Black) }
+        }
+        remainingFlightSec(t, need)?.let { sec ->
+            Text(
+                mmss(sec), Modifier.offset(x = maxWidth * (t.batteryPct / 100).toFloat().coerceIn(0f, 0.94f), y = (-5).dp)
+                    .background(Tertiary, RoundedCornerShape(2.dp)).padding(horizontal = 3.dp),
+                style = numberStyle(FontSize.Micro), color = Color.Black,
+            )
         }
     }
 }
@@ -234,106 +349,267 @@ internal fun ZoomBox(lens: Lens, zoomRatio: Double, modifier: Modifier) {
 }
 
 /**
- * 오른쪽 한 열(10.4.3): 렌즈 W/Z → 사진/영상 → 촬영 → 앨범 → 줌 +/−(사이에 지금 배율). 짐벌은 RC 왼쪽 다이얼(10.4.4).
- * 영상 모드에서 셔터는 녹화 시작·정지([recordingSinceMs]가 있으면 빨간 네모와 경과 mm:ss).
- * [cameraEnabled]가 거짓이면 사진/영상·줌을 막는다(자동 비행은 일시정지 중에만). [onAlbum]이 null이면 앨범을 숨긴다.
+ * 영상 위 겹침(10.5.2): 3×3 격자와 가운데 ✕, 광각이면 지금 망원 배율이 찍을 범위(녹색 꺾쇠 사각형 + 배율, [zoomFrameFraction]),
+ * 탭 초점([focusEnabled]이면 누른 자리를 0~1로 [onFocus]에 넘기고 노란 사각형을 [AppConfig.CameraView.FOCUS_MARK_MS] 보인다).
  */
 @Composable
-internal fun CameraColumn(
-    s: FlightUiState, onLens: (Lens) -> Unit, shutterEnabled: Boolean, onShutter: () -> Unit,
-    cameraEnabled: Boolean, onVideoMode: (Boolean) -> Unit, onZoom: (Boolean) -> Unit,
-    modifier: Modifier, onAlbum: (() -> Unit)? = null, shotsLabel: String? = null,
-) {
-    // 장갑 터치(10.4.2): 렌즈·줌 32dp, 사진/영상 28dp, 앨범 32dp. RTH와 겹치지 않게 사이는 4dp
-    Column(modifier.width(44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Segments(listOf(Lens.WIDE to "W", Lens.ZOOM to "Z"), s.lens, enabled = true, height = Dimens.TouchSmall, fontSize = FontSize.Caption, onPick = onLens) { if (it == Lens.WIDE) "광각" else "망원" }
-        Segments(listOf(false to "사진", true to "영상"), s.videoMode, enabled = cameraEnabled && s.recordingSinceMs == null, height = 28.dp, fontSize = FontSize.Micro, onPick = onVideoMode) { if (it) "영상 모드" else "사진 모드" }
-        val since = s.recordingSinceMs
-        val ring = if (shutterEnabled) Color.White else Inactive
-        Box(
-            Modifier.size(44.dp).clip(CircleShape).border(2.dp, ring, CircleShape)
-                .clickable(enabled = shutterEnabled, onClickLabel = if (!s.videoMode) "촬영" else if (since == null) "녹화 시작" else "녹화 정지", onClick = onShutter),
-            contentAlignment = Alignment.Center,
-        ) {
-            when {
-                since != null -> Box(Modifier.size(16.dp).clip(RoundedCornerShape(2.dp)).background(Error))
-                s.videoMode -> Box(Modifier.size(34.dp).clip(CircleShape).background(if (shutterEnabled) Error else Inactive))
-                else -> Box(Modifier.size(34.dp).clip(CircleShape).background(ring))
+internal fun CameraOverlay(lens: Lens, zoomRatio: Double, focusEnabled: Boolean, onFocus: (Double, Double) -> Unit, modifier: Modifier) {
+    var mark by remember { mutableStateOf<Offset?>(null) }
+    LaunchedEffect(mark) { if (mark != null) { delay(AppConfig.CameraView.FOCUS_MARK_MS); mark = null } }
+    val focus by rememberUpdatedState(onFocus)
+    val measurer = rememberTextMeasurer()
+    val label = TextStyle(fontSize = FontSize.Body, fontWeight = FontWeight.Bold, color = Tertiary)
+    Canvas(
+        modifier.pointerInput(focusEnabled) {
+            if (focusEnabled) detectTapGestures { p ->
+                mark = p
+                focus((p.x / size.width).toDouble(), (p.y / size.height).toDouble())
             }
-        }
-        if (since != null) {
-            val now by produceState(System.currentTimeMillis(), since) { while (true) { value = System.currentTimeMillis(); delay(500) } }
-            val sec = ((now - since) / 1000).coerceAtLeast(0)
-            Text("%02d:%02d".format(sec / 60, sec % 60), style = numberStyle(FontSize.Body), color = Error)
-        } else shotsLabel?.let { Text(it, style = numberStyle(FontSize.Body), color = Color.White) }
-        if (onAlbum != null) {
-            Box(
-                Modifier.size(Dimens.TouchSmall).clip(RoundedCornerShape(3.dp)).background(CardBg).clickable(onClickLabel = "앨범", onClick = onAlbum)
-                    .semantics { contentDescription = "앨범" },
-                contentAlignment = Alignment.Center,
-            ) { Icon(painterResource(R.drawable.ic_album), contentDescription = null, modifier = Modifier.size(15.dp), tint = Color.White) }
-        }
-        Column(Modifier.width(40.dp).background(CardBg, RoundedCornerShape(4.dp)), horizontalAlignment = Alignment.CenterHorizontally) {
-            val c = if (cameraEnabled) Color.White else Inactive
-            listOf(true to "+", false to "−").forEach { (up, t) ->
-                if (!up) Text(if (s.lens == Lens.WIDE) "1.0X" else "%.1fX".format(s.zoomRatio), style = numberStyle(FontSize.Caption), color = Tertiary)
-                Box(
-                    Modifier.fillMaxWidth().height(Dimens.ButtonChip).clickable(enabled = cameraEnabled, onClickLabel = if (up) "줌 확대" else "줌 축소") { onZoom(up) },
-                    contentAlignment = Alignment.Center,
-                ) { Text(t, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = c) }
-            }
-        }
-    }
-}
-
-/** 세로 두 칸 고르기(렌즈 W/Z, 사진/영상). 고른 칸은 흰 바탕. */
-@Composable
-private fun <T> Segments(items: List<Pair<T, String>>, selected: T, enabled: Boolean, height: Dp, fontSize: TextUnit, onPick: (T) -> Unit, label: (T) -> String) {
-    Column(Modifier.width(40.dp).background(CardBg, RoundedCornerShape(4.dp)).padding(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        items.forEach { (v, t) ->
-            val on = selected == v
-            Box(
-                Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(3.dp)).background(if (on) Color.White.copy(alpha = 0.92f) else Color.Transparent)
-                    .clickable(enabled = enabled, onClickLabel = label(v)) { onPick(v) },
-                contentAlignment = Alignment.Center,
-            ) { Text(t, fontSize = fontSize, fontWeight = FontWeight.Bold, color = if (on) Color.Black else if (enabled) Color.White else Color(0xFF777777)) }
-        }
-    }
-}
-
-/** 오른쪽 아래 RTH(노랑 테두리, [AppConfig.Rth.HOLD_MS] 이상 눌러야 동작, 10장). 손을 떼기 전에 동작하고, 그 뒤 뗄 때까지는 다시 안 걸린다. */
-@Composable
-internal fun RthButton(onLongPress: () -> Unit, modifier: Modifier = Modifier) {
-    val action by rememberUpdatedState(onLongPress)
-    Row(
-        modifier.height(Dimens.ButtonStd).clip(RoundedCornerShape(4.dp)).background(Color(0xE0121212)).border(1.dp, Caution, RoundedCornerShape(4.dp))
-            .semantics {
-                role = Role.Button
-                contentDescription = "RTH, 1초 길게 누르기"
-                onLongClick("RTH") { action(); true }
-            }
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown()
-                    var released = false
-                    withTimeoutOrNull(AppConfig.Rth.HOLD_MS) { waitForUpOrCancellation(); released = true }
-                    if (!released) {
-                        action()
-                        waitForUpOrCancellation()
-                    }
-                }
-            }
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+        },
     ) {
-        Icon(painterResource(R.drawable.ic_rth), contentDescription = null, modifier = Modifier.size(15.dp), tint = Caution)
-        Text("RTH", fontSize = FontSize.Body, fontWeight = FontWeight.Bold, color = Color.White)
-        Text("길게", fontSize = FontSize.Caption, color = TextSoft)
+        val thin = 1.dp.toPx()
+        val grid = Color.White.copy(alpha = 0.45f)
+        for (i in 1..2) {
+            drawLine(grid, Offset(size.width * i / 3, 0f), Offset(size.width * i / 3, size.height), thin)
+            drawLine(grid, Offset(0f, size.height * i / 3), Offset(size.width, size.height * i / 3), thin)
+        }
+        val a = 4.dp.toPx()
+        val b = 10.dp.toPx()
+        listOf(1f to 1f, -1f to 1f, 1f to -1f, -1f to -1f).forEach { (sx, sy) ->
+            drawLine(Color.White, Offset(center.x + sx * a, center.y + sy * a), Offset(center.x + sx * b, center.y + sy * b), 1.5.dp.toPx())
+        }
+        val f = zoomFrameFraction(zoomRatio).toFloat()
+        if (lens == Lens.WIDE && f < 1f) {
+            val w = size.width * f
+            val h = size.height * f
+            brackets(Offset(center.x - w / 2, center.y - h / 2), Size(w, h), Tertiary, minOf(12.dp.toPx(), w / 3), 2.dp.toPx())
+            val text = measurer.measure("%.1fX".format(zoomRatio), label)
+            drawText(text, topLeft = Offset(center.x + w / 2 - text.size.width, center.y + h / 2 + 2.dp.toPx()))
+        }
+        mark?.let { p ->
+            val s = 48.dp.toPx()
+            drawRect(Caution, Offset(p.x - s / 2, p.y - s / 2), Size(s, s), style = Stroke(1.5.dp.toPx()))
+        }
+    }
+}
+
+/** 네 모서리 꺾쇠(줌 영역 사각형). */
+private fun DrawScope.brackets(topLeft: Offset, sz: Size, c: Color, len: Float, w: Float) {
+    val r = topLeft.x + sz.width
+    val btm = topLeft.y + sz.height
+    listOf(Offset(topLeft.x, topLeft.y) to (1f to 1f), Offset(r, topLeft.y) to (-1f to 1f), Offset(topLeft.x, btm) to (1f to -1f), Offset(r, btm) to (-1f to -1f))
+        .forEach { (p, d) ->
+            drawLine(c, p, Offset(p.x + d.first * len, p.y), w)
+            drawLine(c, p, Offset(p.x, p.y + d.second * len), w)
+        }
+}
+
+/**
+ * 오른쪽 위 노출 띠(10.5.2): ISO · Shutter · Aperture · EV · AE(잠금) · AFS(누르면 초점 모드 차례로) · Storage(사진 남은 장수, 영상이면 남은 녹화 시간).
+ * 모르는 값은 "--".
+ */
+@Composable
+internal fun ExposureStrip(c: CameraStatus, videoMode: Boolean, focusEnabled: Boolean, onFocusMode: () -> Unit, modifier: Modifier) {
+    Row(
+        modifier.height(36.dp).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp)).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp),
+    ) {
+        ExposureValue("ISO", c.iso)
+        ExposureValue("Shutter", c.shutter)
+        ExposureValue("Aperture", c.aperture)
+        ExposureValue("EV", c.ev)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("AE", fontSize = FontSize.Micro, color = TextSoft)
+            LockGlyph(c.aeLocked)
+        }
+        Text(
+            c.focus?.name ?: "AF", Modifier.clickable(enabled = focusEnabled, onClickLabel = "초점 모드 바꾸기", onClick = onFocusMode),
+            style = numberStyle(FontSize.Title, FontWeight.Bold), color = if (focusEnabled) Color.White else TextSoft,
+        )
+        ExposureValue("Storage", if (videoMode) c.recordSecLeft?.let(::mmss) else c.photosLeft?.toString())
+    }
+}
+
+@Composable
+private fun ExposureValue(label: String, value: String?) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = FontSize.Micro, color = TextSoft, maxLines = 1)
+        Text(value ?: "--", style = numberStyle(FontSize.Body), color = Color.White, maxLines = 1)
+    }
+}
+
+/** AE 자물쇠: 잠금이면 닫힌 고리. */
+@Composable
+private fun LockGlyph(locked: Boolean) {
+    Canvas(Modifier.size(10.dp, 11.dp).semantics { contentDescription = if (locked) "AE 잠금" else "AE 풀림" }) {
+        val u = size.width / 10
+        drawRect(Color.White, Offset(u, 5 * u), Size(8 * u, 6 * u))
+        val shackle = Path().apply {
+            moveTo(3 * u, 5 * u)
+            lineTo(3 * u, 3 * u)
+            cubicTo(3 * u, 0f, 7 * u, 0f, 7 * u, 3 * u)
+            if (locked) lineTo(7 * u, 5 * u)
+        }
+        drawPath(shackle, Color.White, style = Stroke(1.3f * u))
     }
 }
 
 /**
- * 왼쪽 아래 미리보기 132×92(매뉴얼 54쪽 15번): 카메라 뷰에서는 지도, 큰 지도에서는 카메라. 누르면 큰 화면과 자리를 바꾼다.
+ * 왼쪽 열(Pilot 2, 10.5.7): 핀포인트(H묶음 전까지 꺼 둠) · 짐벌 메뉴(짐벌 중앙 / 짐벌 아래 -90°) · AR(꺼 둠) · ZOOM/WIDE 전환.
+ * 미션 칸·[미션 이어서 비행]은 화면이 핀포인트 오른쪽(x 48dp)에 따로 둔다.
+ */
+@Composable
+internal fun CameraLeftColumn(lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boolean) -> Unit, modifier: Modifier) {
+    Box(modifier) {
+        Canvas(Modifier.offset(y = 4.dp).size(Dimens.TouchSmall).padding(6.dp).alpha(0.4f).semantics { contentDescription = "핀포인트(준비 중)" }) {
+            val p = Path().apply { moveTo(size.width / 2, 0f); lineTo(size.width, size.height / 2); lineTo(size.width / 2, size.height); lineTo(0f, size.height / 2); close() }
+            drawPath(p, Accent, style = Stroke(2.dp.toPx()))
+        }
+        var gimbal by remember { mutableStateOf(false) }
+        Box(Modifier.offset(y = 68.dp)) {
+            Box(
+                Modifier.size(Dimens.TouchSmall).clip(RoundedCornerShape(3.dp)).clickable(onClickLabel = "짐벌 메뉴") { gimbal = true },
+                contentAlignment = Alignment.Center,
+            ) { Icon(painterResource(R.drawable.ic_gimbal_center), contentDescription = "짐벌 메뉴", modifier = Modifier.size(20.dp), tint = Color.White) }
+            DropdownMenu(gimbal, onDismissRequest = { gimbal = false }, containerColor = CardBg) {
+                DropdownMenuItem({ Text("짐벌 중앙", fontSize = FontSize.Body, color = Color.White) }, onClick = { gimbal = false; onGimbal(false) })
+                DropdownMenuItem({ Text("짐벌 아래(-90°)", fontSize = FontSize.Body, color = Color.White) }, onClick = { gimbal = false; onGimbal(true) })
+            }
+        }
+        Canvas(Modifier.offset(y = 116.dp).size(Dimens.TouchSmall).padding(6.dp).alpha(0.4f).semantics { contentDescription = "AR 표시(준비 중)" }) {
+            val p = Path().apply { moveTo(size.width / 2, 0f); lineTo(size.width, size.height); lineTo(size.width / 2, size.height * 0.75f); lineTo(0f, size.height); close() }
+            drawPath(p, Color.White)
+        }
+        val other = if (lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE
+        Box(
+            Modifier.offset(x = 42.dp, y = 112.dp).size(40.dp, 38.dp).clip(RoundedCornerShape(4.dp)).background(ControlBg)
+                .clickable(onClickLabel = if (other == Lens.ZOOM) "망원으로" else "광각으로") { onLens(other) },
+            contentAlignment = Alignment.Center,
+        ) { Text(if (other == Lens.ZOOM) "ZOOM" else "WIDE", fontSize = FontSize.Caption, fontWeight = FontWeight.Bold, color = Color.White) }
+    }
+}
+
+/**
+ * 오른쪽 열(Pilot 2, 10.5.2): 카메라 설정(슬라이더) → 사진/영상 아이콘 → 셔터(녹화 중 빨강) → ▶ 재생(앨범). 왼쪽 옆에 세로 줌(+ / 눈금 / −).
+ * 영상 모드에서 셔터는 녹화 시작·정지([FlightUiState.recordingSinceMs]가 있으면 빨간 네모와 경과 mm:ss).
+ * [cameraEnabled]가 거짓이면 사진/영상·줌을 막는다(자동 비행은 일시정지 중에만). [onAlbum]이 null이면 재생을 숨긴다.
+ */
+@Composable
+internal fun CameraColumn(
+    s: FlightUiState, shutterEnabled: Boolean, onShutter: () -> Unit,
+    cameraEnabled: Boolean, onVideoMode: (Boolean) -> Unit, onZoom: (Boolean) -> Unit,
+    onCameraSettings: () -> Unit, modifier: Modifier, onAlbum: (() -> Unit)? = null, shotsLabel: String? = null,
+) {
+    Box(modifier) {
+        ZoomControl(s.zoomRatio, cameraEnabled, onZoom, Modifier.padding(top = 50.dp, end = 48.dp).align(Alignment.TopEnd))
+        Column(Modifier.align(Alignment.TopEnd).width(44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Canvas(Modifier.size(Dimens.TouchSmall).clickable(onClickLabel = "카메라 설정", onClick = onCameraSettings).padding(6.dp).semantics { contentDescription = "카메라 설정" }) {
+                val w = 2.dp.toPx()
+                listOf(0.15f to 0.7f, 0.5f to 0.3f, 0.85f to 0.8f).forEach { (y, knob) ->
+                    drawLine(Color.White, Offset(0f, size.height * y), Offset(size.width, size.height * y), w)
+                    drawCircle(Color.Black, 3.dp.toPx(), Offset(size.width * knob, size.height * y))
+                    drawCircle(Color.White, 3.dp.toPx(), Offset(size.width * knob, size.height * y), style = Stroke(w))
+                }
+            }
+            val modeEnabled = cameraEnabled && s.recordingSinceMs == null
+            Canvas(
+                Modifier.size(Dimens.TouchSmall, 28.dp).clickable(enabled = modeEnabled, onClickLabel = if (s.videoMode) "사진 모드로" else "영상 모드로") { onVideoMode(!s.videoMode) }
+                    .padding(horizontal = 3.dp, vertical = 4.dp).semantics { contentDescription = if (s.videoMode) "영상 모드" else "사진 모드" },
+            ) {
+                val c = if (modeEnabled) Color.White else Inactive
+                val w = 2.dp.toPx()
+                drawRect(c, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), style = Stroke(w))
+                if (s.videoMode) drawCircle(Error, size.height / 4, center)
+                else drawRect(c, Offset(size.width * 0.18f, size.height * 0.25f), Size(size.width * 0.64f, size.height * 0.5f))
+            }
+            val since = s.recordingSinceMs
+            val ring = if (shutterEnabled) Color.White else Inactive
+            Box(
+                Modifier.size(44.dp).clip(CircleShape).border(2.dp, ring, CircleShape)
+                    .clickable(enabled = shutterEnabled, onClickLabel = if (!s.videoMode) "촬영" else if (since == null) "녹화 시작" else "녹화 정지", onClick = onShutter),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    since != null -> Box(Modifier.size(16.dp).clip(RoundedCornerShape(2.dp)).background(Error))
+                    s.videoMode -> Box(Modifier.size(34.dp).clip(CircleShape).background(if (shutterEnabled) Error else Inactive))
+                    else -> Box(Modifier.size(34.dp).clip(CircleShape).background(ring))
+                }
+            }
+            if (since != null) {
+                val now by produceState(System.currentTimeMillis(), since) { while (true) { value = System.currentTimeMillis(); delay(500) } }
+                Text(mmss(((now - since) / 1000).coerceAtLeast(0).toInt()), style = numberStyle(FontSize.Body), color = Error)
+            } else shotsLabel?.let { Text(it, style = numberStyle(FontSize.Body), color = Color.White) }
+            if (onAlbum != null) {
+                Box(
+                    Modifier.size(Dimens.TouchSmall).clickable(onClickLabel = "재생(앨범)", onClick = onAlbum).semantics { contentDescription = "재생(앨범)" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(Modifier.size(26.dp, 20.dp)) {
+                        drawRoundRect(Color.White, cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+                        val p = Path().apply { moveTo(size.width * 0.4f, size.height * 0.28f); lineTo(size.width * 0.66f, size.height / 2); lineTo(size.width * 0.4f, size.height * 0.72f); close() }
+                        drawPath(p, Color.Black)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 세로 줌(Pilot 2): + / 눈금 / − 와 가운데 "Zoom 7.0X". 눈금을 위로 끌면 확대, [Dimens.ZoomDragStep]마다 한 단계(1·2·4·7·14·28배, 기체 범위 안).
+ * 광각 보기에서도 망원 배율을 바꾸며 광각 화면에는 줌 영역 사각형으로 보인다(10.5.2).
+ */
+@Composable
+private fun ZoomControl(ratio: Double, enabled: Boolean, onZoom: (Boolean) -> Unit, modifier: Modifier) {
+    val zoom by rememberUpdatedState(onZoom)
+    val stepPx = with(LocalDensity.current) { Dimens.ZoomDragStep.toPx() }
+    val c = if (enabled) Color.White else Inactive
+    Column(modifier.width(40.dp).background(ControlBg, RoundedCornerShape(4.dp)).padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        listOf(true, false).forEach { up ->
+            if (!up) {
+                Column(
+                    Modifier.pointerInput(enabled, stepPx) {
+                        if (!enabled) return@pointerInput
+                        var acc = 0f
+                        detectVerticalDragGestures(onDragStart = { acc = 0f }) { change, dy ->
+                            change.consume()
+                            acc += dy
+                            while (acc <= -stepPx) { acc += stepPx; zoom(true) }
+                            while (acc >= stepPx) { acc -= stepPx; zoom(false) }
+                        }
+                    }.semantics { contentDescription = "줌 %.1f배, 위아래로 끌어 바꾸기".format(ratio) },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Ticks(c)
+                    Text(
+                        "Zoom\n%.1fX".format(ratio), Modifier.background(Color.White, RoundedCornerShape(3.dp)).padding(horizontal = 3.dp, vertical = 1.dp),
+                        style = numberStyle(FontSize.Micro), color = Color.Black, textAlign = TextAlign.Center,
+                    )
+                    Ticks(c)
+                }
+            }
+            Box(
+                Modifier.fillMaxWidth().height(Dimens.TouchSmall).clickable(enabled = enabled, onClickLabel = if (up) "줌 확대" else "줌 축소") { onZoom(up) },
+                contentAlignment = Alignment.Center,
+            ) { Text(if (up) "+" else "−", fontSize = FontSize.Number, fontWeight = FontWeight.Bold, color = c) }
+        }
+    }
+}
+
+@Composable
+private fun Ticks(c: Color) {
+    Canvas(Modifier.size(18.dp, 32.dp)) {
+        var y = 0f
+        val gap = 5.dp.toPx()
+        while (y <= size.height) {
+            drawLine(c.copy(alpha = 0.6f), Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
+            y += gap
+        }
+    }
+}
+
+/**
+ * 왼쪽 아래 미리보기 132×92(매뉴얼 54쪽 15번): 카메라 뷰에서는 지도, 큰 지도에서는 카메라. 누르면 큰 화면과 자리를 바꾼다(RC C2와 같음).
  * 오른쪽 위 꺾쇠로 크게([Dimens.MiniMapLarge])/작게(10.5.4).
  */
 @Composable
@@ -356,12 +632,15 @@ internal fun MiniMap(mapMain: Boolean, onSwap: () -> Unit, modifier: Modifier, c
     }
 }
 
-/** 영상 위 작은 버튼(짐벌 등) 40×32. */
+/** 영상 위 안내 줄(Pilot 2 안내문 자리, 가운데 위 줌 상자 아래): 미션 안내·점검 실패·수동 비행 안내. */
 @Composable
-internal fun OverlayIconButton(icon: Int, description: String, onClick: () -> Unit) {
-    Box(
-        Modifier.size(40.dp, 32.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xD9121212)).clickable(onClickLabel = description, onClick = onClick)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) { Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White) }
+internal fun NoticeLines(lines: List<Pair<String, Color>>, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        lines.forEach { (text, color) ->
+            Text(
+                text, Modifier.background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+                color = color, fontSize = FontSize.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            )
+        }
+    }
 }

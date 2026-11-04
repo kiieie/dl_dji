@@ -5,8 +5,30 @@ import com.example.myfirstapp.core.config.Tuning
 /** 장애물 방향(기수 기준). 화면 글자는 [label]. */
 enum class ObstacleDirection(val label: String) { FRONT("앞"), RIGHT("오른쪽"), BACK("뒤"), LEFT("왼쪽"), UP("위"), DOWN("아래") }
 
-/** 방향별 가장 가까운 장애물 거리(m). 감지한 것이 없는 방향은 빠진다. */
-data class Obstacles(val distancesM: Map<ObstacleDirection, Double>) {
+/**
+ * 방향별 가장 가까운 장애물 거리(m). 감지한 것이 없는 방향은 빠진다.
+ * [sensingOn]이 거짓이면 기체 장애물 감지가 꺼짐(내비 "OFF"). [warningM]·[brakingM]은 기체 수평 경고·제동 거리(모르면 null, [Tuning.Obstacle]).
+ */
+data class Obstacles(
+    val distancesM: Map<ObstacleDirection, Double>,
+    val sensingOn: Boolean = true,
+    val warningM: Double? = null,
+    val brakingM: Double? = null,
+) {
+    /**
+     * 내비 원판 부채꼴·위아래 막대 색(10.5.3, Pilot 2): 제동 거리 안 빨강, 경고 거리 안 주황, 감지 범위([Tuning.Obstacle.SENSING_M]) 안 초록, 그 밖·모름은 null.
+     * 땅에서도 그린다(신호음만 모터가 돌 때).
+     */
+    fun sector(dir: ObstacleDirection): ObstacleLevel? {
+        val m = distancesM[dir] ?: return null
+        return when {
+            m <= (brakingM ?: Tuning.Obstacle.DANGER_M) -> ObstacleLevel.DANGER
+            m <= (warningM ?: Tuning.Obstacle.CAUTION_M) -> ObstacleLevel.CAUTION
+            m <= Tuning.Obstacle.SENSING_M -> ObstacleLevel.NONE
+            else -> null
+        }
+    }
+
     companion object {
         /**
          * 기체가 주는 수평 거리 배열(기수부터 시계 방향, [intervalDeg]마다)을 앞·오른쪽·뒤·왼쪽 90° 칸의 최솟값으로 묶는다.
@@ -39,6 +61,8 @@ enum class ObstacleLevel { NONE, CAUTION, DANGER }
 data class ObstacleWarning(
     val levels: Map<ObstacleDirection, ObstacleLevel> = emptyMap(),
     val distancesM: Map<ObstacleDirection, Double> = emptyMap(),
+    /** 마지막 측정 그대로(내비 원판 부채꼴·막대, 10.5.3). 기체가 값을 안 주면 null(내비 "NA"). */
+    val sensed: Obstacles? = null,
 ) {
     val level: ObstacleLevel get() = levels.values.maxOrNull() ?: ObstacleLevel.NONE
 
@@ -52,7 +76,7 @@ data class ObstacleWarning(
     fun next(o: Obstacles?): ObstacleWarning {
         val d = o?.distancesM.orEmpty().filterKeys { it != ObstacleDirection.DOWN }
         val l = d.mapValues { (dir, m) -> grade(m, levels[dir] ?: ObstacleLevel.NONE) }.filterValues { it != ObstacleLevel.NONE }
-        return ObstacleWarning(l, d.filterKeys { it in l })
+        return ObstacleWarning(l, d.filterKeys { it in l }, o)
     }
 
     companion object {

@@ -6,7 +6,9 @@ import android.util.Log
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.executor.MediaClassifier
 import com.example.myfirstapp.core.executor.MediaOwner
+import com.example.myfirstapp.core.model.CameraStatus
 import com.example.myfirstapp.core.model.DownloadMode
+import com.example.myfirstapp.core.model.FocusMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Lens
@@ -35,6 +37,11 @@ import dji.sdk.keyvalue.value.camera.MediaFileType
 import dji.sdk.keyvalue.value.common.CameraLensType
 import dji.sdk.keyvalue.value.camera.CameraVideoStreamSourceType
 import dji.sdk.keyvalue.value.gimbal.GimbalResetType
+import dji.sdk.keyvalue.value.gimbal.GimbalAngleRotation
+import dji.sdk.keyvalue.value.gimbal.GimbalAngleRotationMode
+import dji.sdk.keyvalue.value.camera.CameraFocusMode
+import dji.sdk.keyvalue.value.common.DoublePoint2D
+import dji.sdk.keyvalue.value.flightcontroller.WindDirection
 import dji.sdk.keyvalue.value.camera.DateTime
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.EmptyMsg
@@ -94,6 +101,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     override val telemetry: StateFlow<Telemetry> = _telemetry.asStateFlow()
     private val _events = MutableSharedFlow<DroneEvent>(extraBufferCapacity = 64)
     override val events: Flow<DroneEvent> = _events.asSharedFlow()
+    private val _camera = MutableStateFlow(CameraStatus())
+    override val cameraStatus: StateFlow<CameraStatus> = _camera.asStateFlow()
 
     // 미션·사진 콜백이 서로 다른 스레드에서 읽고 쓴다
     @Volatile private var missionName: String? = null
@@ -187,6 +196,29 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
             if (was && flying == false) _events.tryEmit(DroneEvent.Landed)
         }
         on(GimbalKey.KeyGimbalAttitude) { g -> _telemetry.update { it.copy(gimbalPitchDeg = g?.pitch ?: 0.0) } }
+        // Pilot 2 상단 바·배터리 띠·내비(10.5.1, 10.5.3)
+        on(BatteryKey.KeyVoltage) { v -> _telemetry.update { it.copy(batteryVoltageV = v?.div(1000.0)) } }
+        on(BatteryKey.KeyBatteryTemperature) { c -> _telemetry.update { it.copy(batteryTempC = c) } }
+        on(FlightControllerKey.KeyLowBatteryWarningThreshold) { p -> _telemetry.update { it.copy(lowBatteryPct = p) } }
+        on(FlightControllerKey.KeySeriousLowBatteryWarningThreshold) { p -> _telemetry.update { it.copy(criticalBatteryPct = p) } }
+        on(FlightControllerKey.KeyGoHomeAssessment) { a ->
+            _telemetry.update { it.copy(rthBatteryPct = a?.batteryPercentNeededToGoHome, remainingFlightSec = a?.remainingFlightTime) }
+        }
+        // ponytail: 풍속 단위를 0.1 m/s로 본다(MSDK 문서에 단위 없음). 실기에서 Pilot 2 WS와 대조한다
+        on(FlightControllerKey.KeyWindSpeed) { w -> _telemetry.update { it.copy(windSpeedMps = w?.div(10.0)) } }
+        on(FlightControllerKey.KeyWindDirection) { d -> _telemetry.update { it.copy(windDirDeg = windDeg(d)) } }
+        on(FlightControllerKey.KeyHeightAboveSeaLevel) { h -> _telemetry.update { it.copy(altitudeAslM = h?.height) } }
+        on(FlightControllerKey.KeyRemoteControllerFlightMode) { m -> _telemetry.update { it.copy(rcMode = m.letter()) } }
+        // 노출 띠(10.5.2). ponytail: 렌즈를 정하지 않은 키(기본 렌즈)로 읽는다. 망원 보기에서 값이 광각 것이면 렌즈별 키로 바꾼다(실기 확인)
+        on(CameraKey.KeyExposureSettings, camera) { e ->
+            _camera.update {
+                it.copy(iso = e?.iso?.toString(), shutter = shutterLabel(e?.shutterSpeed?.name), aperture = apertureLabel(e?.aperture?.name), ev = evLabel(e?.exposureCompensation?.name))
+            }
+        }
+        on(CameraKey.KeyAELockEnabled, camera) { l -> _camera.update { it.copy(aeLocked = l == true) } }
+        on(CameraKey.KeyCameraFocusMode, camera) { m -> _camera.update { it.copy(focus = focusOf(m)) } }
+        on(CameraKey.KeySDCardAvailablePhotoCount, camera) { n -> _camera.update { it.copy(photosLeft = n) } }
+        on(CameraKey.KeySDCardAvailableVideoDuration, camera) { n -> _camera.update { it.copy(recordSecLeft = n) } }
         on(FlightControllerKey.KeyCompassHeading) { h -> _telemetry.update { it.copy(headingDeg = ((h ?: 0.0) + 360) % 360) } }
         // 조종기 위치(지도 파란 점, 10.5.4)
         on(RemoteControllerKey.KeyRcGPSInfo) { g ->
@@ -530,9 +562,41 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         else -> null
     }
 
-    override suspend fun toggleGimbal(): Result<Unit> = runCatching {
-        djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.performAction(KeyTools.createKey(GimbalKey.KeyGimbalReset), GimbalResetType.PITCH_UP_OR_DOWN, it) }
+    /** 짐벌 메뉴(10.5.7): 중앙은 짐벌 리셋(RECENTER), 아래는 피치 -90° 절대 각도. */
+    override suspend fun setGimbal(down: Boolean): Result<Unit> = runCatching {
+        djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) {
+            if (!down) {
+                keys.performAction(KeyTools.createKey(GimbalKey.KeyGimbalReset), GimbalResetType.RECENTER, it)
+            } else {
+                val down90 = GimbalAngleRotation().apply {
+                    mode = GimbalAngleRotationMode.ABSOLUTE_ANGLE
+                    pitch = -90.0
+                    pitchIgnored = false
+                    rollIgnored = true
+                    yawIgnored = true
+                    duration = 1.0
+                }
+                keys.performAction(KeyTools.createKey(GimbalKey.KeyRotateByAngle), down90, it)
+            }
+        }
         Unit
+    }
+
+    override suspend fun setFocusMode(mode: FocusMode): Result<Unit> = runCatching {
+        val m = when (mode) {
+            FocusMode.AFS -> CameraFocusMode.AF
+            FocusMode.AFC -> CameraFocusMode.AFC
+            FocusMode.MF -> CameraFocusMode.MANUAL
+        }
+        djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyCameraFocusMode, camera), m, it) }
+    }
+
+    /** 탭 초점(10.5.2): MF면 AFS로 바꾼 뒤 초점 지점(0~1)을 보낸다. ponytail: 측광 지점(`KeySpotMeteringPoint`)은 같이 옮기지 않는다(실기 확인 뒤). */
+    override suspend fun focusAt(x: Double, y: Double): Result<Unit> = runCatching {
+        if (_camera.value.focus == FocusMode.MF) setFocusMode(FocusMode.AFS).getOrThrow()
+        djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) {
+            keys.setValue(KeyTools.createKey(CameraKey.KeyCameraFocusTarget, camera), DoublePoint2D(x.coerceIn(0.0, 1.0), y.coerceIn(0.0, 1.0)), it)
+        }
     }
 
     /** 망원 렌즈 줌(M3E 망원은 같은 카메라 [camera]의 ZOOM 렌즈). 기체 범위([zoomRange]) 안으로 맞춰 보낸다. */
@@ -641,21 +705,81 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
      */
     override val obstacles: Flow<com.example.myfirstapp.core.model.Obstacles?> = kotlinx.coroutines.flow.callbackFlow {
         val pm = PerceptionManager.getInstance()
+        // 감지 켬·경고·제동 거리(내비 OFF·부채꼴 색, 10.5.3). 바뀌면 마지막 거리로 다시 보낸다
+        var info: dji.v5.manager.aircraft.perception.data.PerceptionInfo? = null
+        var last: com.example.myfirstapp.core.model.Obstacles? = null
+        fun send(o: com.example.myfirstapp.core.model.Obstacles?) {
+            last = o
+            val i = info
+            trySend(
+                if (o == null || i == null) o
+                else o.copy(sensingOn = i.isHorizontalObstacleAvoidanceEnabled, warningM = i.horizontalObstacleAvoidanceWarningDistance, brakingM = i.horizontalObstacleAvoidanceBrakingDistance),
+            )
+        }
         val l = dji.v5.manager.aircraft.perception.listener.ObstacleDataListener { d ->
             // 시뮬레이터에서는 실제 기체가 책상 위라 센서가 주변 물건을 0.5m로 계속 본다(2026-10-31): 경고하지 않는다
-            if (djiSimulatorOn()) return@ObstacleDataListener run { trySend(null) }
+            if (djiSimulatorOn()) return@ObstacleDataListener run { send(null) }
             fun m(mm: Int?) = mm?.takeIf { it > 0 }?.div(1000.0)
-            trySend(com.example.myfirstapp.core.model.Obstacles.fromHorizontal(
+            send(com.example.myfirstapp.core.model.Obstacles.fromHorizontal(
                 d.horizontalObstacleDistance.orEmpty().map { m(it) ?: 0.0 }, d.horizontalAngleInterval,
                 m(d.upwardObstacleDistance), m(d.downwardObstacleDistance),
             ))
         }
+        val p = dji.v5.manager.aircraft.perception.listener.PerceptionInformationListener { i ->
+            info = i
+            if (!djiSimulatorOn()) send(last ?: com.example.myfirstapp.core.model.Obstacles(emptyMap()))
+        }
         pm.addObstacleDataListener(l)
-        try { kotlinx.coroutines.awaitCancellation() } finally { pm.removeObstacleDataListener(l) }
+        pm.addPerceptionInformationListener(p)
+        try { kotlinx.coroutines.awaitCancellation() } finally {
+            pm.removeObstacleDataListener(l)
+            pm.removePerceptionInformationListener(p)
+        }
+    }
+
+    private fun focusOf(m: CameraFocusMode?): FocusMode? = when (m) {
+        CameraFocusMode.AF -> FocusMode.AFS
+        CameraFocusMode.AFC -> FocusMode.AFC
+        CameraFocusMode.MANUAL -> FocusMode.MF
+        else -> null
+    }
+
+    /** 풍향(8방위)을 각도로. 바람 없음·모름은 null. ponytail: 바람이 오는 쪽인지 가는 쪽인지 실기에서 Pilot 2 화살표와 대조한다. */
+    private fun windDeg(d: WindDirection?): Double? = when (d) {
+        WindDirection.NORTH -> 0.0
+        WindDirection.NORTH_EAST -> 45.0
+        WindDirection.EAST -> 90.0
+        WindDirection.SOUTH_EAST -> 135.0
+        WindDirection.SOUTH -> 180.0
+        WindDirection.SOUTH_WEST -> 225.0
+        WindDirection.WEST -> 270.0
+        WindDirection.NORTH_WEST -> 315.0
+        else -> null
     }
 
     companion object {
         const val TAG = "DjiDrone"
+
+        /** 셔터 이름(`SHUTTER_SPEED1_640`, `SHUTTER_SPEED1_12DOT5`, `SHUTTER_SPEED2`)을 Pilot 2 글자(1/640, 1/12.5, 2")로. */
+        internal fun shutterLabel(name: String?): String? = when (name) {
+            null, "UNKNOWN" -> null
+            "SHUTTER_SPEED_AUTO" -> "Auto"
+            else -> name.removePrefix("SHUTTER_SPEED").replace("DOT", ".").let { if (it.startsWith("1_")) "1/" + it.drop(2) else "$it\"" }
+        }
+
+        /** 조리개 이름(`F2_8`)을 "2.8"로. */
+        internal fun apertureLabel(name: String?): String? = when (name) {
+            null, "UNKNOWN" -> null
+            "F_AUTO" -> "Auto"
+            else -> name.removePrefix("F").replace('_', '.')
+        }
+
+        /** EV 이름(`NEG_0P3EV`, `POS_1P0EV`, `NEG_0EV`)을 "-0.3", "+1.0", "0"으로. */
+        internal fun evLabel(name: String?): String? {
+            if (name == null || name == "UNKNOWN" || name == "FIXED") return null
+            val v = name.substringAfter('_').removeSuffix("EV").replace('P', '.')
+            return if (v == "0") "0" else (if (name.startsWith("NEG")) "-" else "+") + v
+        }
 
         /** 새 미션을 올리기 전에 끝내야 하는 웨이라인 상태. */
         private val STALE_STATES = setOf(

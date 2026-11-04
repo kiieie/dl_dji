@@ -99,18 +99,25 @@ class ManualFlightViewModel(
         // 수동 비행 궤적은 운용 로그에(떠 있는 동안 1초마다, 4.4)
         drone?.let { d -> viewModelScope.launch { while (true) { delay(AppConfig.Polling.TRACK_MS); d.telemetry.value.takeIf { it.isFlying }?.let { logTelemetry("manual", it) } } } }
         drone?.let { d -> viewModelScope.watchObstacles(d, tone) { w -> _state.update { it.copy(flight = it.flight.copy(obstacles = w)) } } }
+        drone?.let { d -> viewModelScope.launch { d.cameraStatus.collect { c -> _state.update { it.copy(flight = it.flight.copy(camera = c)) } } } }
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
             _state.update { it.copy(flight = it.flight.copy(mapFiles = files)) }
             val bg = settings?.let { mapBackgroundRetrying(it) } ?: MapBackground.NONE
             _state.update { it.copy(flight = it.flight.copy(background = bg)) }
         }
-        viewModelScope.launch { loadLatestMission(dao)?.let { m -> _state.update { it.copy(latest = m) } } }
-        // RC: C2는 짐벌 전환(비행 화면과 같음), 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04 고침). 이 화면 위에 설정 등이 열려 있을 때([active] 거짓)는 받지 않는다
+        // 미니맵이 맞출 곳(실내 등 기체·홈·조종기 위치를 모를 때): 지난 비행 마지막 위치, 없으면 최근 미션 이륙 지점(11-04 RC: 흰 칸)
+        viewModelScope.launch {
+            val m = loadLatestMission(dao)
+            val last = dao.lastTelemetryPosition()?.let { r -> r.lat?.let { la -> r.lon?.let { lo -> GeoPoint(la, lo) } } }
+            _state.update { it.copy(latest = m, flight = it.flight.copy(mapFallback = last ?: m?.home)) }
+        }
+        // RC(10.5.10, Pilot 2 기본값): C1 광각/줌, C2 지도/카메라, 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04 고침). 이 화면 위에 설정 등이 열려 있을 때([active] 거짓)는 받지 않는다
         viewModelScope.launch { rcButtons.collect {
             if (!active) return@collect
             when (it) {
-                RcButton.C2 -> toggleGimbal()
+                RcButton.C1 -> toggleLens()
+                RcButton.C2 -> swapView()
                 RcButton.FIVE_D_CENTER, RcButton.SHUTTER -> shutter() // ○(C3)도 5D 누름으로 온다
                 RcButton.RECORD -> camera.recordButton()
                 else -> {}
@@ -187,15 +194,21 @@ class ManualFlightViewModel(
     fun setVideoMode(on: Boolean) = camera.setVideoMode(on)
     fun toggleRecording() = camera.toggleRecording()
 
-    fun toggleGimbal() {
-        OpLog.log("manual", "gimbal")
-        drone?.let { d -> viewModelScope.launch { d.toggleGimbal() } }
+    /** 짐벌 메뉴(10.5.7): 짐벌 중앙 / 아래(-90°). */
+    fun setGimbal(down: Boolean) {
+        OpLog.log("manual", "gimbal", mapOf("down" to down))
+        drone?.let { d -> viewModelScope.launch { d.setGimbal(down).onFailure { e -> _state.update { it.copy(message = "짐벌 실패: ${e.message}") } } } }
     }
 
-    fun returnHome() {
-        OpLog.log("manual", "rth")
-        drone?.let { d -> viewModelScope.launch { d.returnHome().onFailure { e -> _state.update { it.copy(message = "RTH 실패: ${e.message}") } } } }
-    }
+    /** RC C1·왼쪽 열 ZOOM/WIDE: 광각 ↔ 망원 보기. */
+    fun toggleLens() = setLens(if (_state.value.flight.lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE)
+
+    /** RC C2·미니맵 누름: 큰 화면 지도 ↔ 카메라. */
+    fun swapView() = _state.update { it.copy(flight = it.flight.copy(mapMain = !it.flight.mapMain)) }
+
+    /** 노출 띠 AFS(초점 모드 차례로)·탭 초점(10.5.2). */
+    fun cycleFocus() = camera.cycleFocus(_state.value.flight.camera.focus)
+    fun focusAt(x: Double, y: Double) = camera.focusAt(x, y)
 
     fun confirmLanding() {
         OpLog.log("manual", "confirmLanding")

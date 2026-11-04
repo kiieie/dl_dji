@@ -179,6 +179,12 @@ internal fun FlightMap(
             map.uiSettings.setAllGesturesEnabled(interactive)
             map.uiSettings.isLogoEnabled = interactive
             map.uiSettings.isAttributionEnabled = interactive
+            // 로고·출처(ⓘ)는 오른쪽 아래 [라이브러리] 위로 올린다(11-04 RC: 겹침). 출처는 계속 보인다
+            if (interactive) with(density) {
+                val above = (8.dp + Dimens.ButtonStd + 8.dp).roundToPx()
+                map.uiSettings.setAttributionMargins(0, 0, 4.dp.roundToPx(), above)
+                map.uiSettings.setLogoMargins(0, 0, 36.dp.roundToPx(), above)
+            }
             map.addOnCameraMoveListener { relabel(map) }
             map.addOnCameraIdleListener { relabel(map) }
             map.addOnCameraMoveStartedListener { reason -> if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) panned = true }
@@ -231,17 +237,18 @@ internal fun FlightMap(
     }
 
     // 표지(10.5.4)·RTH 선과 카메라. 미션은 처음에 전주 전체에 한 번 맞추고, 떠 있으면 기체를 따라간다.
-    // 전주가 없으면(수동 비행) 기체 → 이륙 지점 → 조종기 위치에 맞추고 따라간다(11-03 현장: 수동 비행 미니맵이 흰 칸). 손으로 옮기면 멈춘다
+    // 전주가 없으면(수동 비행) 기체 → 이륙 지점 → 조종기 위치에 맞추고 따라간다(11-03 현장: 수동 비행 미니맵이 흰 칸). 손으로 옮기면 멈춘다.
+    // 셋 다 모르면(실내) 지난 비행 마지막 위치·최근 미션 이륙 지점([FlightUiState.mapFallback], 11-04 RC)
     val t = s.telemetry
     val rth = s.exec.state == ExecState.ReturningHome || t?.flightMode == FlightMode.GO_HOME
-    LaunchedEffect(styleGen, t?.position, t?.headingDeg, t?.rcPosition, t?.isFlying, s.home, northUp, rth) {
+    LaunchedEffect(styleGen, t?.position, t?.headingDeg, t?.rcPosition, t?.isFlying, s.home, s.mapFallback, northUp, rth) {
         mapView.getMapAsync { map ->
             val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
             style.setMarkers(MapMarkers(home = s.home, aircraft = t?.position, headingDeg = t?.headingDeg ?: 0.0, rc = t?.rcPosition))
             val back = t?.position?.takeIf { rth }?.let { a -> s.home?.let { h -> LineString.fromLngLats(listOf(a.toPoint(), h.toPoint())) } }
             style.getSourceAs<GeoJsonSource>("rth")?.setGeoJson(FeatureCollection.fromFeatures(listOfNotNull(back?.let { Feature.fromGeometry(it) })))
             val points = if (s.poles.isNotEmpty()) s.poles.map { it.position } + listOfNotNull(s.home)
-            else listOfNotNull(t?.position ?: s.home ?: t?.rcPosition)
+            else listOfNotNull(t?.position ?: s.home ?: t?.rcPosition ?: s.mapFallback)
             if (points.isEmpty()) return@getMapAsync
             if (!fitted) {
                 fitted = true

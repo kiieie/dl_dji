@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.core.model.FocusMode
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.ZOOM_STEPS
@@ -44,12 +45,15 @@ internal class CameraControl(
         }) { setVideoLens(lens) }
     }
 
-    /** 줌 +/−. 광각이면 먼저 망원으로 바꾸고 지금 배율을 건다(누른 단계는 그다음부터). */
+    /**
+     * 줌 +/−·눈금 끌기(10.5.2): 망원 배율을 한 단계 바꾼다. 광각 보기에서도 렌즈는 그대로 두고 배율만 바꾼다
+     * (Pilot 2와 같음: 광각 화면의 줌 영역 사각형이 작아지고, ZOOM으로 바꾸면 그 배율).
+     */
     fun zoom(up: Boolean) {
         val s = get()
-        val ratio = if (s.lens == Lens.ZOOM) nextZoom(s.zoomRatio, up, steps) else s.zoomRatio
-        if (s.lens != Lens.ZOOM) setLens(Lens.ZOOM)
-        OpLog.log(tag, "zoom", mapOf("ratio" to ratio))
+        val ratio = nextZoom(s.zoomRatio, up, steps)
+        if (ratio == s.zoomRatio) return
+        OpLog.log(tag, "zoom", mapOf("ratio" to ratio, "lens" to s.lens.name))
         set { it.copy(zoomRatio = ratio) }
         call("줌", { if (it.zoomRatio == ratio) it.copy(zoomRatio = s.zoomRatio) else it }, read = {
             zoomRatio()?.let { actual ->
@@ -65,6 +69,19 @@ internal class CameraControl(
             }
             setZoom(ratio)
         }
+    }
+
+    /** 노출 띠 AFS 누름: 초점 모드를 차례로(AFS → AFC → MF). 화면 값은 기체 알림으로 바뀐다. */
+    fun cycleFocus(current: FocusMode?) {
+        val next = (current ?: FocusMode.AFS).next()
+        OpLog.log(tag, "focusMode", mapOf("mode" to next.name))
+        call("초점 모드", { it }) { setFocusMode(next) }
+    }
+
+    /** 탭 초점(10.5.2): 영상 안 위치(0~1). */
+    fun focusAt(x: Double, y: Double) {
+        OpLog.log(tag, "focusAt", mapOf("x" to Math.round(x * 100) / 100.0, "y" to Math.round(y * 100) / 100.0))
+        call("탭 초점", { it }) { focusAt(x, y) }
     }
 
     fun setVideoMode(on: Boolean) {

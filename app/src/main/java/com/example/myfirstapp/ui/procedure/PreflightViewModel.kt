@@ -87,7 +87,8 @@ class PreflightViewModel(
     }
 
     private suspend fun refreshStatus() {
-        val r = report() ?: return
+        // 모의 기체: 위 점검 줄의 RTH 고도도 아래 스테퍼와 같은 메모리 설정에서 읽는다(11-04 RC: 60m ↔ 100 어긋남)
+        val r = report()?.let { r -> if (!_state.value.simulated) r else (settings.rth.load() as? Int)?.let { r.copy(rthAltitudeM = it.toDouble()) } ?: r } ?: return
         val x = extras()
         val checks = checksOf(r)
         // 운용 로그(4.4): 처음 읽은 판정만 남긴다(2초마다 다시 읽음)
@@ -128,7 +129,7 @@ class PreflightViewModel(
                 val fake = FakeDroneGateway(CoroutineScope(EmptyCoroutineContext), GeoPoint(0.0, 0.0)).preflightReport
                 PreflightViewModel(
                     report = report ?: if (real) ({ djiPreflightReport() }) else ({ fake }),
-                    extras = if (real) ({ djiPreflightExtras() }) else ({ PreflightExtras('N', AppConfig.Preflight.FAKE_VOLTAGE_V) }),
+                    extras = if (real) ({ djiPreflightExtras() }) else ({ PreflightExtras('N', FakeDroneGateway.Config().batteryVoltageV) }),
                     settings = djiPreflightSettings().let { if (real) it else it.inMemory() },
                     checksOf = checksOf, simulated = !real,
                 )

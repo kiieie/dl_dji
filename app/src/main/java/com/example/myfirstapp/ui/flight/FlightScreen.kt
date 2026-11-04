@@ -30,6 +30,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import com.example.myfirstapp.core.model.flightTitle
+import com.example.myfirstapp.ui.theme.Brand
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -95,6 +102,8 @@ fun FlightScreen(
     onExit: () -> Unit,
     onShowResult: () -> Unit,
     onOpenSettings: () -> Unit = {},
+    /** 카메라 설정 아이콘(10.5.2): 기체 점검의 짐벌·카메라 탭. */
+    onCameraSettings: () -> Unit = {},
     /** 앨범: 비행 화면은 스택에 남아 실행기가 이어진다. */
     onAlbum: () -> Unit = {},
     /** 큰 지도 [라이브러리](10.5.4): 비행경로 화면. 떠날 수 있을 때만 켠다. */
@@ -115,6 +124,11 @@ fun FlightScreen(
             vm.openPreflight()
         }
     }
+    // RC 5D 누름 재개는 이 화면이 맨 위일 때만(앨범·설정에서 누른 5D로 재개하지 않게)
+    androidx.lifecycle.compose.LifecycleResumeEffect(vm) {
+        vm.active = true
+        onPauseOrDispose { vm.active = false }
+    }
     // 비행 중에는 뒤로 가기로 화면을 떠나지 못하게 한다(떠나면 실행기가 멈춘다).
     BackHandler { if (s.canExit || s.error != null) onExit() }
 
@@ -127,7 +141,7 @@ fun FlightScreen(
                 OutlinedButton(onClick = onExit) { Text("나가기") }
             }
         }
-        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings, onAlbum, onLibrary)
+        else -> FlightContent(s, missionId, vm, onExit, onShowResult, onOpenSettings, onCameraSettings, onAlbum, onLibrary)
     }
 }
 
@@ -146,53 +160,56 @@ private fun FlightContent(
     onExit: () -> Unit,
     onShowResult: () -> Unit,
     onOpenSettings: () -> Unit,
+    onCameraSettings: () -> Unit,
     onAlbum: () -> Unit,
     onLibrary: () -> Unit,
 ) {
     val ui = s.exec
-    // 10.4.3 자동 비행 배치: FPV 전체, 위 상단 바, 가운데 위 줌 상자, 왼쪽 위 미션 진행 카드, 오른쪽 한 열(렌즈·촬영·앨범),
-    // 아래 가운데 내비 원판, 왼쪽 아래 지도(누르면 자리 바꿈), 오른쪽 아래 RTH 길게.
-    // 큰 지도(10.5.4)일 때는 오른쪽 열 대신 지도 도구, 오른쪽 아래 [라이브러리], 왼쪽 아래 칸은 카메라
-    var mapMain by rememberSaveable { mutableStateOf(false) }
+    // 10.5.2 Pilot 2 카메라 뷰 배치(시안 Flight3): FPV 전체 위에 격자·줌 영역·탭 초점, 상단 바, 가운데 위 줌 상자, 오른쪽 위 노출 띠·카메라 설정,
+    // 왼쪽 열(핀포인트 · 짐벌 메뉴 · AR · ZOOM)과 그 오른쪽 미션 칸(⏸/▶), 오른쪽 열(사진/영상 · 셔터 · 재생)과 세로 줌, 아래 가운데 내비 원판, 왼쪽 아래 지도.
+    // 큰 지도(10.5.4, 미니맵 누름·RC C2)일 때는 오른쪽 열 대신 지도 도구, 오른쪽 아래 [라이브러리], 왼쪽 아래 칸은 카메라. RTH는 RC RTH 버튼(Pilot 2와 같음)
+    val mapMain = s.mapMain
+    val paused = ui.state == ExecState.Paused
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val fpv: @Composable (Modifier) -> Unit = { m -> FpvView(s.simulated, m) }
         if (mapMain) FlightMap(s, interactive = true, pad = listOf(220.dp, 90.dp, 60.dp, 120.dp), Modifier.fillMaxSize(), vm::setMapSource, vm::clearTrack)
-        else fpv(Modifier.fillMaxSize())
+        else {
+            fpv(Modifier.fillMaxSize())
+            // 탭 초점·초점 모드는 일시정지 중에만(지점 사진 초점을 건드리지 않게)
+            CameraOverlay(s.lens, s.zoomRatio, focusEnabled = paused, onFocus = vm::focusAt, Modifier.fillMaxSize())
+        }
         Column(Modifier.align(Alignment.BottomStart)) {
             // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
             s.lastPhoto?.let { LastPhotoThumb(it, Modifier) }
-            MiniMap(mapMain, onSwap = { mapMain = !mapMain }, Modifier) { m ->
+            MiniMap(mapMain, onSwap = vm::swapView, Modifier) { m ->
                 if (mapMain) fpv(m) else FlightMap(s, interactive = false, pad = List(4) { 8.dp }, m)
             }
         }
 
-        TopBar(s, onExit, onOpenSettings, onTitleClick = vm::openPreflight)
-        if (!mapMain) ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
-
+        val sortie = if (s.sortieCount > 1 || ui.sortieIndex > 0) " ${ui.sortieIndex + 1}/${s.sortieCount}" else ""
+        TopBar(s, flightTitle(s.telemetry, "#$missionId$sortie"), onExit, onOpenSettings, onTitleClick = vm::openPreflight)
+        if (!mapMain) {
+            ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
+            ExposureStrip(s.camera, s.videoMode, focusEnabled = paused, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
+            CameraLeftColumn(s.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp))
+            CameraColumn(
+                s = s, shutterEnabled = paused || s.recordingSinceMs != null, onShutter = vm::shutter,
+                cameraEnabled = paused, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 6.dp), onAlbum = onAlbum,
+            )
+        }
+        val notices = listOfNotNull(ui.message?.let { it to Color.White }) + ui.preflightFailures.map { "점검 실패: $it" to Error }
+        NoticeLines(notices, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 48.dp).widthIn(max = 300.dp))
         if (ui.state != ExecState.SortieDone) {
-            Column(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 9.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MissionCard(s, missionId, vm, onShowResult)
-                Notices(s)
-                if (s.simulated) MockRcControls(vm)
-            }
+            MissionChip(s, vm, onShowResult, Modifier.align(Alignment.TopStart).padding(start = 48.dp, top = Dimens.TopBar + 19.dp))
+            if (s.simulated) MockRcControls(vm, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 168.dp))
         }
-        if (!mapMain) CameraColumn(
-            s = s, onLens = vm::setLens,
-            shutterEnabled = ui.state == ExecState.Paused || s.recordingSinceMs != null, onShutter = vm::shutter,
-            cameraEnabled = ui.state == ExecState.Paused, onVideoMode = vm::setVideoMode, onZoom = vm::zoom,
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 37.dp, end = 6.dp),
-            onAlbum = onAlbum,
-        )
 
-        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (s.telemetry?.landingConfirmNeeded == true) LandingConfirmButton(vm::confirmLanding)
-            s.telemetry?.let { NavDisplay(it, s.home, s.obstacles) }
+            s.telemetry?.let { NavDisplay(it, s.home, s.obstacles, s.nextWaypoint) }
         }
-        Column(Modifier.align(Alignment.BottomEnd).padding(8.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (mapMain) LibraryButton(enabled = s.canExit, onLibrary)
-            // 실행기가 대기여도 기체가 떠 있으면(수동 비행 화면에서 넘어온 경우 등) RTH를 보인다
-            if ((ui.state.airborne || s.telemetry?.isFlying == true) && ui.state != ExecState.ReturningHome) RthButton(vm::returnHome)
-        }
+        if (mapMain) Box(Modifier.align(Alignment.BottomEnd).padding(8.dp)) { LibraryButton(enabled = s.canExit, onLibrary) }
 
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
         // 절차 화면(10.5.5): 비행 전 점검 → 체크리스트. 화면 전체를 덮는다
@@ -214,11 +231,12 @@ private fun TerrainFallbackDialog(vm: FlightViewModel) {
 }
 
 /**
- * 왼쪽 위 미션 진행 카드(10.4.3, Pilot 2 55쪽): 미션·소티·진행률, 전주·사진 수, 지금 전주, 상태에 맞는 버튼 하나.
- * 대기 [▶ 비행 시작], 비행 중 노랑 [Ⅱ 일시정지 · 수동 비행](RC 일시정지와 같음), 일시정지 [▶ 재개](C1)와 [건너뛰기]·[완료 처리], 끝나면 [결과 보기].
+ * 왼쪽 위 미션 칸(10.5.2, Pilot 2 "⏸ 비행 경로 수행 중… 50%"): 초록 원 ⏸(일시정지 = 수동 조종, RC 일시정지와 같음) / ▶(대기: 비행 전 점검,
+ * 올림: 시작, 일시정지: 재개), 상태·진행률, 전주·사진 수(우리 추가), 지금 전주. 일시정지면 [건너뛰기]·[완료 처리], 끝나면 [결과 보기].
+ * 제목 ˅를 누르면 RC 버튼 안내를 펼친다.
  */
 @Composable
-private fun MissionCard(s: FlightUiState, missionId: Long, vm: FlightViewModel, onShowResult: () -> Unit) {
+private fun MissionChip(s: FlightUiState, vm: FlightViewModel, onShowResult: () -> Unit, modifier: Modifier) {
     val ui = s.exec
     val all = ui.visits
     val done = all.count { it.status == VisitStatus.DONE || it.status == VisitStatus.SKIPPED || it.status == VisitStatus.FAILED }
@@ -227,51 +245,79 @@ private fun MissionCard(s: FlightUiState, missionId: Long, vm: FlightViewModel, 
     val pct = if (all.isEmpty()) 0 else done * 100 / all.size
     val paused = ui.state == ExecState.Paused
     val canPause = ui.state.airborne && !paused && ui.state != ExecState.ReturningHome
+    var open by rememberSaveable { mutableStateOf(false) }
+    // (원 버튼 그림, 설명, 동작): ▶ true / ⏸ false
+    val action: Triple<Boolean, String, () -> Unit>? = when {
+        ui.state == ExecState.Idle -> Triple(true, "비행 시작(비행 전 점검)", vm::openPreflight)
+        // 체크리스트에서 올리고 닫았으면 다시 열어 [시작](10.5.5)
+        ui.state == ExecState.Uploaded -> Triple(true, "시작(체크리스트)", { vm.confirmPreflight() })
+        paused -> Triple(true, "재개", vm::resume)
+        canPause -> Triple(false, "일시정지 · 수동 비행", { vm.pause() })
+        else -> null
+    }
+    val title = when {
+        ui.state == ExecState.Idle -> "비행 대기"
+        ui.state == ExecState.Uploaded -> "업로드 완료 · 시작 대기"
+        paused -> "일시정지 · 수동 비행"
+        ui.state == ExecState.ReturningHome -> "RTH 진행 중"
+        ui.state == ExecState.MissionDone -> stateLabel(ui.state, ui.remaining)
+        canPause -> "비행 경로 수행 중…"
+        else -> stateLabel(ui.state, ui.remaining)
+    }
     Column(
-        Modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).border(2.dp, Brand, RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("#$missionId · 소티 ${ui.sortieIndex + 1}/${s.sortieCount}", Modifier.weight(1f), fontSize = FontSize.Body, fontWeight = FontWeight.Bold, color = OnTertiaryContainer, maxLines = 1)
-            Text("$pct%", style = numberStyle(FontSize.Label), color = Color.White)
-        }
-        Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(SurfaceContainerHighest)) {
-            Box(Modifier.fillMaxWidth(pct / 100f).height(3.dp).background(Tertiary))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            action?.let { (play, label, onClick) -> ChipButton(play, label, onClick) }
+            Column(Modifier.weight(1f).clickable(onClickLabel = if (open) "안내 접기" else "안내 펼치기") { open = !open }) {
+                Text("$title ${if (open) "˄" else "˅"}", fontSize = FontSize.Caption, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("$pct%", style = numberStyle(FontSize.Body), color = Color.White)
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
             CardFigure("전주", "$done", "/${all.size}")
             CardFigure("사진", "$photos", "/$planned")
             Text(
-                ui.target?.pole?.displayName ?: stateLabel(ui.state, ui.remaining), Modifier.weight(1f), fontSize = FontSize.Caption, color = TextSoft,
+                ui.target?.pole?.displayName ?: "", Modifier.weight(1f), fontSize = FontSize.Caption, color = Color.White,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End,
             )
         }
-        when {
-            ui.state == ExecState.Idle -> CardButton("▶ 비행 시작", MaterialTheme.colorScheme.primary, Color.White, vm::openPreflight)
-            // 체크리스트에서 올리고 닫았으면 다시 열어 [시작](10.5.5)
-            ui.state == ExecState.Uploaded -> CardButton("▶ 시작", MaterialTheme.colorScheme.primary, Color.White, { vm.confirmPreflight() })
-            paused -> {
-                CardButton("▶ 재개 (C1)", Tertiary, Color.Black, vm::resume)
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    CardButton("건너뛰기", MaterialTheme.colorScheme.surfaceContainer, Color.White, vm::skip, Modifier.weight(1f), height = Dimens.ButtonChip)
-                    CardButton("완료 처리", MaterialTheme.colorScheme.surfaceContainer, Color.White, vm::markDone, Modifier.weight(1f), height = Dimens.ButtonChip)
-                }
-            }
-            canPause -> CardButton("Ⅱ 일시정지 · 수동 비행", Caution, Color.Black, vm::pause)
-            ui.state == ExecState.MissionDone -> CardButton("결과 보기", MaterialTheme.colorScheme.primary, Color.White, onShowResult)
-            else -> Unit
+        if (paused) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            CardButton("건너뛰기", MaterialTheme.colorScheme.surfaceContainer, Color.White, { vm.skip() }, Modifier.weight(1f), height = Dimens.ButtonChip)
+            CardButton("완료 처리", MaterialTheme.colorScheme.surfaceContainer, Color.White, { vm.markDone() }, Modifier.weight(1f), height = Dimens.ButtonChip)
         }
-        if (ui.state.airborne) {
+        if (ui.state == ExecState.MissionDone) CardButton("결과 보기", MaterialTheme.colorScheme.primary, Color.White, onShowResult, height = Dimens.ButtonChip)
+        if (open) {
             Text(
                 buildAnnotatedString {
                     append("RC ")
                     withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.SemiBold)) { append("Ⅱ") }
                     append(" 일시정지 · ")
-                    withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.SemiBold)) { append("C1") }
-                    append(" 재개")
+                    withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.SemiBold)) { append("▶") }
+                    append(" 재개(일시정지 중 5D 누름) · C1 렌즈 · C2 지도 · 셔터 = 수동 사진")
                 },
-                fontSize = FontSize.Caption, color = TextSoft,
+                fontSize = FontSize.Micro, color = TextSoft,
             )
+        }
+    }
+}
+
+/** 미션 칸 초록 원 버튼(Pilot 2): ▶([play]) 또는 ⏸. */
+@Composable
+private fun ChipButton(play: Boolean, label: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(Dimens.TouchSmall).clip(CircleShape).background(Tertiary).clickable(onClickLabel = label, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(10.dp)) {
+            if (play) drawPath(Path().apply { moveTo(size.width * 0.15f, 0f); lineTo(size.width, size.height / 2); lineTo(size.width * 0.15f, size.height); close() }, Color.Black)
+            else {
+                drawRect(Color.Black, Offset(size.width * 0.1f, 0f), Size(size.width * 0.3f, size.height))
+                drawRect(Color.Black, Offset(size.width * 0.6f, 0f), Size(size.width * 0.3f, size.height))
+            }
         }
     }
 }
@@ -296,18 +342,6 @@ private fun CardButton(label: String, bg: Color, fg: Color, onClick: () -> Unit,
     ) { Text(label, fontSize = FontSize.Body, fontWeight = FontWeight.Bold, maxLines = 1) }
 }
 
-/** 카드 아래 안내·점검 실패 줄(있을 때만). 배터리 부족 카운트다운은 상단 상태 칸에 보인다. */
-@Composable
-private fun Notices(s: FlightUiState) {
-    val lines = listOfNotNull(s.exec.message?.let { it to Color.White }) + s.exec.preflightFailures.map { "점검 실패: $it" to Error }
-    lines.forEach { (text, color) ->
-        Text(
-            text, Modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
-            color = color, fontSize = FontSize.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
 /** FPV 영상. 실제 기체는 카메라 스트림, 모의 기체는 안내 문구(10장). */
 @Composable
 private fun FpvView(simulated: Boolean, modifier: Modifier) {
@@ -325,14 +359,14 @@ internal fun LandingConfirmButton(onClick: () -> Unit) {
     }
 }
 
-/** 모의 조작(기체 연동 전 전용). RC Pro의 일시정지·C1 버튼으로도 같은 동작을 한다(10장). */
+/** 모의 조작(모의 기체 전용): RC 일시정지 버튼, RC RTH 버튼(실제 기체는 펌웨어), 배터리 −30%, 장애물(없음 → 8m → 4m). */
 @Composable
-private fun MockRcControls(vm: FlightViewModel) {
+private fun MockRcControls(vm: FlightViewModel, modifier: Modifier) {
     // [장애물]이 들어가게 카드보다 조금 넓다
-    Row(Modifier.width(Dimens.CardWidth + 56.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.width(Dimens.CardWidth + 56.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("모의 RC", fontSize = FontSize.Caption, color = TextSoft)
         CardButton("Ⅱ", CardBg, Color.White, { vm.rcPause() }, Modifier.weight(1f), height = Dimens.ButtonChip)
-        CardButton("C1", CardBg, Color.White, { vm.rcResume() }, Modifier.weight(1f), height = Dimens.ButtonChip)
+        CardButton("RTH", CardBg, Color.White, { vm.returnHome() }, Modifier.weight(1f), height = Dimens.ButtonChip)
         CardButton("−30%", CardBg, Color.White, { vm.dropBattery() }, Modifier.weight(1f), height = Dimens.ButtonChip)
         CardButton("장애물", CardBg, Color.White, { vm.cycleObstacle() }, Modifier.weight(1f), height = Dimens.ButtonChip)
     }

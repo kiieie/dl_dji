@@ -62,6 +62,33 @@ object Tuning {
 
         /** 어느 방향(위·아래 포함)이든 이 거리 안이면 운용 로그에 `obstacle`을 남긴다(4.4, 11-03 현장에서 판정 근거가 없었음). */
         const val LOG_M = 15.0
+
+        /** 내비 원판 감지 범위(10.5.3, Pilot 2): 이 안의 장애물은 초록 부채꼴. 기체 경고·제동 거리 손잡이 상한과 같다. */
+        const val SENSING_M = 16.0
+    }
+
+    /** Pilot 2 카메라 뷰 표시 규칙(10.5.1~10.5.3, `FlightDisplay`). */
+    object Display {
+        /** 내비 원판 가장자리 거리(m): 홈 H·조종기 점이 이보다 멀면 가장자리에 붙는다(Pilot 2 매뉴얼). */
+        const val NAV_RIM_M = 16.0
+
+        /** 조종기 점은 기체에서 이보다 멀 때만 보인다(Pilot 2 매뉴얼 5m). */
+        const val NAV_RC_MIN_M = 5.0
+
+        /**
+         * 줌 배율 1당 광각 대비 배율. Pilot 2는 망원 배율을 광각 기준으로 쓴다(ZOOM 7.0X ≈ 망원 162mm / 광각 24mm 환산, 11-04 녹화의
+         * 줌 영역 사각형이 2.0X에서 화면 폭의 절반, 7.0X에서 약 1/7). 실기 화면과 다르면 고친다.
+         */
+        const val ZOOM_RATIO_PER_WIDE = 1.0
+    }
+
+    /**
+     * 기체 배터리 경고 문턱(%) 기본값: 기체 값(`KeyLowBatteryWarningThreshold` 등)을 못 읽을 때(모의 기체 포함) 쓴다.
+     * 11-03 현장 기체(Pilot 2 비행 전 점검 배터리 경고 손잡이) 값.
+     */
+    object Battery {
+        const val LOW_PCT = 43
+        const val CRITICAL_PCT = 22
     }
 
     /** 비행 전 점검 판정(6.7, `PreflightEvaluator`). */

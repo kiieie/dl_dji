@@ -186,6 +186,7 @@ class MainActivity : ComponentActivity() {
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                     onLibrary = { nav.navigate("projects") { popUpTo("home") } },
                     onPreflight = { nav.navigate("preflight?camera=false") { launchSingleTop = true } },
+                    onCameraSettings = { nav.navigate("settings?camera=true") { launchSingleTop = true } },
                 )
             }
             // 비행 전 점검(10.5.5): camera면 [카메라 뷰 입력]으로 수동 비행 카메라 뷰(점검 화면은 스택에서 뺌), 아니면 닫기만
@@ -231,6 +232,7 @@ class MainActivity : ComponentActivity() {
                     // 미션이 끝나면 비행 화면을 스택에서 빼고 결과로 간다(뒤로 가면 계획 화면)
                     onShowResult = { nav.navigate("result/$pid/$mid") { popUpTo("flight/{pid}/{mid}?pre={pre}") { inclusive = true } } },
                     onOpenSettings = { nav.navigate("settings") { launchSingleTop = true } },
+                    onCameraSettings = { nav.navigate("settings?camera=true") { launchSingleTop = true } },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                     // 지도 [라이브러리]: 비행 화면을 닫고 그 프로젝트의 비행경로로(떠 있을 때는 버튼이 꺼짐)
                     onLibrary = { nav.navigate("projects?pid=$pid") { popUpTo("home"); launchSingleTop = true } },
@@ -239,8 +241,11 @@ class MainActivity : ComponentActivity() {
             composable("result/{pid}/{mid}", ids) { e ->
                 ResultScreen(e.arguments!!.getLong("pid"), e.arguments!!.getLong("mid"), dao, onBack = { nav.popBackStack() })
             }
-            composable("settings?general={general}", listOf(navArgument("general") { type = NavType.BoolType; defaultValue = false })) { e ->
-                SettingsHub(onBack = { nav.popBackStack() }, initialGeneral = e.arguments!!.getBoolean("general"))
+            composable(
+                "settings?general={general}&camera={camera}",
+                listOf(navArgument("general") { type = NavType.BoolType; defaultValue = false }, navArgument("camera") { type = NavType.BoolType; defaultValue = false }),
+            ) { e ->
+                SettingsHub(onBack = { nav.popBackStack() }, initialGeneral = e.arguments!!.getBoolean("general"), initialCamera = e.arguments!!.getBoolean("camera"))
             }
             // 앨범(10.4.3 ⑦): 사진 모아 보기. 미션 사진을 누르면 그 미션 판독으로
             composable("album") { AlbumScreen(dao, onBack = { nav.popBackStack() }, onReview = { pid, mid -> nav.navigate("result/$pid/$mid") }) }
