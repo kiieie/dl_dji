@@ -337,7 +337,7 @@ private fun SettingRow(item: AircraftSetting, value: Any?, vm: AircraftSettingsV
                     ) { Text(name) }
                 }
             }
-            AircraftSetting.Kind.Info -> Text(value?.toString() ?: "--", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            AircraftSetting.Kind.Info, is AircraftSetting.Kind.Range -> Text(value?.toString() ?: "--", color = MaterialTheme.colorScheme.onSurfaceVariant)
             is AircraftSetting.Kind.Action -> Button(onClick = { vm.ask(item) }, modifier = Modifier.heightIn(min = Dimens.TouchLarge)) { Text("실행") }
         }
     }

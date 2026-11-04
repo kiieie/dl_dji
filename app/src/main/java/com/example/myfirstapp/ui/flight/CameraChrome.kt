@@ -86,7 +86,11 @@ import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
  * 아래에 배터리 띠(빨강 0~10%, 노랑 10~20%, 초록 그 위, H는 복귀에 필요한 양).
  */
 @Composable
-internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> Unit, label: String? = null, canExit: Boolean = s.canExit) {
+internal fun TopBar(
+    s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> Unit, label: String? = null, canExit: Boolean = s.canExit,
+    /** 가운데 비행 상태 글자를 누르면(Pilot 2: 비행 전 점검을 엶, 10.5.1). */
+    onTitleClick: (() -> Unit)? = null,
+) {
     val t = s.telemetry
     val state = s.exec.state
     val lost = state == ExecState.LinkLost || t?.connected == false
@@ -118,8 +122,9 @@ internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> 
                 IconButton(onClick = onExit, enabled = canExit, modifier = Modifier.size(Dimens.TouchSmall)) {
                     Icon(painterResource(R.drawable.ic_chevron_back), contentDescription = "뒤로", modifier = Modifier.size(14.dp), tint = if (canExit) Color.White else Inactive)
                 }
+                com.example.myfirstapp.ui.AppBadge()
                 Row(
-                    Modifier.width(Dimens.CardWidth).height(22.dp).background(if (alarm) Error else SurfaceContainerHigh, RoundedCornerShape(3.dp)).padding(horizontal = 8.dp),
+                    Modifier.width(Dimens.StatusBox).height(22.dp).background(if (alarm) Error else SurfaceContainerHigh, RoundedCornerShape(3.dp)).padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     if (alarm) Icon(painterResource(R.drawable.ic_warning), contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
@@ -151,7 +156,8 @@ internal fun TopBar(s: FlightUiState, onExit: () -> Unit, onOpenSettings: () -> 
             }
             Text(
                 listOfNotNull(label ?: stateLabel(state, s.exec.remaining), if (s.simulated) "모의 ×${FAKE_TIME_SCALE.toInt()}" else null).joinToString(" · "),
-                Modifier.align(Alignment.Center), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1,
+                Modifier.align(Alignment.Center).clickable(enabled = onTitleClick != null, onClickLabel = "비행 전 점검") { onTitleClick?.invoke() },
+                fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1,
             )
         }
         BatteryBand(t?.batteryPct, s.returnNeedPct)

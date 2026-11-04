@@ -44,6 +44,9 @@ val Warning = Color(0xFFFF9F0A)
 /** 일시정지 버튼, 이륙 지점 H, RTH 테두리. */
 val Caution = Color(0xFFFFC400)
 
+/** 우리 앱 표지 고유색(왼쪽 위 `KEPCO 점검` 테두리, 10.5.1). Pilot 2와 구별하는 유일한 색. */
+val Brand = Color(0xFF8B5CF6)
+
 /** 영상 위 카드·버튼 바탕(10.4 시안 #121212 90%). */
 val CardBg = Color(0xE6121212)
 /** 꺼진 아이콘·신호 막대·셔터 테두리. */

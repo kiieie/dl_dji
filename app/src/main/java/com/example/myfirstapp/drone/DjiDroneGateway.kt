@@ -38,8 +38,6 @@ import dji.sdk.keyvalue.value.gimbal.GimbalResetType
 import dji.sdk.keyvalue.value.camera.DateTime
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.EmptyMsg
-import dji.sdk.keyvalue.value.flightcontroller.FailsafeAction
-import dji.sdk.keyvalue.value.flightcontroller.GPSSignalLevel
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.manager.KeyManager
@@ -54,7 +52,6 @@ import dji.v5.manager.datacenter.media.MediaFile
 import dji.v5.manager.datacenter.media.MediaFileDownloadListener
 import dji.v5.manager.datacenter.media.MediaFileListDataSource
 import dji.v5.manager.datacenter.media.PullMediaFileListParam
-import dji.v5.manager.ldm.LDMManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -176,7 +173,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(FlightControllerKey.KeyGPSSatelliteCount) { n -> _telemetry.update { it.copy(satellites = n ?: 0) } }
         on(AirLinkKey.KeySignalQuality) { q -> _telemetry.update { it.copy(signalPct = q) } }
         on(BatteryKey.KeyChargeRemainingInPercent) { b -> _telemetry.update { it.copy(batteryPct = (b ?: 0).toDouble()) } }
-        on(FlightControllerKey.KeyGPSSignalLevel) { g -> _telemetry.update { it.copy(gpsLevel = gpsLevel(g)) } }
+        on(FlightControllerKey.KeyGPSSignalLevel) { g -> _telemetry.update { it.copy(gpsLevel = gpsLevelOf(g)) } }
         on(FlightControllerKey.KeyHomeLocation) { h ->
             _telemetry.update { it.copy(home = h?.takeIf { validGeo(h.latitude, h.longitude) }?.let { GeoPoint(h.latitude, h.longitude) }) }
         }
@@ -286,38 +283,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         _events.tryEmit(DroneEvent.ConnectionRestored)
     }
 
-    private fun gpsLevel(g: GPSSignalLevel?) = when (g) {
-        GPSSignalLevel.LEVEL_1 -> 1
-        GPSSignalLevel.LEVEL_2 -> 2
-        GPSSignalLevel.LEVEL_3 -> 3
-        GPSSignalLevel.LEVEL_4 -> 4
-        GPSSignalLevel.LEVEL_5, GPSSignalLevel.LEVEL_10 -> 5
-        else -> 0
-    }
-
-    private suspend fun <T> read(info: DJIKeyInfo<T>, index: ComponentIndexType? = null): T? = withTimeoutOrNull(AppConfig.Timeouts.GATEWAY_KEY_READ_MS) {
-        val key = if (index == null) KeyTools.createKey(info) else KeyTools.createKey(info, index)
-        runCatching { djiValue<T> { keys.getValue(key, it) } }.getOrNull()
-    }
-
-    override suspend fun preflight(): PreflightReport {
-        val t = _telemetry.value
-        val home = read(FlightControllerKey.KeyHomeLocation)?.takeIf { validGeo(it.latitude, it.longitude) }
-        return PreflightReport(
-            connected = t.connected,
-            gpsSatellites = read(FlightControllerKey.KeyGPSSatelliteCount) ?: 0,
-            gpsLevel = t.gpsLevel,
-            homeRecorded = read(FlightControllerKey.KeyIsHomeLocationSet) == true,
-            batteryPct = t.batteryPct,
-            batteryTempC = read(BatteryKey.KeyBatteryTemperature) ?: 0.0,
-            sdFreeMb = (read(CameraKey.KeySDCardRemainSpace, camera) ?: 0).toLong(),
-            ldmEnabled = LDMManager.getInstance().isLDMEnabled,
-            obstacleAvoidanceOn = runCatching { djiValue<Boolean> { PerceptionManager.getInstance().getOverallObstacleAvoidanceEnabled(it) } }.getOrDefault(false),
-            rthAltitudeM = (read(FlightControllerKey.KeyGoHomeHeight) ?: 0).toDouble(),
-            lostLinkActionIsRth = read(FlightControllerKey.KeyFailsafeAction) == FailsafeAction.GOHOME,
-            home = home?.let { GeoPoint(it.latitude, it.longitude) },
-        )
-    }
+    override suspend fun preflight(): PreflightReport = djiPreflightReport()
 
     // ponytail: 방식 A는 KMZ의 이륙 안전 고도(takeOffSecurityHeight)로 미션이 직접 이륙한다. 방식 B를 붙일 때 KeyStartTakeoff로 바꾼다.
     override suspend fun takeoff(): Result<Unit> = Result.success(Unit)

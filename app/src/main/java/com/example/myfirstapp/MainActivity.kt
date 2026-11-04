@@ -37,6 +37,7 @@ import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
 import com.example.myfirstapp.ui.flight.FlightScreen
 import com.example.myfirstapp.ui.flight.ManualFlightScreen
+import com.example.myfirstapp.ui.procedure.PreflightScreen
 import com.example.myfirstapp.ui.home.HomeScreen
 import com.example.myfirstapp.ui.album.AlbumScreen
 import com.example.myfirstapp.ui.mission.MissionListScreen
@@ -148,7 +149,8 @@ class MainActivity : ComponentActivity() {
                     onAlbum = { _, _ -> nav.navigate("album") },
                     onFlight = ::openFlight,
                     onNewPlan = { pid -> nav.navigate("map/$pid") },
-                    onCamera = { nav.navigate("camera") },
+                    // Pilot 2 [카메라 뷰 입력] → 비행 전 점검 → 카메라 뷰(10.5.5)
+                    onCamera = { nav.navigate("preflight?camera=true") },
                     onSettings = { nav.navigate("settings?general=true") { launchSingleTop = true } },
                     onAircraftCheck = { nav.navigate("settings") { launchSingleTop = true } },
                     onVerification = { nav.navigate("verify") },
@@ -163,6 +165,15 @@ class MainActivity : ComponentActivity() {
                     onOpenMission = { m -> openFlight(m.projectId, m.missionId) },
                     onAlbum = { nav.navigate("album") { launchSingleTop = true } },
                     onLibrary = { nav.navigate("projects") { popUpTo("home") } },
+                    onPreflight = { nav.navigate("preflight?camera=false") { launchSingleTop = true } },
+                )
+            }
+            // 비행 전 점검(10.5.5): camera면 [카메라 뷰 입력]으로 수동 비행 카메라 뷰(점검 화면은 스택에서 뺌), 아니면 닫기만
+            composable("preflight?camera={camera}", listOf(navArgument("camera") { type = NavType.BoolType; defaultValue = false })) { e ->
+                val toCamera = e.arguments!!.getBoolean("camera")
+                PreflightScreen(
+                    onClose = { nav.popBackStack() },
+                    onNext = if (toCamera) ({ nav.navigate("camera") { popUpTo("preflight?camera={camera}") { inclusive = true } } }) else null,
                 )
             }
             // 비행경로(마스터-디테일). pid가 있으면 그 프로젝트를 고른 채 연다

@@ -12,6 +12,8 @@ import com.example.myfirstapp.core.model.ObstacleDirection
 import com.example.myfirstapp.core.model.ObstacleWarning
 import com.example.myfirstapp.core.model.Obstacles
 import com.example.myfirstapp.core.executor.ExecutorConfig
+import com.example.myfirstapp.core.port.PreflightReport
+import com.example.myfirstapp.ui.procedure.ProcedurePage
 import com.example.myfirstapp.data.TelemetrySampleEntity
 import com.example.myfirstapp.drone.DjiDroneGateway
 import com.example.myfirstapp.drone.djiAircraftConnected
@@ -97,8 +99,8 @@ data class FlightUiState(
     val videoMode: Boolean = false,
     /** 녹화를 시작한 시각. 녹화 중이 아니면 null. */
     val recordingSinceMs: Long? = null,
-    /** 비행 전 점검 체크리스트(Pilot 2): [비행 시작]을 누르면 채워지고, 확인하면 비운다. */
-    val preflight: List<PreflightCheck>? = null,
+    /** 열린 절차 화면(10.5.5): 비행 전 점검 → 웨이포인트 경로 체크리스트. 닫혀 있으면 null. */
+    val page: ProcedurePage? = null,
     /** 미션 파라미터(촬영 방식 포함). 미니맵에 실제 촬영 지점 경로를 그린다. */
     val params: FlightParams? = null,
     /** 충돌 경고(13번): 방향별 등급·거리. 내비 원판 부채꼴과 상단 상태 칸에 보인다. */
@@ -267,26 +269,27 @@ class FlightViewModel(
 
     fun start() = send(Command.Start)
 
-    /** [비행 시작]: Pilot 2처럼 먼저 비행 전 점검 체크리스트를 보여 준다(판정은 실행기도 다시 한다, 6.7). */
-    fun openPreflight() {
-        val d = drone ?: return
-        val p = flightParams ?: return
-        viewModelScope.launch {
-            val ui = _state.value.exec
-            val index = plans.indices.firstOrNull { i -> ui.visits.any { it.sortieIndex == i && it.status == VisitStatus.PENDING } } ?: ui.sortieIndex
-            val plan = plans.getOrNull(index)
-            val first = ui.visits.firstOrNull { it.sortieIndex == index && it.status == VisitStatus.PENDING }?.pole?.position
-            val list = PreflightEvaluator.checklist(d.preflight(), p, plan?.estBatteryPct ?: 0.0, first)
-            OpLog.log("preflight", "checklist", list.associate { it.label to "${if (it.ok) "OK" else "WARN"} ${it.value}" })
-            _state.update { it.copy(preflight = list) }
-        }
+    /** [비행 시작]·상단 바 비행 상태 글자: Pilot 2처럼 비행 전 점검 화면을 연다(판정은 실행기도 다시 한다, 6.7). */
+    fun openPreflight() = _state.update { it.copy(page = ProcedurePage.PREFLIGHT) }
+
+    fun closeProcedure() = _state.update { it.copy(page = null) }
+
+    /** 비행 전 점검 화면이 읽는 기체 값: 실행기와 같은 기체(모의 기체면 모의 값). */
+    suspend fun preflightReport(): PreflightReport? = drone?.preflight()
+
+    /** 비행 전 점검 판정(6.7): 다음 소티의 배터리 예상·첫 전주까지 거리 포함. */
+    fun checksFor(report: PreflightReport): List<PreflightCheck> {
+        val p = flightParams ?: return PreflightEvaluator.manual(report)
+        val ui = _state.value.exec
+        val index = plans.indices.firstOrNull { i -> ui.visits.any { it.sortieIndex == i && it.status == VisitStatus.PENDING } } ?: ui.sortieIndex
+        val first = ui.visits.firstOrNull { it.sortieIndex == index && it.status == VisitStatus.PENDING }?.pole?.position
+        return PreflightEvaluator.checklist(report, p, plans.getOrNull(index)?.estBatteryPct ?: 0.0, first)
     }
 
-    fun closePreflight() = _state.update { it.copy(preflight = null) }
-
-    /** 체크리스트 확인 → 업로드·시작. [ignoreWarnings]면 ▲ 항목을 운용자가 확인하고 그대로 시작한다(기체 연결은 필요). */
+    /** 비행 전 점검 [다음] → 업로드·시작. [ignoreWarnings]면 경고 항목을 운용자가 보고 넘어간 것이다(기체 연결·LDM은 여전히 필요). */
     fun confirmPreflight(ignoreWarnings: Boolean = false) {
-        closePreflight()
+        OpLog.log("preflight", "next", mapOf("warned" to ignoreWarnings))
+        closeProcedure()
         send(if (ignoreWarnings) Command.StartIgnoringWarnings else Command.Start)
     }
 

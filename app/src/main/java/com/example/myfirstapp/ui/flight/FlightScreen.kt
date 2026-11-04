@@ -65,8 +65,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.executor.ExecState
-import com.example.myfirstapp.core.executor.PreflightCheck
-import com.example.myfirstapp.core.executor.PreflightEvaluator
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.data.ProjectDao
@@ -154,7 +152,7 @@ private fun FlightContent(
             if (mapMain) fpv(m) else FlightMap(s, interactive = false, pad = List(4) { 8.dp }, m)
         }
 
-        TopBar(s, onExit, onOpenSettings)
+        TopBar(s, onExit, onOpenSettings, onTitleClick = vm::openPreflight)
         if (!mapMain) ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
 
         if (ui.state != ExecState.SortieDone) {
@@ -183,7 +181,8 @@ private fun FlightContent(
         }
 
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
-        s.preflight?.let { PreflightSheet(it, vm) }
+        // 절차 화면(10.5.5): 비행 전 점검 → 체크리스트. 화면 전체를 덮는다
+        if (s.page != null) ProcedurePages(s, vm)
         if (ui.terrainFallbackAsk) TerrainFallbackDialog(vm)
     }
 }
@@ -289,63 +288,6 @@ private fun Notices(s: FlightUiState) {
         Text(
             text, Modifier.width(Dimens.CardWidth).background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
             color = color, fontSize = FontSize.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-/** 비행 전 점검(Pilot 2 체크리스트, 매뉴얼 68쪽 [수행]): 항목·값·통과를 보여 주고 확인하면 업로드·시작. */
-@Composable
-private fun PreflightSheet(items: List<PreflightCheck>, vm: FlightViewModel) {
-    val ok = items.all { it.ok }
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
-        Card(Modifier.fillMaxWidth(0.7f), shape = RoundedCornerShape(6.dp), colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceContainerLow)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("비행 전 점검", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                // 배터리(지금·예상 사용·예비, 5.5)는 업로드 전 판단의 핵심이라 한 줄 전체로 보인다
-                val battery = items.firstOrNull { it.label == PreflightEvaluator.BATTERY }
-                battery?.let { PreflightRow(it) }
-                // 나머지는 화면 높이가 좁아 두 줄로 나눠 놓는다
-                val rest = items - listOfNotNull(battery).toSet()
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    rest.chunked((rest.size + 1) / 2).forEach { col ->
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            col.forEach { PreflightRow(it) }
-                        }
-                    }
-                }
-                val blocked = PreflightEvaluator.blocked(items)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                    if (ok) {
-                        Button(onClick = { vm.confirmPreflight() }, modifier = Modifier.height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp)) { Text("업로드 후 시작") }
-                    } else {
-                        // Pilot 2처럼 경고가 있어도 조종사가 확인하고 시작할 수 있다. 기체 연결이 없거나 LDM이 꺼져 있으면 시작할 수 없다
-                        Button(
-                            onClick = { vm.confirmPreflight(ignoreWarnings = true) }, enabled = !blocked,
-                            colors = ButtonDefaults.buttonColors(containerColor = PolePending, contentColor = Color.Black),
-                            modifier = Modifier.height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp),
-                        ) { Text("경고 확인하고 시작") }
-                    }
-                    TextButton(onClick = vm::closePreflight, modifier = Modifier.height(Dimens.ButtonStd)) { Text("취소") }
-                    if (!ok) Text(
-                        items.firstOrNull { !it.ok && it.blocking }?.problem ?: "▲ ${items.count { !it.ok }}개 항목을 확인하세요",
-                        color = PoleFailed, maxLines = 2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** 비행 전 점검 한 줄: 통과 ●/경고 ▲, 항목 이름, 값(오른쪽 맞춤). */
-@Composable
-private fun PreflightRow(c: PreflightCheck) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(if (c.ok) "●" else "▲", color = if (c.ok) PoleDone else PoleFailed, style = MaterialTheme.typography.bodyMedium)
-        Text(c.label, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            c.value, modifier = Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (c.ok) MaterialTheme.colorScheme.onSurfaceVariant else PoleFailed,
         )
     }
 }
