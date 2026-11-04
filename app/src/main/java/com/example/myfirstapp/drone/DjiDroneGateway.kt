@@ -26,6 +26,7 @@ import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.key.RemoteControllerKey
 import dji.sdk.keyvalue.value.camera.CameraMode
 import dji.sdk.keyvalue.value.camera.CameraStreamSettingsInfo
 import dji.sdk.keyvalue.value.camera.DCFCameraType
