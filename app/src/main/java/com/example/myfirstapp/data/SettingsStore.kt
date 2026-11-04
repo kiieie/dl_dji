@@ -3,6 +3,7 @@ package com.example.myfirstapp.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.myfirstapp.core.model.FlightParams
@@ -32,6 +33,20 @@ class SettingsStore(context: Context) {
     /** VWorld 위성 위에 도로·지명 라벨(하이브리드)을 겹칠지. */
     val vworldLabels: Flow<Boolean> = store.data.map { it[VWORLD_LABELS] ?: true }
 
+    /** 앨범 보기(10.4.3): 선로별(기본, true) / 미션별. 마지막에 본 것으로 연다. */
+    val albumByLine: Flow<Boolean> = store.data.map { it[ALBUM_BY_LINE] ?: true }
+
+    /** 판독 전주 목록 폭(dp, 10.4.3). 끌어서 바꾼 폭을 다음에도 쓴다. 없으면 null(기본 폭). */
+    val resultListWidth: Flow<Float?> = store.data.map { it[RESULT_LIST_WIDTH] }
+
+    suspend fun setAlbumByLine(on: Boolean) {
+        store.edit { it[ALBUM_BY_LINE] = on }
+    }
+
+    suspend fun setResultListWidth(dp: Float) {
+        store.edit { it[RESULT_LIST_WIDTH] = dp }
+    }
+
     suspend fun setMapSource(s: MapSource) {
         store.edit { it[MAP_SOURCE] = s.name }
     }
@@ -58,5 +73,7 @@ class SettingsStore(context: Context) {
         val FULL_MODEL = stringPreferencesKey("full_model_dir")
         val MAP_SOURCE = stringPreferencesKey("map_source")
         val VWORLD_LABELS = booleanPreferencesKey("vworld_labels")
+        val ALBUM_BY_LINE = booleanPreferencesKey("album_by_line")
+        val RESULT_LIST_WIDTH = floatPreferencesKey("result_list_width")
     }
 }

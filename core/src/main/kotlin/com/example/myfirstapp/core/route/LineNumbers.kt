@@ -13,6 +13,27 @@ object LineNumbers {
     val SIDE_NAMES = listOf("부하측 우", "전원측 우", "전원측 좌", "부하측 좌")
 
     private val SEGMENT = Regex("""([A-Z]?)(\d+)""")
+    private val RUN = Regex("""\d+|\D+""")
+
+    /**
+     * 자연 순서(앨범 선로별 보기·판독): 숫자 덩어리는 수로 비교해 `137L28R2` < `137L28R13`, 짧은 쪽이 먼저(`137` < `137L1` < `138`).
+     * 숫자가 아닌 덩어리는 글자 순서(선로명 "가나다"도 이것으로 줄 세운다).
+     */
+    val ORDER: Comparator<String> = Comparator { a, b ->
+        val x = RUN.findAll(a.trim().uppercase()).map { it.value }.toList()
+        val y = RUN.findAll(b.trim().uppercase()).map { it.value }.toList()
+        for (i in 0 until minOf(x.size, y.size)) {
+            val p = x[i]
+            val q = y[i]
+            val c = if (p[0].isDigit() && q[0].isDigit()) {
+                val u = p.trimStart('0')
+                val v = q.trimStart('0')
+                if (u.length != v.length) u.length - v.length else u.compareTo(v)
+            } else p.compareTo(q)
+            if (c != 0) return@Comparator c
+        }
+        x.size - y.size
+    }
 
     /** 전원측 이웃 번호. 없으면 null(본선 1번 등). */
     fun previous(lineNo: String): String? {

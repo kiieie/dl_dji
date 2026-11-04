@@ -329,6 +329,9 @@ data class AlbumPhoto(
     val alertCount: Int,
     /** 경고 라벨이 아닌 탐지(설비) 수. */
     val facilityCount: Int = 0,
+    /** 선로별 보기(10.4.3)에서 사진을 누르면 이 미션의 판독으로 간다. */
+    val missionId: Long = 0,
+    val projectId: Long = 0,
 ) {
     val displayName get() = poleDisplayName(poleId, lineName, lineNo)
 }
@@ -373,6 +376,13 @@ data class SortieDraft(val estDistanceM: Double, val estBatteryPct: Double, val 
 
 /** 프로젝트 목록 카드용(10장 ①). */
 data class ProjectSummary(val id: Long, val name: String, val createdAt: Long, val poleCount: Int, val lastMissionId: Long? = null)
+
+/** 앨범 사진 한 장: 전주 이름·설비, 미션, 경고·설비 탐지 수. 뒤에 WHERE·ORDER BY를 붙여 쓴다. */
+private const val ALBUM_PHOTO = "SELECT c.*, po.poleId, po.lineName, po.lineNo, po.equipment, po.voltage, s.missionId, m.projectId, " +
+    "(SELECT COUNT(*) FROM detection d WHERE d.captureId = c.id AND d.alert) AS alertCount, " +
+    "(SELECT COUNT(*) FROM detection d WHERE d.captureId = c.id AND NOT d.alert) AS facilityCount " +
+    "FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId JOIN mission m ON m.id = s.missionId " +
+    "JOIN pole po ON po.id = v.poleRowId"
 
 @Dao
 interface ProjectDao {
@@ -569,14 +579,12 @@ interface ProjectDao {
     suspend fun albumMissions(): List<AlbumMission>
 
     /** 앨범 사진: 방문 순서대로, 전주 이름·설비와 경고 탐지 수. */
-    @Query(
-        "SELECT c.*, po.poleId, po.lineName, po.lineNo, po.equipment, po.voltage, " +
-            "(SELECT COUNT(*) FROM detection d WHERE d.captureId = c.id AND d.alert) AS alertCount, " +
-            "(SELECT COUNT(*) FROM detection d WHERE d.captureId = c.id AND NOT d.alert) AS facilityCount " +
-            "FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId JOIN pole po ON po.id = v.poleRowId " +
-            "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`, c.id",
-    )
+    @Query("$ALBUM_PHOTO WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`, c.id")
     suspend fun albumPhotos(missionId: Long): List<AlbumPhoto>
+
+    /** 앨범 선로별 보기(10.4.3): 모든 미션의 사진. 나무(선로 → 전주 → 날짜)는 `lineTree`가 묶는다. */
+    @Query("$ALBUM_PHOTO ORDER BY c.takenAt, c.id")
+    suspend fun albumAllPhotos(): List<AlbumPhoto>
 
     @Query(
         "SELECT d.* FROM detection d JOIN capture c ON c.id = d.captureId JOIN visit v ON v.id = c.visitId " +
