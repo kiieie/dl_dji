@@ -1,6 +1,8 @@
 package com.example.myfirstapp.core.port
 
 import com.example.myfirstapp.core.config.Tuning
+import com.example.myfirstapp.core.model.CameraStatus
+import com.example.myfirstapp.core.model.FocusMode
 import com.example.myfirstapp.core.model.DownloadMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
@@ -75,8 +77,17 @@ interface DroneGateway {
     /** FPV 영상 렌즈(광각/망원) 바꾸기(Pilot 2 카메라 뷰 전환). */
     suspend fun setVideoLens(lens: Lens): Result<Unit> = Result.failure(UnsupportedOperationException("렌즈 전환 미지원"))
 
-    /** 짐벌 중앙 ↔ 아래 전환(Pilot 2 짐벌 모드, RC C2). */
-    suspend fun toggleGimbal(): Result<Unit> = Result.failure(UnsupportedOperationException("짐벌 전환 미지원"))
+    /** 화면 짐벌 메뉴(10.5.7): 짐벌 중앙(앞) 또는 아래(-90°). */
+    suspend fun setGimbal(down: Boolean): Result<Unit> = Result.failure(UnsupportedOperationException("짐벌 전환 미지원"))
+
+    /** 카메라 노출·초점·남은 저장(10.5.2 노출 띠). 기본은 빈 흐름(화면은 "--"). */
+    val cameraStatus: Flow<CameraStatus> get() = emptyFlow()
+
+    /** 초점 모드(노출 띠 AFS를 누르면 차례로). */
+    suspend fun setFocusMode(mode: FocusMode): Result<Unit> = Result.failure(UnsupportedOperationException("초점 모드 미지원"))
+
+    /** 화면 탭 초점(10.5.2): 영상 안 위치 [x]·[y](0~1, 왼쪽 위 0). */
+    suspend fun focusAt(x: Double, y: Double): Result<Unit> = Result.failure(UnsupportedOperationException("탭 초점 미지원"))
 
     /** 망원 렌즈 줌 배율(10.4.3 줌 +/−). 기체가 받는 범위([zoomRange]) 밖이면 범위 안으로 맞춘다. */
     suspend fun setZoom(ratio: Double): Result<Unit> = Result.failure(UnsupportedOperationException("줌 미지원"))

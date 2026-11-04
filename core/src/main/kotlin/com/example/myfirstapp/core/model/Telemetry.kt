@@ -1,5 +1,7 @@
 package com.example.myfirstapp.core.model
 
+import com.example.myfirstapp.core.config.Tuning
+
 /** 앱이 구분해야 하는 기체 비행 모드. 어댑터가 DJI 값을 이 값으로 바꾼다. */
 enum class FlightMode { ON_GROUND, TAKING_OFF, MISSION, MISSION_PAUSED, MANUAL, GO_HOME, LANDING, UNKNOWN }
 
@@ -26,13 +28,59 @@ data class Telemetry(
     val rcPosition: GeoPoint? = null,
     /** 모터가 도는 중(땅에서 시동 포함). 충돌 경고 신호음은 모터가 돌거나 떠 있을 때만 낸다(10.5.3). */
     val motorsOn: Boolean = false,
+    /** 기체 배터리 전압(V)·온도(℃): 상단 바 배터리와 팝업(10.5.1). 모르면 null. */
+    val batteryVoltageV: Double? = null,
+    val batteryTempC: Double? = null,
+    /** 기체 배터리 경고 문턱(%, 낮음·심각). 모르면 null([Tuning.Battery]). */
+    val lowBatteryPct: Int? = null,
+    val criticalBatteryPct: Int? = null,
+    /** 기체가 계산한 RTH에 필요한 배터리(%)와 남은 비행 시간(초)(배터리 띠 H·시간 라벨). 모르면 null(앱 추정). */
+    val rthBatteryPct: Int? = null,
+    val remainingFlightSec: Int? = null,
+    /** 풍속(m/s)·풍향(정북 0°, 시계 방향)(내비 WS). 모르면 null. */
+    val windSpeedMps: Double? = null,
+    val windDirDeg: Double? = null,
+    /** 해발 고도(m, 내비 ASL). 모르면 null. */
+    val altitudeAslM: Double? = null,
+    /** RC 비행 모드 스위치 글자(N/S/F, 상단 바 "N 모드"). 모르면 null(N으로 보임). */
+    val rcMode: Char? = null,
 ) {
     val isFlying: Boolean get() = flightMode != FlightMode.ON_GROUND && flightMode != FlightMode.UNKNOWN
+
+    /**
+     * GNSS 없이 비전으로 위치를 잡는 중(Pilot 2 "N 모드 - 비전 포지셔닝", 11-04 실내 녹화: 위성 0).
+     * ponytail: GNSS 신호 등급만 본다. 비전도 없는 ATTI는 `KeyVisionPositioningLevel`로 가를 수 있다(실기 확인 뒤).
+     */
+    val visionPositioning: Boolean get() = connected && gpsLevel <= 1
+    val lowPct: Int get() = lowBatteryPct ?: Tuning.Battery.LOW_PCT
+    val criticalPct: Int get() = criticalBatteryPct ?: Tuning.Battery.CRITICAL_PCT
 
     companion object {
         val DISCONNECTED = Telemetry(null, 0.0, 0.0, 0.0, FlightMode.UNKNOWN, 0, false, null)
     }
 }
+
+/** 초점 모드(Pilot 2 노출 띠 AFS·AFC·MF, 누르면 차례로 바뀜). */
+enum class FocusMode {
+    AFS, AFC, MF;
+
+    fun next(): FocusMode = entries[(ordinal + 1) % entries.size]
+}
+
+/**
+ * 카메라 노출·초점·저장 값(10.5.2 노출 띠): 기체 값을 글자로(ISO "100", 셔터 "1/640", 조리개 "2.8", EV "0" / "-0.3").
+ * 모르는 값은 null(화면은 "--"). [photosLeft]는 남은 사진 장수, [recordSecLeft]는 남은 녹화 시간(초).
+ */
+data class CameraStatus(
+    val iso: String? = null,
+    val shutter: String? = null,
+    val aperture: String? = null,
+    val ev: String? = null,
+    val aeLocked: Boolean = false,
+    val focus: FocusMode? = null,
+    val photosLeft: Int? = null,
+    val recordSecLeft: Int? = null,
+)
 
 /** 계획 화면의 지금 위치(10.5.5): 기체(연결되고 위성이 충분할 때)와 기수, 조종기 GPS. 모르면 null. */
 data class LivePositions(val aircraft: GeoPoint? = null, val headingDeg: Double = 0.0, val rc: GeoPoint? = null) {

@@ -1,7 +1,9 @@
 package com.example.myfirstapp.core.fake
 
 import com.example.myfirstapp.core.config.Tuning
+import com.example.myfirstapp.core.model.CameraStatus
 import com.example.myfirstapp.core.model.DownloadMode
+import com.example.myfirstapp.core.model.FocusMode
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.FinishAction
 import com.example.myfirstapp.core.model.FlightMode
@@ -63,12 +65,16 @@ class FakeDroneGateway(
         val airborneAltitudeM: Double = 30.0,
         /** 떠 있는 채 시작할 때의 비행 모드(앱만 죽고 기체는 미션을 계속 나는 경우 MISSION). */
         val airborneMode: FlightMode = FlightMode.MANUAL,
+        /** 모의 배터리 전압(V, 상단 바·비행 전 점검 상태 줄). */
+        val batteryVoltageV: Double = 16.9,
     )
 
     private val proj = LocalProjection(homePoint)
     private val _telemetry = MutableStateFlow(
-        config.airborneAt?.let { Telemetry(it, config.airborneAltitudeM, 0.0, 100.0, config.airborneMode, 5, true, homePoint) }
-            ?: Telemetry(homePoint, 0.0, 0.0, 100.0, FlightMode.ON_GROUND, 5, true, homePoint),
+        (config.airborneAt?.let { Telemetry(it, config.airborneAltitudeM, 0.0, 100.0, config.airborneMode, 5, true, homePoint) }
+            ?: Telemetry(homePoint, 0.0, 0.0, 100.0, FlightMode.ON_GROUND, 5, true, homePoint))
+            // 상단 바·배터리 팝업에 보일 그럴듯한 값(10.5.1). 바람·해발 고도는 모름("--")
+            .copy(satellites = 20, batteryVoltageV = config.batteryVoltageV, batteryTempC = 25.0),
     )
 
     /** 모의 SD 카드. 테스트에서 앱이 죽기 전에 찍힌 사진을 넣어 둔다. */
@@ -245,6 +251,16 @@ class FakeDroneGateway(
         Result.success(info)
     }
 
+    // 모의 카메라: 노출 띠 값은 그럴듯한 고정값, 초점 모드만 바뀐다(10.5.2)
+    private val _camera = MutableStateFlow(CameraStatus("100", "1/640", "2.8", "0", false, FocusMode.AFS, 21_121, 5_400))
+    override val cameraStatus: StateFlow<CameraStatus> = _camera.asStateFlow()
+    override suspend fun setFocusMode(mode: FocusMode): Result<Unit> = Result.success(Unit).also { calls += "focusMode:$mode"; _camera.update { it.copy(focus = mode) } }
+    override suspend fun focusAt(x: Double, y: Double): Result<Unit> = Result.success(Unit).also { calls += "focusAt" }
+    override suspend fun setGimbal(down: Boolean): Result<Unit> = Result.success(Unit).also {
+        calls += "gimbal:$down"
+        _telemetry.update { it.copy(gimbalPitchDeg = if (down) -90.0 else 0.0) }
+    }
+
     // 모의 카메라: 줌·영상 모드·녹화는 받기만 한다(영상 파일은 만들지 않음)
     override suspend fun setVideoLens(lens: Lens): Result<Unit> = Result.success(Unit).also { calls += "lens:$lens" }
     override suspend fun setZoom(ratio: Double): Result<Unit> = Result.success(Unit).also { calls += "zoom:$ratio" }
@@ -315,9 +331,9 @@ class FakeDroneGateway(
 
     fun setBattery(pct: Double) = _telemetry.update { it.copy(batteryPct = pct) }
 
-    /** 장애물 주입(시뮬레이터에는 장애물이 없다). null이면 없앤다. */
+    /** 장애물 주입(시뮬레이터에는 장애물이 없다). null이면 감지 값 없음(내비 "NA"). 처음은 감지 켬·장애물 없음. */
     fun setObstacles(o: Obstacles?) { _obstacles.value = o }
-    private val _obstacles = MutableStateFlow<Obstacles?>(null)
+    private val _obstacles = MutableStateFlow<Obstacles?>(Obstacles(emptyMap()))
     override val obstacles: StateFlow<Obstacles?> = _obstacles.asStateFlow()
 
     // ---------------------------------------------------------------- 내부
