@@ -304,6 +304,40 @@ object AppConfig {
         )
     }
 
+    /** ⋯ 기체 설정 탭(10.5.6, `djiAircraftSettingTabs`). */
+    object AircraftSettings {
+        /** 수평 장애물 제동·경고 거리(m): Pilot 2 "장애물 제동 거리 (1.0m-10.0m)", 경고 1.1~16 m(11-04 녹화). 값 칸 단위 [DISTANCE_STEP_M]. */
+        val BRAKE_RANGE_M = 1.0..10.0
+        val WARN_RANGE_M = 1.1..16.0
+        const val DISTANCE_STEP_M = 0.1
+
+        /** 배터리 부족·심각한 부족 경고(%), 자체 방전 일수. */
+        val LOW_BATTERY_RANGE = 15..50
+        val SERIOUS_BATTERY_RANGE = 10..45
+        val SELF_DISCHARGE_DAYS = 1..10
+
+        /** 짐벌 피치 평활도(Pilot 2 슬라이더 값 8), 피치 최대 속도(%, Pilot 2 50%). */
+        val GIMBAL_SMOOTH_RANGE = 0..30
+        val GIMBAL_SPEED_RANGE = 1..100
+
+        /** 기체가 없을 때(모의 기체) 처음 값. 열쇠는 `AircraftSetting.id`(방향 칸이 있으면 "칸/이름"). 값은 11-04 Pilot 2 녹화 화면 값. */
+        val FAKE_VALUES: kotlin.collections.Map<String, Any> = mapOf(
+            "다중 비행 모드 활성화" to true, "비행 모드" to 0, "RTH 고도" to 100, "최고 고도" to 120, "최대 거리" to true, "최대 거리 값" to 5000,
+            "신호 끊김 조치" to 0, "균형 선회" to false, "내 드론 찾기" to false,
+            "장애물 회피" to 0, "수평/수평 장애물 회피" to true, "수평/장애물 제동 거리" to 10.0, "수평/장애물 경고 거리" to 13.8,
+            "상방/상방 장애물 회피" to true, "상방/장애물 제동 거리" to 1.5, "상방/장애물 경고 거리" to 7.0,
+            "하방/하방 장애물 회피" to true, "하방/장애물 제동 거리" to 2.0, "하방/장애물 경고 거리" to 6.3,
+            "비전 포지셔닝" to true, "정밀 착륙" to true, "스틱 모드" to 1,
+            "작동 주파수" to 2, "신호 강도" to "강함 · 100%", "신호 강도(dBm)" to "-60 dBm", "다운링크 대역폭" to "40MHz", "이미지 전송 비트 전송률" to "49.21Mbps",
+            "배터리 용량" to "41%", "비행시간" to "00:00", "배터리" to "정상", "배터리 잔량" to "41%", "온도" to "17.3℃", "전압" to "15.07V",
+            "충전 사이클 수" to "12", "상세 정보" to "셀 3.77 · 3.77 · 3.76 · 3.77 V · 완충 용량 4800mAh", "스마트 RTH" to false,
+            "배터리 부족 경고" to Tuning.Battery.LOW_PCT, "심각한 배터리 부족 경고" to Tuning.Battery.CRITICAL_PCT, "자체 방전 일수" to 10,
+            "짐벌 피치 평활도 시작/정지" to 8, "짐벌 피치 최대 속도" to 50,
+            "사진 형식" to 0, "사진 비율" to 0, "짐벌 피치 위로 확장" to false, "SD 카드" to "NORMAL · 211GB 남음",
+            "LED 설정" to true, "기기 이름" to "모의 기체", "정보" to "Mavic 3 Enterprise(모의)",
+        )
+    }
+
     /** 카메라 뷰(10.5.2). */
     object CameraView {
         /** 탭 초점 노란 사각형을 보이는 시간. */

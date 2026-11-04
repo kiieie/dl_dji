@@ -2,6 +2,7 @@ package com.example.myfirstapp.drone
 
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.model.GeoPoint
+import com.example.myfirstapp.core.model.flightModeLetter
 import com.example.myfirstapp.core.port.PreflightReport
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.CameraKey
@@ -9,6 +10,7 @@ import dji.sdk.keyvalue.key.DJIKeyInfo
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.ComponentIndexType
+import dji.sdk.keyvalue.value.flightcontroller.ControlChannelMapping
 import dji.sdk.keyvalue.value.flightcontroller.FailsafeAction
 import dji.sdk.keyvalue.value.flightcontroller.GPSSignalLevel
 import dji.sdk.keyvalue.value.flightcontroller.RemoteControllerFlightMode
@@ -17,7 +19,7 @@ import dji.v5.manager.aircraft.perception.PerceptionManager
 import dji.v5.manager.ldm.LDMManager
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** 비행 전 점검 상태 줄의 추가 값(10.5.5): RC 비행 모드 스위치 글자(N/S/F/T)와 기체 배터리 전압(V). */
+/** 비행 전 점검 상태 줄의 추가 값(10.5.5): 비행 모드 글자(N/S/T/A, `flightModeLetter`)와 기체 배터리 전압(V). */
 data class PreflightExtras(val flightMode: Char? = null, val voltageV: Double? = null)
 
 /** RC 비행 모드 스위치 글자. M3E의 N은 SDK에서 P다. */
@@ -26,6 +28,14 @@ internal fun RemoteControllerFlightMode?.letter(): Char? = when (this) {
     RemoteControllerFlightMode.S -> 'S'
     RemoteControllerFlightMode.F -> 'F'
     RemoteControllerFlightMode.T -> 'T'
+    RemoteControllerFlightMode.A -> 'A'
+    else -> null
+}
+
+/** 스위치 F 자리 모드(⋯ 비행 모드 T/N/S · A/N/S, `KeyCustomFunctionMode`): T 또는 A. ponytail: 키 뜻은 이름으로 짐작, 실기에서 Pilot 2 설정과 대조 */
+internal fun ControlChannelMapping?.fLetter(): Char? = when (this) {
+    ControlChannelMapping.TRIPOD -> 'T'
+    ControlChannelMapping.ATTITUDE, ControlChannelMapping.ATTITUDE_GENTLE, ControlChannelMapping.ATTITUDE_NORMAL, ControlChannelMapping.ATTITUDE_SPORT -> 'A'
     else -> null
 }
 
@@ -66,6 +76,9 @@ suspend fun djiPreflightReport(): PreflightReport {
 
 /** 상태 줄 추가 값. 못 읽으면 null. */
 suspend fun djiPreflightExtras() = PreflightExtras(
-    flightMode = readKey(FlightControllerKey.KeyRemoteControllerFlightMode).letter(),
+    flightMode = flightModeLetter(
+        readKey(FlightControllerKey.KeyRemoteControllerFlightMode).letter(),
+        readKey(FlightControllerKey.KeyMultipleFlightModeEnabled), readKey(FlightControllerKey.KeyCustomFunctionMode).fLetter(),
+    ),
     voltageV = readKey(BatteryKey.KeyVoltage)?.let { it / 1000.0 },
 )

@@ -52,10 +52,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -78,28 +75,42 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.remember
 import com.example.myfirstapp.drone.AircraftSetting
+import com.example.myfirstapp.drone.CAMERA_SETTINGS_TAB
+import com.example.myfirstapp.drone.djiAircraftConnected
 import com.example.myfirstapp.drone.djiAircraftSettingTabs
-import com.example.myfirstapp.ui.Stepper
+import com.example.myfirstapp.ui.procedure.ChoiceField
+import com.example.myfirstapp.ui.procedure.DecimalField
+import com.example.myfirstapp.ui.procedure.HomeButton
+import com.example.myfirstapp.ui.procedure.Segmented
+import com.example.myfirstapp.ui.procedure.StatusIcon
+import com.example.myfirstapp.ui.procedure.ValueBox
+import kotlin.math.roundToInt
 import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.Muted
 
 /**
- * 기체 점검·설정(10.4.3 ⑧, Pilot 2 설정 메뉴 57쪽): 머리글 40dp, 왼쪽 160dp 탭(상태 점검 · 기체 탭 · 일반), 오른쪽 내용.
- * 상태 점검은 기체 종류·시리얼·펌웨어, 비행 모드 F/N/S, 확인 필요 항목을 맨 위에 보인다. 기체 탭은 SDK로 읽고 쓰고,
- * [일반]은 앱 설정(비행 기본값, 모델, 지도)이다. [initialGeneral]이면 일반 탭으로 연다(화면 ⚙).
- * [initialCamera]면 짐벌·카메라 탭으로 연다(카메라 뷰 카메라 설정 아이콘, 10.5.2).
+ * ⋯ 설정(10.5.6, Pilot 2 설정 메뉴 57쪽): 머리글 40dp(가운데 고른 탭 이름, Pilot 2 패널 제목), 왼쪽 160dp 탭, 오른쪽 내용. 밝은 바탕(`LightScreen`, 10.1).
+ * 탭: 상태 점검(추가) · Pilot 2 탭(비행 컨트롤러 · 장애물 감지 · 조종기 · 이미지 전송 · 인텔리전트 배터리 정보 · 짐벌) · 카메라 설정(추가) · 일반 ·
+ * 앱 설정(추가: 비행 기본값, 모델, 지도). 상태 점검은 기체 종류·시리얼·펌웨어, 비행 모드 F/N/S, 확인 필요 항목을 맨 위에 보인다.
+ * 기체 탭은 SDK로 읽고 쓰고, 기체가 없으면 모의 값이다. [initialGeneral]이면 앱 설정 탭으로 연다(화면 ⚙).
+ * [initialCamera]면 카메라 설정 탭으로 연다(카메라 뷰 카메라 설정 아이콘, 10.5.2).
  */
 @Composable
 fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false, initialCamera: Boolean = false) {
     val settings = (LocalContext.current.applicationContext as InspectionApp).settings
     val vm: AircraftSettingsViewModel = viewModel(
-        factory = AircraftSettingsViewModel.factory(::djiAircraftSettingTabs) { djiAircraftCheck(settings.flightDefaults.first().rthAltitudeM) },
+        factory = AircraftSettingsViewModel.factory({ djiAircraftSettingTabs(fake = !djiAircraftConnected(), general = appGeneralSettings(settings)) }) {
+            djiAircraftCheck(settings.flightDefaults.first().rthAltitudeM)
+        },
     )
     val s by vm.state.collectAsStateWithLifecycle()
-    // 0 상태 점검, 1..n 기체 탭, n+1 일반
+    // 0 상태 점검, 1..n 기체 탭, n+1 앱 설정
     val general = vm.tabs.size + 1
+    val names = listOf("상태 점검") + vm.tabs.map { it.first } + "앱 설정"
     var tab by rememberSaveable { mutableIntStateOf(if (initialGeneral) general else 0) }
     var guide by rememberSaveable { mutableStateOf<String?>(null) }
     val c = s.check
@@ -108,7 +119,7 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false, initialCame
         if (i == 0) vm.recheck() else if (i < general) vm.openTab(i - 1)
     }
     LaunchedEffect(initialCamera) {
-        if (initialCamera) vm.tabs.indexOfFirst { it.first == CAMERA_TAB }.takeIf { it >= 0 }?.let { pick(it + 1) }
+        if (initialCamera) vm.tabs.indexOfFirst { it.first == CAMERA_SETTINGS_TAB }.takeIf { it >= 0 }?.let { pick(it + 1) }
     }
     // RC 5D(10.4.3): ↕ 탭 고르기. 대화상자가 떠 있으면 받지 않는다(← 뒤로는 MainActivity 몫)
     val rc = (LocalContext.current.applicationContext as InspectionApp).rcButtons
@@ -131,7 +142,7 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false, initialCame
                 }
                 com.example.myfirstapp.ui.AppBadge()
             }
-            Text(if (tab == general) "설정" else "기체 점검", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
+            Text(names[tab], Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
             Row(
                 Modifier.align(Alignment.CenterEnd).height(26.dp).background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(4.dp)).padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -146,7 +157,7 @@ fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false, initialCame
                     .verticalScroll(rememberScrollState()).padding(4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                (listOf("상태 점검") + vm.tabs.map { it.first } + "일반").forEachIndexed { i, name ->
+                names.forEachIndexed { i, name ->
                     TabRow(name, tab == i, badge = if (i == 0) c?.issues?.takeIf { it > 0 } else null) { pick(i) }
                 }
             }
@@ -298,57 +309,106 @@ private fun CheckRow(item: CheckItem, mode: Char?, onGuide: (String) -> Unit) {
     }
 }
 
+/** 기체 탭: 위 줄(읽는 중·결과·[다시 읽기]), Pilot 2 설정 줄. 방향 칸(장애물 감지 [수평|상방|하방])이 있으면 첫 칸 항목 앞에 칸 나누기, 고른 칸 항목만. */
 @Composable
 private fun AircraftTab(items: List<AircraftSetting>, s: AircraftSettingsUiState, vm: AircraftSettingsViewModel, modifier: Modifier) {
+    val connected = s.check?.connected == true
+    val groups = items.mapNotNull { it.group }.distinct()
+    var group by rememberSaveable(groups.joinToString()) { mutableStateOf(groups.firstOrNull()) }
+    val firstGrouped = items.indexOfFirst { it.group != null }
     Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                if (s.loading) "기체에서 읽는 중…" else "기체 값", style = MaterialTheme.typography.titleSmall,
+                when { s.loading -> "기체에서 읽는 중…"; connected -> "기체 값"; else -> "모의 값(기체 연결 안 됨)" }, style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
             )
             s.message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, maxLines = 1) }
             OutlinedButton(onClick = vm::reload) { Text("다시 읽기") }
         }
-        // Pilot 2 설정 목록: 한 줄에 이름·값, 줄 사이 구분선
-        items.forEach { item ->
-            HorizontalDivider()
-            SettingRow(item, s.values[item.label], vm)
+        items.forEachIndexed { i, item ->
+            if (i == firstGrouped) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                    Segmented(groups, groups.indexOf(group)) { group = groups[it] }
+                }
+            }
+            if (item.group == null || item.group == group) SettingRow(item, s.values[item.id], connected, vm)
         }
     }
 }
 
-/** 값을 못 읽으면(기체 미연결, 지원 안 함) "--"로 두고 바꿀 수 없게 한다. */
+/**
+ * 설정 한 줄(Pilot 2): 위 구분선, 이름 · 오른쪽 조작, 아래 설명 글. 값을 못 읽으면(기체 미연결, 지원 안 함) "--"이고 바꿀 수 없다.
+ * 동작은 Pilot 2처럼 가운데 파란 글자 줄, Pilot 2에서만 바꾸는 항목은 흐린 줄.
+ */
 @Composable
-private fun SettingRow(item: AircraftSetting, value: Any?, vm: AircraftSettingsViewModel) {
+private fun SettingRow(item: AircraftSetting, value: Any?, connected: Boolean, vm: AircraftSettingsViewModel) {
+    val k = item.kind
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    if (k is AircraftSetting.Kind.Action) {
+        TextButton(onClick = { vm.ask(item) }, modifier = Modifier.fillMaxWidth().heightIn(min = Dimens.TouchLarge)) { Text(item.label, fontSize = FontSize.Label) }
+        return
+    }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxWidth().heightIn(min = 46.dp).padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(item.label, style = MaterialTheme.typography.bodyLarge)
-            item.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        }
-        when (val k = item.kind) {
+        Text(
+            buildAnnotatedString {
+                append(item.label)
+                if (k is AircraftSetting.Kind.Decimal) withStyle(SpanStyle(color = muted, fontSize = FontSize.Caption)) { append(" (${rangeText(k.range.start, k.range.endInclusive, k.unit)})") }
+            },
+            Modifier.weight(1f), fontSize = FontSize.Label, maxLines = 2,
+            color = if (k == AircraftSetting.Kind.Pilot2) MaterialTheme.colorScheme.outline else Color.Unspecified,
+        )
+        when (k) {
             is AircraftSetting.Kind.Number -> {
                 val v = value as? Int
-                Stepper("", v?.let { "$it${k.unit}" } ?: "--", Modifier.width(200.dp)) { d ->
-                    if (v != null) vm.change(item, (v + d * k.step).coerceIn(k.range))
+                if (k.slider) {
+                    SliderValue(v?.toDouble(), k.range.first.toDouble()..k.range.last.toDouble(), { "${it.roundToInt()}${k.unit}" }) { vm.change(item, it.roundToInt().coerceIn(k.range)) }
+                } else {
+                    Text(rangeText(k.range.first, k.range.last, k.unit), fontSize = FontSize.Caption, color = muted)
+                    if (v == null) ValueBox("--", 120.dp, enabled = false)
+                    else DecimalField(v.toDouble(), k.range.first.toDouble()..k.range.last.toDouble(), 1.0, enabled = true, decimals = 0) { vm.change(item, it.roundToInt()) }
                 }
+            }
+            is AircraftSetting.Kind.Decimal -> {
+                val v = value as? Double
+                SliderValue(v, k.range, null) { vm.change(item, snap(it, k.step, k.range)) }
+                if (v == null) ValueBox("--", 64.dp, enabled = false) else DecimalField(v, k.range, k.step, enabled = true, width = 64.dp) { vm.change(item, it) }
             }
             AircraftSetting.Kind.Toggle -> Switch(checked = value == true, enabled = value is Boolean, onCheckedChange = { vm.change(item, it) })
-            is AircraftSetting.Kind.Choice -> SingleChoiceSegmentedButtonRow {
-                k.options.forEachIndexed { i, name ->
-                    SegmentedButton(
-                        selected = value == i, enabled = value is Int && value >= 0, onClick = { vm.change(item, i) },
-                        shape = SegmentedButtonDefaults.itemShape(i, k.options.size),
-                    ) { Text(name) }
-                }
+            is AircraftSetting.Kind.Choice -> {
+                val i = (value as? Int)?.takeIf { it >= 0 }
+                if (k.dropdown) ChoiceField(k.options, i, enabled = i != null) { vm.change(item, it) } else Segmented(k.options, i) { vm.change(item, it) }
             }
-            AircraftSetting.Kind.Info, is AircraftSetting.Kind.Range -> Text(value?.toString() ?: "--", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            is AircraftSetting.Kind.Action -> Button(onClick = { vm.ask(item) }, modifier = Modifier.heightIn(min = Dimens.TouchLarge)) { Text("실행") }
+            AircraftSetting.Kind.HomePoint -> {
+                HomeButton(StatusIcon.AIRCRAFT, "H", "홈포인트를 기체 위치로", connected) { vm.change(item, 0) }
+                HomeButton(StatusIcon.RC, "A", "홈포인트를 조종기 위치로", connected) { vm.change(item, 1) }
+            }
+            AircraftSetting.Kind.Pilot2 -> Text("Pilot 2에서 설정", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.outline)
+            AircraftSetting.Kind.Info, is AircraftSetting.Kind.Range ->
+                Text(value?.toString() ?: "--", Modifier.widthIn(max = 300.dp), fontSize = FontSize.Body, color = muted, textAlign = TextAlign.End, maxLines = 2)
+            is AircraftSetting.Kind.Action -> Unit
         }
     }
+    item.note?.let { Text(it, Modifier.padding(bottom = 6.dp), fontSize = FontSize.Caption, color = muted) }
 }
 
-/** 카메라 뷰 카메라 설정 아이콘이 여는 탭 이름(`djiAircraftSettingTabs`). */
-private const val CAMERA_TAB = "짐벌·카메라"
+/** 슬라이더(Pilot 2 짐벌 피치 평활도·장애물 거리): 손을 떼면 [onSet]. [text]가 있으면 오른쪽에 값 글. 값을 모르면 누를 수 없다. */
+@Composable
+private fun SliderValue(value: Double?, range: ClosedFloatingPointRange<Double>, text: ((Double) -> String)?, onSet: (Double) -> Unit) {
+    var drag by remember(value) { mutableStateOf(value?.toFloat()) }
+    Slider(
+        value = drag ?: range.start.toFloat(), onValueChange = { drag = it }, onValueChangeFinished = { drag?.let { onSet(it.toDouble()) } },
+        valueRange = range.start.toFloat()..range.endInclusive.toFloat(), enabled = value != null, modifier = Modifier.width(180.dp),
+    )
+    text?.let { Text(drag?.let { d -> it(d.toDouble()) } ?: "--", Modifier.width(48.dp), style = numberStyle(FontSize.Label), textAlign = TextAlign.End) }
+}
+
+/** 슬라이더 값을 값 칸과 같은 단위로 반올림해 범위 안에 넣는다. */
+private fun snap(v: Double, step: Double, range: ClosedFloatingPointRange<Double>) = (Math.round(v / step) * step).coerceIn(range)
+
+/** Pilot 2 범위 글 "20~1500 m", "1.0~10.0 m". */
+private fun rangeText(from: Number, to: Number, unit: String) = "$from~$to${if (unit.isEmpty()) "" else " $unit"}"
