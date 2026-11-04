@@ -44,4 +44,14 @@ class EnergyModelTest {
             assertTrue("예상 $est%, 실측 $used%", est in used..used * 1.15)
         }
     }
+
+    @Test
+    fun `순서가 정해진 전주의 소티 계획은 이륙 지점 왕복과 전주 사이 거리`() {
+        val home = com.example.myfirstapp.core.model.GeoPoint(35.0, 127.0)
+        val proj = LocalProjection(home)
+        val poles = listOf(Enu(0.0, 300.0), Enu(400.0, 300.0)).mapIndexed { i, e -> com.example.myfirstapp.core.model.Pole("P$i", proj.toGeo(e)) }
+        val plan = overhead.sortiePlan(home, poles)
+        assertEquals(300.0 + 400.0 + 500.0, plan.estDistanceM, 0.5)
+        assertEquals(overhead.sortieDurationSec(plan.estDistanceM, 2, overhead.longJumps(listOf(400.0))), plan.estDurationSec, 1e-6)
+    }
 }

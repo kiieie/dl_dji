@@ -10,6 +10,8 @@ import com.example.myfirstapp.core.executor.PreflightCheck
 import com.example.myfirstapp.core.model.CameraStatus
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.route.Viewpoints
+import com.example.myfirstapp.core.route.Viewpoint
+import com.example.myfirstapp.core.model.ArWaypoint
 import com.example.myfirstapp.core.model.ObstacleDirection
 import com.example.myfirstapp.core.model.ObstacleWarning
 import com.example.myfirstapp.core.model.Obstacles
@@ -156,6 +158,8 @@ data class FlightUiState(
     val notice: CameraNotice? = null,
     /** 땅 위·타이머 수동 사진(수동 사진 경로)을 저장한 곳 또는 실패(미션 화면 안내 줄). */
     val shotMessage: String? = null,
+    /** 카메라 뷰 AR 표시(10.5.2, 왼쪽 열 AR, [SettingsStore.arEnabled]에 남김). */
+    val ar: Boolean = true,
 ) {
     /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
@@ -212,6 +216,7 @@ class FlightViewModel(
     init {
         viewModelScope.launch { load() }
         viewModelScope.launch { rcButtons.collect(::onRcButton) }
+        viewModelScope.launch { settings.arEnabled.collect { on -> _state.update { it.copy(ar = on) } } }
         viewModelScope.launch {
             val files = appFilesDir?.let { listMbtiles(File(it, "maps")) }.orEmpty()
             _state.update { it.copy(mapFiles = files) }
@@ -265,16 +270,8 @@ class FlightViewModel(
         flightParams = params
         // 4방향 사선의 선로 방향은 프로젝트 전체 전주의 선로번호로 정한다(4.5.6)
         val bearings = LineNumbers.bearings(dao.observePoles(projectId).first().map { it.toPole() })
-        val sorties = groups.map { (_, g) ->
-            val poles = g.map { it.toPole().copy(lineBearingDeg = bearings[it.poleId]) }
-            // 계획(RoutePlanner)과 같은 셈: 이륙 지점 왕복 + 전주 사이 + 사선 전주 둘레(5.6), 이동 고도 오르내림
-            val legs = poles.zipWithNext { a, b -> LocalProjection.distanceM(a.position, b.position) }
-            val homeLegs = if (poles.isEmpty()) 0.0 else LocalProjection.distanceM(home, poles.first().position) + LocalProjection.distanceM(poles.last().position, home)
-            val dist = energy.pathM(homeLegs, legs.sum(), poles.size)
-            val jumps = energy.longJumps(legs)
-            val extra = energy.equipmentShots(poles)
-            SortiePlan(poles, dist, energy.sortieCost(dist, poles.size, jumps, extra), energy.sortieDurationSec(dist, poles.size, jumps, extra))
-        }
+        // 계획(RoutePlanner)과 같은 셈([EnergyModel.sortiePlan])
+        val sorties = groups.map { (_, g) -> energy.sortiePlan(home, g.map { it.toPole().copy(lineBearingDeg = bearings[it.poleId]) }) }
         plans = sorties
         val room = RoomRecorder(
             dao, missionId,
@@ -542,6 +539,9 @@ class FlightViewModel(
     /** ☀ 노출 손잡이(탭 초점 옆, 10.5.7): 탭 초점과 같은 때만. */
     fun setEv(ev: Double) { if (_state.value.cameraFree) camera.setEv(ev) }
 
+    /** 왼쪽 열 AR(10.5.2): 켜고 끄며 설정에 남긴다. */
+    fun toggleAr() { viewModelScope.launch { settings.setArEnabled(!_state.value.ar) } }
+
     /** 짐벌 메뉴(10.5.7): 짐벌 중앙 / 아래(-90°). */
     fun setGimbal(down: Boolean) {
         OpLog.log("flight", "gimbal", mapOf("down" to down))
@@ -558,11 +558,12 @@ class FlightViewModel(
     fun cycleFocus() { if (_state.value.cameraFree) camera.cycleFocus(_state.value.camera.focus) }
     fun focusAt(x: Double, y: Double) { if (_state.value.cameraFree) camera.focusAt(x, y) }
 
-    /** 소티마다 펼친 촬영 지점 번호(전주 id → 그 전주 첫 지점 번호, 지도 웨이포인트 번호와 같음). */
-    private val waypointNumbers = mutableMapOf<Int, Map<String, Int>>()
+    /** 소티마다 펼친 촬영 지점(번호 = 순서 + 1, 지도 웨이포인트 번호와 같음). */
+    private val sortieWaypoints = mutableMapOf<Int, List<Viewpoint>>()
 
     /**
-     * 내비 왼쪽 위 다음 웨이포인트(10.5.3): 미션 비행 중 목표 전주의 첫 촬영 지점 번호와 기체에서 그 전주까지 수평 거리.
+     * 내비 왼쪽 위 다음 웨이포인트(10.5.3): 미션 비행 중 목표 전주의 첫 촬영 지점 번호와 기체에서 그 전주까지 수평 거리,
+     * AR(10.5.2)로 그 지점과 다음 지점(위치·촬영 고도).
      * ponytail: 4방향 사선은 전주의 첫 지점 번호만 보인다. 지점마다 바꾸려면 어댑터의 지금 웨이포인트 번호를 상태로 내보낸다.
      */
     private fun nextWaypoint(ui: ExecutorUiState, t: Telemetry): NextWaypoint? {
@@ -570,11 +571,12 @@ class FlightViewModel(
         val p = flightParams ?: return null
         val home = _state.value.home ?: return null
         val pos = t.position ?: return null
-        val numbers = waypointNumbers.getOrPut(ui.sortieIndex) {
-            val poles = ui.visits.filter { it.sortieIndex == ui.sortieIndex }.sortedBy { it.order }.map { it.pole }
-            Viewpoints.expand(poles, p, home).withIndex().groupBy({ it.value.pole.poleId }, { it.index + 1 }).mapValues { it.value.first() }
+        val vps = sortieWaypoints.getOrPut(ui.sortieIndex) {
+            Viewpoints.expand(ui.visits.filter { it.sortieIndex == ui.sortieIndex }.sortedBy { it.order }.map { it.pole }, p, home)
         }
-        return numbers[target.pole.poleId]?.let { NextWaypoint(it, LocalProjection.distanceM(pos, target.pole.position), target.pole.position) }
+        val i = vps.indexOfFirst { it.pole.poleId == target.pole.poleId }.takeIf { it >= 0 } ?: return null
+        val ar = vps.drop(i).take(2).mapIndexed { j, v -> ArWaypoint(i + j + 1, v.position, v.altitudeM) }
+        return NextWaypoint(i + 1, LocalProjection.distanceM(pos, target.pole.position), target.pole.position, ar)
     }
 
     /** 착륙 보호 확인(기체가 지면 가까이에서 기다릴 때). 실행기 상태와 무관한 기체 명령이다. */

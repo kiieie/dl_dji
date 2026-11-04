@@ -2,6 +2,7 @@ package com.example.myfirstapp.core.route
 
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.ShotMode
 
@@ -78,6 +79,19 @@ class EnergyModel(val params: EnergyParams, val flight: FlightParams) {
     /** 설비 조준 추가 촬영 수(5.6): 사선에서 설치기기가 있는 전주마다 지점 수(4)만큼. */
     fun equipmentShots(poles: List<Pole>): Int =
         if (flight.shotMode != ShotMode.DIAGONAL4) 0 else poles.count { Viewpoints.equipmentDropM(it, flight) != null } * shots
+
+    /**
+     * 순서가 정해진 전주 [poles]의 소티 계획([RoutePlanner]와 같은 셈): 이륙 지점 [home] 왕복 + 전주 사이 + 사선 전주 둘레(5.6),
+     * 이동 고도 오르내림, 설비 조준 촬영. 비행 화면(남은 전주로 다시 셈)과 라이브러리 카드(거리·예상 시간)가 쓴다.
+     */
+    fun sortiePlan(home: GeoPoint, poles: List<Pole>): SortiePlan {
+        val legs = poles.zipWithNext { a, b -> LocalProjection.distanceM(a.position, b.position) }
+        val homeLegs = if (poles.isEmpty()) 0.0 else LocalProjection.distanceM(home, poles.first().position) + LocalProjection.distanceM(poles.last().position, home)
+        val dist = pathM(homeLegs, legs.sum(), poles.size)
+        val jumps = longJumps(legs)
+        val extra = equipmentShots(poles)
+        return SortiePlan(poles, dist, sortieCost(dist, poles.size, jumps, extra), sortieDurationSec(dist, poles.size, jumps, extra))
+    }
 
     /** 전주 사이 구간 [legsM] 중 이동 고도로 넘는 것의 수(5.6). ponytail: 전주 중심 거리로 센다. 사선 지점 간격(d)만큼 어긋날 수 있다. */
     fun longJumps(legsM: List<Double>): Int = legsM.count { it > flight.transitLegThresholdM }

@@ -91,6 +91,20 @@ object Tuning {
         /** 영상 전송 신호 품질(%) 문턱: 이 이상 강함(흰 막대 3), [SIGNAL_FAIR_PCT] 이상 보통(노랑 2), 아래 약함(빨강 1). Pilot 2 매뉴얼 56쪽. */
         const val SIGNAL_GOOD_PCT = 60
         const val SIGNAL_FAIR_PCT = 30
+
+        /**
+         * AR 투영(10.5.2)의 광각 가로 화각(°): M3E 광각 사양 DFOV 84°(24mm 환산)를 4:3 영상 가로로 바꾼 값 2·atan(tan 42° × 4/5) ≈ 71.5°.
+         * 망원은 이것을 줌 배율(광각 대비, [ZOOM_RATIO_PER_WIDE])로 나눈 tan 비례다(7배 ≈ 11.7°, 사양 162mm 환산 DFOV 15° → 가로 약 12°와 맞음).
+         * 실기 영상에서 H·웨이포인트 자리가 실제와 어긋나면 고친다.
+         */
+        const val WIDE_HFOV_DEG = 71.5
+
+        /** AR 핀포인트 크기(Pilot 2 매뉴얼 p63 "가까우면 크게, 멀면 작게", 비율은 매뉴얼에 없어 정함): 이 거리(m) 안은 그대로. */
+        const val AR_PIN_NEAR_M = 30.0
+
+        /** 이 거리(m) 밖은 [AR_PIN_MIN_SCALE]배, 사이는 거리에 비례. */
+        const val AR_PIN_FAR_M = 300.0
+        const val AR_PIN_MIN_SCALE = 0.5
     }
 
     /**
