@@ -90,7 +90,7 @@ suspend fun djiAircraftCheck(rthNeedM: Double? = null): AircraftCheck = runCatch
             if (rth == null || (rthNeedM != null && rth < rthNeedM)) WARN else OK,
         ),
         CheckItem(
-            "저장 공간", if (sdState == null || sdState == "NORMAL") sdFree?.let { "%.1f GB 남음".format(it / 1024.0) } ?: "--" else "SD $sdState",
+            "저장 공간", if (sdState == null || sdState == "NORMAL") sdFree?.let { com.example.myfirstapp.core.executor.sdFreeLabel(it.toLong()) } ?: "--" else "SD $sdState",
             if (sdState != null && sdState != "NORMAL") ERROR else if ((sdFree ?: Int.MAX_VALUE) < AppConfig.Checks.SD_MIN_FREE_MB) WARN else OK,
         ),
         ldmItem,
