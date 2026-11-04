@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -61,7 +62,8 @@ import com.example.myfirstapp.ui.MapMarkers
 import com.example.myfirstapp.ui.MapSearchButton
 import com.example.myfirstapp.ui.MapTargetButton
 import com.example.myfirstapp.ui.MapTool
-import com.example.myfirstapp.ui.MapToolGlyph
+import com.example.myfirstapp.ui.MapAttribution
+import com.example.myfirstapp.ui.NorthLockGlyph
 import com.example.myfirstapp.ui.addMarkerLayers
 import com.example.myfirstapp.ui.rememberMapView
 import com.example.myfirstapp.ui.setMarkers
@@ -119,7 +121,8 @@ private enum class MarkerCard { AIRCRAFT, RC }
  * 지도는 처음에 전주 전체(없으면 기체 → H → 조종기)에 맞추고, 떠 있으면(전주가 없으면 언제나) 손으로 옮기기 전까지 기체를 따라간다.
  * 전주번호(선로번호, 없으면 전산화번호 끝 4자리)와 웨이포인트 번호·고도는 Compose 글자로 덧그린다:
  * MapLibre 글자 레이어는 글꼴을 인터넷으로 받아야 해서 쓰지 않는다(7.4 오프라인). 전주 라벨은 큰 지도 확대 15 이상(미니맵은 지금 전주만),
- * 웨이포인트는 확대 [AppConfig.Map.WAYPOINT_MIN_ZOOM] 이상에서만 보인다(라벨이 겹치지 않게).
+ * 웨이포인트는 확대 [AppConfig.Map.WAYPOINT_MIN_ZOOM] 이상에서 보이고, 겹치는 라벨은 소티 순서로 앞의 것만 남긴다.
+ * MapLibre 로고·ⓘ는 숨기고 배경 출처만 오른쪽 아래 작은 글자([MapAttribution]).
  */
 @Composable
 internal fun FlightMap(
@@ -169,22 +172,27 @@ internal fun FlightMap(
             !interactive -> listOfNotNull(st.exec.target?.pole)
             else -> emptyList()
         }
-        labels = targets.mapNotNull { p -> screen(p.position)?.let { p to it } }
-        wpLabels = if (interactive && zoom >= AppConfig.Map.WAYPOINT_MIN_ZOOM) latestLegs.flatten().mapNotNull { wp -> screen(wp.at)?.let { wp to it } } else emptyList()
+        // 겹치는 라벨은 숨긴다(Pilot 2처럼 경로 전체가 보이는 확대에서도 어지럽지 않게): 웨이포인트를 소티 순서로 먼저, 그다음 전주 라벨
+        val placed = mutableListOf<Rect>()
+        fun fits(r: Rect) = placed.none { it.overlaps(r) }.also { if (it) placed += r }
+        val dp = density.density
+        wpLabels = if (interactive && zoom >= AppConfig.Map.WAYPOINT_MIN_ZOOM) latestLegs.flatten().mapNotNull { wp ->
+            val at = screen(wp.at) ?: return@mapNotNull null
+            // 번호 원(16dp)과 그 아래 고도 글(약 36×13dp)
+            (wp to at).takeIf { fits(Rect(at.x - 8 * dp, at.y - 8 * dp, at.x + 28 * dp, at.y + 21 * dp)) }
+        } else emptyList()
+        labels = targets.mapNotNull { p ->
+            val at = screen(p.position) ?: return@mapNotNull null
+            // 점 오른쪽 위 라벨(아래 offset과 같은 자리), 폭은 글자 수로 어림
+            val box = Rect(at.x + 18, at.y - 42, at.x + 18 + (poleLabel(p).length * 9 + 24) * dp, at.y - 42 + 22 * dp)
+            (p to at).takeIf { !interactive || fits(box) }
+        }
     }
 
     // 지도 설정·듣는 것은 한 번만(배경을 바꿔 스타일을 다시 읽어도 쌓이지 않게)
     LaunchedEffect(mapView) {
         mapView.getMapAsync { map ->
             map.uiSettings.setAllGesturesEnabled(interactive)
-            map.uiSettings.isLogoEnabled = interactive
-            map.uiSettings.isAttributionEnabled = interactive
-            // 로고·출처(ⓘ)는 오른쪽 아래 [라이브러리] 위로 올린다(11-04 RC: 겹침). 출처는 계속 보인다
-            if (interactive) with(density) {
-                val above = (8.dp + Dimens.ButtonStd + 8.dp).roundToPx()
-                map.uiSettings.setAttributionMargins(0, 0, 4.dp.roundToPx(), above)
-                map.uiSettings.setLogoMargins(0, 0, 36.dp.roundToPx(), above)
-            }
             map.addOnCameraMoveListener { relabel(map) }
             map.addOnCameraIdleListener { relabel(map) }
             map.addOnCameraMoveStartedListener { reason -> if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) panned = true }
@@ -209,12 +217,6 @@ internal fun FlightMap(
                 listOf("route", "track", "rth", "poles").forEach { style.addSource(GeoJsonSource(it)) }
                 style.addLayer(LineLayer("route-line", "route").withProperties(lineColor(MAP_ROUTE), lineWidth(2f)))
                 style.addLayer(
-                    LineLayer("track-line", "track").withProperties(
-                        lineColor(MAP_TRACK), lineWidth(3f), lineJoin(Property.LINE_JOIN_ROUND), lineCap(Property.LINE_CAP_ROUND),
-                    ),
-                )
-                style.addLayer(LineLayer("rth-line", "rth").withProperties(lineColor(MAP_ROUTE), lineWidth(3f)))
-                style.addLayer(
                     CircleLayer("poles-point", "poles").withProperties(
                         circleColor(
                             match(
@@ -230,6 +232,13 @@ internal fun FlightMap(
                         circleStrokeWidth(if (interactive) 1.5f else 1f),
                     ),
                 )
+                // 날아간 궤적(주황)과 RTH 선(녹색)은 전주 점 위, 표지 아래: 11-04 RC에서 궤적이 전주 점에 가려 안 보였다
+                style.addLayer(
+                    LineLayer("track-line", "track").withProperties(
+                        lineColor(MAP_TRACK), lineWidth(if (interactive) 4f else 2.5f), lineJoin(Property.LINE_JOIN_ROUND), lineCap(Property.LINE_CAP_ROUND),
+                    ),
+                )
+                style.addLayer(LineLayer("rth-line", "rth").withProperties(lineColor(MAP_ROUTE), lineWidth(3f)))
                 style.addMarkerLayers(scale = if (interactive) 1f else 0.75f)
                 styleGen++
             }
@@ -319,14 +328,16 @@ internal fun FlightMap(
 
     Box(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
-        // 웨이포인트(Pilot 2): 흰 원에 파란 번호, 아래에 고도
+        // 웨이포인트(Pilot 2): 흰 원에 파란 번호, 아래에 흰 바탕 고도
         wpLabels.forEach { (wp, at) ->
             val half = with(density) { (Dimens.MarkerWaypoint / 2).roundToPx() }
             Column(Modifier.offset { IntOffset(at.x.toInt() - half, at.y.toInt() - half) }) {
                 Box(Modifier.size(Dimens.MarkerWaypoint).clip(CircleShape).background(Color.White).border(1.dp, Accent, CircleShape), contentAlignment = Alignment.Center) {
                     Text("${wp.number}", style = numberStyle(FontSize.Micro), color = Accent, maxLines = 1)
                 }
-                wp.altitudeM?.let { Text("%.1fm".format(it), style = numberStyle(FontSize.Micro), color = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.6f)).padding(horizontal = 2.dp)) }
+                wp.altitudeM?.let {
+                    Text("%.1fm".format(it), style = numberStyle(FontSize.Micro), color = Color.Black, modifier = Modifier.background(Color.White, RoundedCornerShape(2.dp)).padding(horizontal = 2.dp))
+                }
             }
         }
         // 점 오른쪽 위에 검은 바탕 흰 글자와 설비 기호(글자 16.5sp, 2026-10-31 사용자 요청 1.5배)(고/저압·변압기·개폐기·피뢰기, 판독·앨범 범례와 같음)
@@ -340,12 +351,15 @@ internal fun FlightMap(
             }
         }
         if (!interactive) return@Box
+        // 배경 출처: 오른쪽 아래 라이브러리 칸(36dp + 여백 8dp) 왼쪽
+        MapAttribution(s.background.attribution, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp + Dimens.TouchMedium + 6.dp, bottom = 10.dp))
         // 오른쪽 도구(10.5.4, 위에서 아래로): 검색 · N 잠금 · 레이어 · 지우개 · 과녁. 카메라 뷰의 오른쪽 열 자리
         Column(Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 37.dp, end = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val size = Dimens.TouchSmall
             MapSearchButton(s.poles, size) { jump(it.position) }
-            MapTool(if (northUp) "북쪽 고정(누르면 기수 방향)" else "기수 방향(누르면 북쪽 고정)", active = !northUp, size = size, onClick = { northUp = !northUp }) { tint ->
-                MapToolGlyph(if (northUp) "N" else "▲", tint)
+            // Pilot 2: 북쪽 고정이면 검은 칸에 N·화살촉·노란 자물쇠, 기수 방향이면 흰 칸에 자물쇠 없이
+            MapTool(if (northUp) "북쪽 고정(누르면 기수 방향)" else "기수 방향(누르면 북쪽 고정)", size = size, dark = northUp, onClick = { northUp = !northUp }) { tint ->
+                NorthLockGlyph(locked = northUp, tint)
             }
             MapLayerButton(s.background.source, size, onMapSource)
             MapTool("비행 궤적 지우기", enabled = s.track.isNotEmpty(), size = size, onClick = onClearTrack) { tint ->
@@ -388,17 +402,14 @@ private fun MarkerInfoCard(c: MarkerCard, t: Telemetry?, onClose: () -> Unit, mo
     }
 }
 
-/** 오른쪽 아래 [라이브러리](10.5.4, Pilot 2 경로 라이브러리 바로가기): 비행경로 화면으로 간다. 떠 있으면 끈다(화면을 떠나면 비행을 잃음). */
+/**
+ * 오른쪽 아래 라이브러리(10.5.4, Pilot 2 경로 라이브러리 바로가기 p2s_7): 검은 칸에 경로 아이콘만. 비행경로 화면으로 간다.
+ * 떠 있으면 끈다(화면을 떠나면 비행을 잃음).
+ */
 @Composable
 internal fun LibraryButton(enabled: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.height(Dimens.ButtonStd).clip(RoundedCornerShape(4.dp)).background(CardBg)
-            .clickable(enabled = enabled, onClickLabel = "라이브러리", onClick = onClick).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        val c = if (enabled) Color.White else TextSoft.copy(alpha = 0.5f)
-        Icon(painterResource(R.drawable.ic_route), contentDescription = null, modifier = Modifier.size(15.dp), tint = c)
-        Text("라이브러리", fontSize = FontSize.Body, fontWeight = FontWeight.Bold, color = c)
+    MapTool("라이브러리", enabled = enabled, size = Dimens.TouchMedium, dark = true, onClick = onClick) { tint ->
+        Icon(painterResource(R.drawable.ic_route), contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
     }
 }
 

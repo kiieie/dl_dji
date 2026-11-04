@@ -1,6 +1,8 @@
 package com.example.myfirstapp.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,29 +51,74 @@ import com.example.myfirstapp.core.model.PoleSearch
 import com.example.myfirstapp.data.MapSource
 import com.example.myfirstapp.data.vworldAvailable
 import com.example.myfirstapp.ui.theme.Accent
+import com.example.myfirstapp.ui.theme.CardBg
+import com.example.myfirstapp.ui.theme.Caution
+import com.example.myfirstapp.ui.theme.Inactive
 import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.TextSoft
 
 // 지도 오른쪽 도구(10.5.4, Pilot 2 지도 뷰): 흰 둥근 버튼. 계획 지도(36dp)와 비행 큰 지도(32dp)가 같이 쓴다.
 
-/** 흰 지도 도구. 쓰는 중인 도구는 파랑 테두리와 파랑 아이콘. */
+/**
+ * 흰 지도 도구. 쓰는 중인 도구는 파랑 테두리와 파랑 아이콘. [dark]면 Pilot 2 N 잠금·라이브러리처럼 검은 바탕 흰 아이콘.
+ */
 @Composable
 internal fun MapTool(
-    label: String, active: Boolean = false, enabled: Boolean = true, size: Dp = Dimens.TouchMedium, onClick: () -> Unit, icon: @Composable (Color) -> Unit,
+    label: String, active: Boolean = false, enabled: Boolean = true, size: Dp = Dimens.TouchMedium, dark: Boolean = false,
+    onClick: () -> Unit, icon: @Composable (Color) -> Unit,
 ) {
     Surface(
-        onClick = onClick, enabled = enabled, color = Color.White, shape = RoundedCornerShape(4.dp),
+        onClick = onClick, enabled = enabled, color = if (dark) CardBg else Color.White, shape = RoundedCornerShape(4.dp),
         border = if (active) BorderStroke(2.dp, Accent) else null,
         modifier = Modifier.size(size).semantics { contentDescription = label },
     ) {
-        Box(contentAlignment = Alignment.Center) { icon(if (!enabled) Color(0xFFB0B0B0) else if (active) Accent else Color.Black) }
+        val tint = when {
+            !enabled -> if (dark) Inactive else Color(0xFFB0B0B0)
+            active -> Accent
+            dark -> Color.White
+            else -> Color.Black
+        }
+        Box(contentAlignment = Alignment.Center) { icon(tint) }
     }
 }
 
-/** 도구 안 그림 글자(N 잠금 등). */
+/**
+ * N 잠금 그림(Pilot 2 p2s_7): 위에 "N", 아래 북쪽 화살촉(왼쪽 반 채움). [locked](북쪽 고정)면 오른쪽 아래 노란 자물쇠.
+ * 기수 방향 모드는 자물쇠 없이 화살촉만.
+ */
 @Composable
-internal fun MapToolGlyph(text: String, tint: Color) = Text(text, fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = tint)
+internal fun NorthLockGlyph(locked: Boolean, tint: Color) {
+    Box(Modifier.size(24.dp)) {
+        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("N", fontSize = FontSize.Micro, fontWeight = FontWeight.Bold, color = tint, lineHeight = FontSize.Micro)
+            Canvas(Modifier.size(9.dp, 12.dp)) {
+                val w = size.width
+                val h = size.height
+                val tip = Offset(w / 2, 0f)
+                val notch = Offset(w / 2, h * 0.72f)
+                drawPath(Path().apply { moveTo(tip.x, tip.y); lineTo(0f, h); lineTo(notch.x, notch.y); close() }, tint)
+                drawPath(Path().apply { moveTo(tip.x, tip.y); lineTo(w, h); lineTo(notch.x, notch.y); close() }, tint, style = Stroke(1.dp.toPx()))
+            }
+        }
+        if (locked) Canvas(Modifier.align(Alignment.BottomEnd).size(7.dp, 9.dp)) {
+            val u = size.width / 7
+            drawRect(Caution, Offset(0f, 4 * u), Size(size.width, size.height - 4 * u))
+            drawArc(Caution, 180f, 180f, useCenter = false, topLeft = Offset(1.5f * u, u), size = Size(4 * u, 5 * u), style = Stroke(1.2f * u))
+        }
+    }
+}
+
+/**
+ * 지도 출처(10.5.4): MapLibre 로고·ⓘ는 숨기고(Pilot 2에 없음) 배경 타일 출처("© …")만 작은 글자로 모서리에 둔다(타일 이용 조건).
+ */
+@Composable
+internal fun MapAttribution(text: String, modifier: Modifier) {
+    Text(
+        text, modifier.background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(2.dp)).padding(horizontal = 4.dp, vertical = 1.dp),
+        fontSize = FontSize.Micro, color = Color.White, maxLines = 1,
+    )
+}
 
 /**
  * 레이어(10.5.7): 배경 지도 Bing 위성 / VWorld 위성 / VWorld 일반(7.4, 설정과 같은 값). VWorld 키가 없는 빌드는 VWorld를 끈다.

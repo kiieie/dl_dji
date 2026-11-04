@@ -33,7 +33,6 @@ import com.example.myfirstapp.core.route.Viewpoints
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.example.myfirstapp.core.model.ShotMode
 import android.graphics.RectF
-import android.view.Gravity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -146,6 +145,8 @@ import java.util.Locale
 import org.maplibre.geojson.Polygon as GeoJsonPolygon
 import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
+import com.example.myfirstapp.ui.theme.LightScreen
+import com.example.myfirstapp.ui.theme.LightSurface
 import com.example.myfirstapp.ui.theme.MAP_AREA
 import com.example.myfirstapp.ui.theme.MAP_HOME
 import com.example.myfirstapp.ui.theme.SurfaceContainerHighest
@@ -219,6 +220,7 @@ fun MapScreen(
                         onMapTap = if (s.tool == Tool.NONE) null else vm::onMapTap,
                     )
                 }
+                if (showBackground) MapAttribution(s.background.attribution, Modifier.align(Alignment.BottomEnd).padding(8.dp))
                 Column(Modifier.align(Alignment.TopStart).padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     MapTool("영역 그리기", active = s.tool == Tool.AREA, onClick = vm::startArea) { tint ->
                         Icon(painterResource(R.drawable.ic_area), contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
@@ -301,7 +303,7 @@ private fun RouteChip(s: PlanUiState, inAreaCount: Int, replanFrom: Long?, copyF
             )
             Box {
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(Dimens.TouchSmall).semantics { contentDescription = "경로 메뉴" }) {
-                    Icon(painterResource(R.drawable.ic_arrow_down), contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
+                    Icon(painterResource(R.drawable.ic_chevron_down), contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
                 }
                 DropdownMenu(menu, onDismissRequest = { menu = false }, properties = MENU_PROPERTIES) {
                     DropdownMenuItem(text = { Text(if (s.savedMissionId != null) "저장됨" else "저장") }, enabled = ready && s.savedMissionId == null, onClick = { menu = false; onSave() })
@@ -373,17 +375,17 @@ private fun HintChip(s: PlanUiState, inAreaCount: Int, vm: PlanViewModel) {
 private fun ChipButton(label: String, enabled: Boolean = true, filled: Boolean = false, onClick: () -> Unit) {
     Button(
         onClick = onClick, enabled = enabled, modifier = Modifier.height(Dimens.ButtonChip), shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(horizontal = 10.dp),
-        colors = if (filled) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
+        colors = if (filled) ButtonDefaults.buttonColors() else ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.onSurface),
     ) { Text(label, fontSize = FontSize.Body) }
 }
 
 /**
  * 오른쪽 패널 240dp(10.4.3): 고른 전주 → 미션 설정(촬영 방식, 항목 줄) → [저장] [저장하고 수행].
- * 가운데는 넘치면 스크롤한다(이동 고도·예비율·소티별 정보는 아래쪽).
+ * 가운데는 넘치면 스크롤한다(이동 고도·예비율·소티별 정보는 아래쪽). 밝은 절차 화면 색([LightScreen], 2026-11-04 사용자 결정), 지도는 어둡게 둔다.
  */
 @Composable
-private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewModel) {
-    Column(Modifier.width(240.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceContainerLow)) {
+private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewModel) = LightScreen(Modifier.width(240.dp).fillMaxHeight(), color = LightSurface) {
+    Column(Modifier.fillMaxSize()) {
         val pole = s.poles?.firstOrNull { it.poleId == s.selected }
         if (pole != null) {
             PoleSection(pole, isExcluded = pole.poleId in s.excluded, canExclude = inArea.any { it.id == pole.id }, vm)
@@ -406,7 +408,7 @@ private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewMode
             Button(
                 onClick = { vm.savePlan() }, enabled = ready && s.savedMissionId == null, modifier = Modifier.width(72.dp).height(40.dp),
                 shape = RoundedCornerShape(4.dp), contentPadding = PaddingValues(0.dp),
-                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, Color.White),
+                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.surfaceContainer, MaterialTheme.colorScheme.onSurface),
             ) { Text(if (s.savedMissionId != null) "저장됨" else "저장", fontSize = FontSize.Body) }
             Button(
                 onClick = { vm.savePlan(fly = true) }, enabled = ready, modifier = Modifier.weight(1f).height(40.dp),
@@ -428,9 +430,9 @@ private fun PoleSection(pole: PoleEntity, isExcluded: Boolean, canExclude: Boole
             Box(Modifier.size(8.dp).clip(CircleShape).background(if (isExcluded) Color.Gray else Warning).border(2.dp, Caution, CircleShape))
             Text(poleDisplayName(pole.poleId, pole.lineName, pole.lineNo), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             pole.equipment?.takeIf { it.isNotBlank() }?.let {
-                Text(it, fontSize = FontSize.Caption, color = Caution, maxLines = 1, modifier = Modifier.border(1.dp, Caution, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp))
+                Text(it, fontSize = FontSize.Caption, color = Warning, maxLines = 1, modifier = Modifier.border(1.dp, Warning, RoundedCornerShape(3.dp)).padding(horizontal = 4.dp))
             }
-            IconButton(onClick = { vm.selectPole(null) }, modifier = Modifier.size(Dimens.TouchMedium).semantics { contentDescription = "닫기" }) { Text("✕", fontSize = FontSize.Body, color = TextSoft) }
+            IconButton(onClick = { vm.selectPole(null) }, modifier = Modifier.size(Dimens.TouchMedium).semantics { contentDescription = "닫기" }) { Text("✕", fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         // 설비 엑셀 속성(4.5): 전산화번호 · 규격 · 설치년월 · 지선주
         val attrs = listOfNotNull(
@@ -465,7 +467,7 @@ private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, focu
                 border = BorderStroke(1.dp, if (on) Accent else MaterialTheme.colorScheme.outline),
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(if (mode == ShotMode.OVERHEAD) "전주 위" else "4방향 사선", fontSize = FontSize.Caption, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) Color.White else TextSoft)
+                    Text(if (mode == ShotMode.OVERHEAD) "전주 위" else "4방향 사선", fontSize = FontSize.Caption, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -478,7 +480,7 @@ private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, focu
             val aim = pole?.let { Viewpoints.aimHeight(it.toPole(), p) } ?: p.aimHeightM
             val pitch = -Math.toDegrees(atan2(p.diagonalAltitudeM - aim, p.diagonalDistanceM))
             Row(Modifier.fillMaxWidth().height(Dimens.RowTable), verticalAlignment = Alignment.CenterVertically) {
-                Text("짐벌 피치", Modifier.weight(1f), fontSize = FontSize.Body, color = TextSoft)
+                Text("짐벌 피치", Modifier.weight(1f), fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("${pitch.roundToInt()}°", style = numberStyle(FontSize.Number))
                 Text(" 전주 높이로 자동", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
             }
@@ -491,7 +493,7 @@ private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, focu
         ParamRow("배터리 예비율", "${p.batteryReservePct.toInt()}", "%", enabled, focus == ParamItem.BATTERY_RESERVE, step(ParamItem.BATTERY_RESERVE))
         Row(Modifier.fillMaxWidth().height(Dimens.RowTable).focusMark(focus == ParamItem.TERRAIN_FOLLOW), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("실시간 지형 추적", fontSize = FontSize.Body, color = TextSoft)
+                Text("실시간 지형 추적", fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (simulator) Text("시뮬레이터: 지형 추적 끔", fontSize = FontSize.Micro, color = Warning)
             }
             Switch(checked = p.terrainFollow, onCheckedChange = { onChange(p.copy(terrainFollow = it)) }, enabled = enabled)
@@ -511,7 +513,7 @@ private fun Modifier.focusMark(focused: Boolean): Modifier {
 @Composable
 private fun ParamRow(label: String, value: String, unit: String, enabled: Boolean, focused: Boolean, onStep: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth().height(Dimens.RowTable).focusMark(focused), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f), fontSize = FontSize.Body, color = TextSoft, maxLines = 1)
+        Text(label, Modifier.weight(1f), fontSize = FontSize.Body, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         StepButton("−", "$label 낮추기", enabled) { onStep(-1) }
         Text(
             buildAnnotatedString {
@@ -530,7 +532,7 @@ private fun StepButton(sign: String, description: String, enabled: Boolean, onCl
     Surface(
         onClick = onClick, enabled = enabled, modifier = Modifier.size(Dimens.Stepper).semantics { contentDescription = description },
         shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceContainer,
-    ) { Box(contentAlignment = Alignment.Center) { Text(sign, fontSize = FontSize.Number, color = if (enabled) Color.White else MaterialTheme.colorScheme.outline) } }
+    ) { Box(contentAlignment = Alignment.Center) { Text(sign, fontSize = FontSize.Number, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline) } }
 }
 
 /** [onStep]에는 −1 또는 +1이 넘어간다(설정 화면에서 쓰는 큰 스테퍼). */
@@ -562,7 +564,7 @@ private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
                 Box(Modifier.size(8.dp).clip(CircleShape).background(Color(android.graphics.Color.parseColor(SORTIE_COLORS[i % SORTIE_COLORS.size]))))
                 Text(
                     "소티 ${i + 1} · ${s.poles.size}개 · ${mmss(s.estDurationSec)}",
-                    fontSize = FontSize.Caption, color = TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -762,10 +764,9 @@ internal fun rememberMapView(): MapView {
             context.getExternalFilesDir(null)?.let(::resumeSatellitePrefetch)
         }
         // Compose 안에서는 SurfaceView보다 TextureView가 겹침·캡처 문제가 적다.
-        MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true)
-            // 로고·출처는 오른쪽 아래(왼쪽 아래 [수행]·지도 전환 버튼과 겹치지 않게)
-            .logoGravity(Gravity.BOTTOM or Gravity.END).attributionGravity(Gravity.BOTTOM or Gravity.END)
-            .logoMargins(intArrayOf(0, 0, (36 * context.resources.displayMetrics.density).toInt(), 8)),).apply { onCreate(null) }
+        // Pilot 2처럼 MapLibre 로고·ⓘ는 숨긴다. 배경 출처는 각 지도 화면이 작은 글자로 모서리에 둔다([MapAttribution], 10.5.4)
+        MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true).logoEnabled(false).attributionEnabled(false))
+            .apply { onCreate(null) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
