@@ -5,7 +5,6 @@ import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.detect.BackfillProgress
 import com.example.myfirstapp.core.detect.ModelPick
 import com.example.myfirstapp.core.detect.PreciseBackfill
-import com.example.myfirstapp.core.fake.FakeDetector
 import com.example.myfirstapp.core.port.Detector
 import com.example.myfirstapp.data.DetectionEntity
 import com.example.myfirstapp.data.OpLog
@@ -85,9 +84,10 @@ class PreciseDetection(
         model?.let { return dao.capturesWithoutDetection(it.modelVersion, since) }
         val specs = withContext(Dispatchers.IO) { readModelSpecs(modelsDir) }
         val order = ModelPick.fullOrder(specs.map { (d, s) -> s.choice(d) }, settings.fullModelDir.first(), settings.liveModelDir.first())
-        val guess = order.firstOrNull()?.let { specs.getValue(it).version } ?: FAKE_VERSION
-        if (dao.capturesWithoutDetection(guess, since).isEmpty()) return emptyList()
-        val m = (if (order.isEmpty()) FakeDetector() else TfliteYoloDetector.openFirst(modelsDir, order, gpu = true)) ?: return emptyList()
+        // 실제 모델이 없으면 정밀 탐지를 하지 않는다: 모의 탐지기 결과(가짜 검출)가 실제 사진에 저장되면 안 된다
+        val first = order.firstOrNull() ?: return emptyList()
+        if (dao.capturesWithoutDetection(specs.getValue(first).version, since).isEmpty()) return emptyList()
+        val m = TfliteYoloDetector.openFirst(modelsDir, order, gpu = true) ?: return emptyList()
         model = m
         OpLog.log("precise", "open", mapOf("model" to m.modelVersion, "delegate" to (m as? TfliteYoloDetector)?.delegate))
         return dao.capturesWithoutDetection(m.modelVersion, since)
@@ -110,9 +110,5 @@ class PreciseDetection(
     private fun closeModel() {
         (model as? TfliteYoloDetector)?.close()
         model = null
-    }
-
-    private companion object {
-        val FAKE_VERSION = FakeDetector().modelVersion
     }
 }
