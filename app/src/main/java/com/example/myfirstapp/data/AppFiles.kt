@@ -12,6 +12,25 @@ import java.io.File
 
 fun listMbtiles(dir: File) = dir.listFiles { f -> f.extension == "mbtiles" }.orEmpty().sortedBy { it.name }
 
+/**
+ * 홈 데이터 보호 [캐시·로그 삭제](10.5.5): MapLibre 본 타일 캐시, 앱 임시 폴더, 운용 로그(logs/의 ops·crash·logcat)를 지운다.
+ * 미션 기록·사진·지도(maps/의 MBTiles·미리 받은 위성)는 그대로 둔다. 지운 파일 수를 돌려준다.
+ */
+suspend fun clearCacheAndLogs(context: android.content.Context): Int = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+        kotlinx.coroutines.suspendCancellableCoroutine { c ->
+            org.maplibre.android.MapLibre.getInstance(context)
+            org.maplibre.android.offline.OfflineManager.getInstance(context).clearAmbientCache(object : org.maplibre.android.offline.OfflineManager.FileSourceCallback {
+                override fun onSuccess() = c.resumeWith(Result.success(Unit))
+                override fun onError(message: String) = c.resumeWith(Result.success(Unit))
+            })
+        }
+    }
+    val temp = context.cacheDir.listFiles().orEmpty().count { it.deleteRecursively() }
+    val logs = File(context.getExternalFilesDir(null), "logs").listFiles { f -> f.name != "running" }.orEmpty().count { it.delete() }
+    temp + logs
+}
+
 /** SAF로 고른 MBTiles를 앱 전용 폴더(4.3 `maps/`)에 복사한다. SQLite 파일인지 머리글로 확인한다. */
 fun copyMbtiles(resolver: ContentResolver, uri: Uri, mapsDir: File): String {
     val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {

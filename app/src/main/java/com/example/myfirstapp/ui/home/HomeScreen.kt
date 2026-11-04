@@ -58,7 +58,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.myfirstapp.BuildConfig
 import com.example.myfirstapp.R
+import com.example.myfirstapp.data.clearCacheAndLogs
+import com.example.myfirstapp.ui.AppBadge
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.VerticalDivider
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.drone.AircraftStatus
@@ -80,9 +89,9 @@ import com.example.myfirstapp.ui.theme.Dimens
 import com.example.myfirstapp.ui.theme.FontSize
 
 /**
- * 홈(10.4 시안, Pilot 2 홈페이지): 머리글 40dp(앱 이름, 기체 칩, 설정), 왼쪽 최근 미션 카드(경로 미리보기,
- * 전주·소티·사진, 채운 버튼 하나), 오른쪽 타일 4개(수동 비행, 비행경로, 앨범, 기체 점검).
- * 연동 검증(PoC)은 앱 이름을 길게 누르면 열린다.
+ * 홈(Pilot 2 홈페이지 p2s_1·0225, 10.5.5): 왼쪽 위 우리 표지 · 프로필 · 데이터 보호, 최근 미션 카드(우리 것, [미션 비행 시작]),
+ * 타일 비행 경로 · 앨범. 오른쪽 기체 판(HMS 칸, 기체 이름, 페이로드 · 조종기, 연결 상태)과 [카메라 뷰 입력](→ 비행 전 점검 → 카메라 뷰).
+ * GEO 구역 카드는 로컬 DB PoC 뒤, 클라우드·아카데미·DJI CARE는 제외(10.5.5). 연동 검증(PoC)은 표지를 길게 누르면 열린다.
  */
 @Composable
 fun HomeScreen(
@@ -96,7 +105,8 @@ fun HomeScreen(
     onAircraftCheck: () -> Unit,
     onVerification: () -> Unit,
 ) {
-    val vm: HomeViewModel = viewModel(factory = HomeViewModel.factory(dao, ::djiAircraftStatus))
+    val context = LocalContext.current
+    val vm: HomeViewModel = viewModel(factory = HomeViewModel.factory(dao, ::djiAircraftStatus) { clearCacheAndLogs(context.applicationContext) })
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refresh() }
     LifecycleResumeEffect(vm) {
@@ -104,12 +114,13 @@ fun HomeScreen(
         onPauseOrDispose { vm.setActive(false) }
     }
     val latest = s.latest
-    var showAircraft by remember { mutableStateOf(false) }
+    // 화면 배치 상태: 열린 판(기체 세부, 프로필, 데이터 보호, 앱 정보, 비행 기록 안내)
+    var sheet by remember { mutableStateOf<HomeSheet?>(null) }
     // RC `<`(안드로이드 뒤로)를 홈에서 누르면 바로 꺼지지 않고 묻는다(10.4.4)
     var confirmExit by remember { mutableStateOf(false) }
     BackHandler { confirmExit = true }
     if (confirmExit) {
-        val activity = LocalContext.current as? Activity
+        val activity = context as? Activity
         FullscreenAlertDialog(
             onDismissRequest = { confirmExit = false },
             title = { Text("앱을 종료할까요?") },
@@ -118,44 +129,136 @@ fun HomeScreen(
         )
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().height(Dimens.HeaderList).padding(start = 12.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            // 소속 표시: 공식 로고 파일을 받으면 이미지로 바꾼다. 로고 모양을 흉내 내 그리지 않는다
-            Text(
-                buildAnnotatedString {
-                    append("KEPCO ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)) { append("전주 점검") }
-                },
-                fontSize = FontSize.Title, fontWeight = FontWeight.Bold,
-                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onVerification),
-            )
-            Spacer(Modifier.weight(1f))
-            AircraftChip(s.aircraft) { showAircraft = true }
-            IconButton(onClick = onSettings, modifier = Modifier.size(Dimens.TouchSmall)) {
-                Icon(painterResource(R.drawable.ic_settings), contentDescription = "설정", modifier = Modifier.size(16.dp))
-            }
-        }
-        Row(Modifier.weight(1f).padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MissionCard(latest, Modifier.weight(1.45f).fillMaxHeight(), onRoutes, onFlight, onNewPlan)
-            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HomeTile(R.drawable.ic_camera, "수동 비행", "카메라 뷰", Modifier.weight(1f), iconTint = Accent, onClick = onCamera)
-                    HomeTile(R.drawable.ic_route, "비행경로", "전주 파일 · 계획", Modifier.weight(1f), onClick = onRoutes)
+    Row(Modifier.fillMaxSize()) {
+        Column(Modifier.weight(1.35f).fillMaxHeight().padding(start = 12.dp, end = 8.dp, bottom = 12.dp)) {
+            Row(Modifier.fillMaxWidth().height(Dimens.HeaderList), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                AppBadge(Modifier.combinedClickable(onClick = {}, onLongClick = onVerification))
+                IconButton(onClick = { sheet = HomeSheet.PROFILE }, modifier = Modifier.size(Dimens.TouchMedium)) {
+                    Icon(painterResource(R.drawable.ic_person), contentDescription = "프로필", modifier = Modifier.size(20.dp))
                 }
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    HomeTile(R.drawable.ic_album, "앨범", "사진 모아 보기", Modifier.weight(1f)) {
-                        onAlbum(latest?.projectId ?: 0, latest?.missionId ?: 0)
-                    }
-                    HomeTile(R.drawable.ic_shield, "기체 점검", "상태 · 설정", Modifier.weight(1f), onClick = onAircraftCheck)
+                IconButton(onClick = { sheet = HomeSheet.PRIVACY }, modifier = Modifier.size(Dimens.TouchMedium)) {
+                    Icon(painterResource(R.drawable.ic_shield), contentDescription = "데이터 보호", modifier = Modifier.size(20.dp))
                 }
             }
+            MissionCard(latest, Modifier.weight(1f).fillMaxWidth(), onRoutes, onFlight, onNewPlan)
+            Row(Modifier.padding(top = 8.dp).height(104.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HomeTile(R.drawable.ic_route, "비행 경로", "라이브러리 · 전주 파일 · 계획", Modifier.weight(1f), onClick = onRoutes)
+                HomeTile(R.drawable.ic_album, "앨범", "사진 모아 보기", Modifier.weight(1f)) { onAlbum(latest?.projectId ?: 0, latest?.missionId ?: 0) }
+            }
         }
+        AircraftPanel(s.aircraft, Modifier.weight(1f).fillMaxHeight(), onHms = onAircraftCheck, onDetail = { sheet = HomeSheet.AIRCRAFT }, onCamera = onCamera)
     }
 
-    if (showAircraft) AircraftDialog(s.aircraft) { showAircraft = false }
+    when (sheet) {
+        HomeSheet.AIRCRAFT -> AircraftDialog(s.aircraft) { sheet = null }
+        HomeSheet.PROFILE -> SheetDialog("프로필", onClose = { sheet = null }) {
+            SheetItem("비행 기록", "지난 비행 리플레이(궤적·시간 막대·사진)") { sheet = HomeSheet.REPLAY }
+            SheetItem("오프라인 지도", "MBTiles 추가·삭제, 배경 지도") { sheet = null; onSettings() }
+            SheetItem("설정", "비행 기본값 · 탐지 모델 · 지도") { sheet = null; onSettings() }
+            SheetItem("앱 정보", "버전 · 데이터 주권") { sheet = HomeSheet.ABOUT }
+        }
+        HomeSheet.REPLAY -> SheetDialog("비행 기록", onClose = { sheet = null }) {
+            Text("리플레이(궤적·시간 막대·사진)는 F묶음에서 만듭니다. 지금은 미션 결과 화면과 운용 로그(logs/)로 확인하세요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        HomeSheet.ABOUT -> SheetDialog("앱 정보", onClose = { sheet = null }) {
+            Item("앱", "KEPCO 전주 점검 ${BuildConfig.VERSION_NAME}")
+            Item("기체", "Mavic 3 Enterprise · RC Pro Enterprise")
+            Item("DJI SDK", "MSDK 5.18 · LDM(로컬 데이터 모드)")
+            Text("비행·사진·위치 기록은 조종기 안에만 둡니다. 외부로 보내는 것은 배경 지도 타일 받기뿐입니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        HomeSheet.PRIVACY -> SheetDialog("데이터 보호", onClose = { sheet = null }) {
+            Item("LDM(로컬 데이터 모드)", if (s.aircraft.ldm) "켜짐 · DJI 서버로 보내지 않음" else "꺼짐 · 비행 시작 불가")
+            Item("외부 전송", "배경 지도 타일만")
+            Text("비행 기록·사진·위치·전주 파일은 보내지 않습니다(7.2). 배경 지도(Bing·VWorld) 타일은 계획을 저장할 때 미리 받습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = { sheet = HomeSheet.CLEAR }, modifier = Modifier.fillMaxWidth().height(Dimens.ButtonStd)) { Text("캐시·로그 삭제") }
+        }
+        HomeSheet.CLEAR -> FullscreenAlertDialog(
+            onDismissRequest = { sheet = HomeSheet.PRIVACY },
+            title = { Text("캐시·로그 삭제") },
+            text = { Text("지도 캐시(본 타일)·임시 파일·운용 로그를 지웁니다. 미션 기록·사진·미리 받은 지도는 그대로입니다. 되돌릴 수 없습니다.") },
+            confirmButton = {
+                TextButton(onClick = { sheet = null; vm.clearCacheAndLogs() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("삭제") }
+            },
+            dismissButton = { TextButton(onClick = { sheet = HomeSheet.PRIVACY }) { Text("취소") } },
+        )
+        null -> Unit
+    }
+    s.message?.let { msg ->
+        FullscreenAlertDialog(onDismissRequest = vm::dismissMessage, text = { Text(msg) }, confirmButton = { TextButton(onClick = vm::dismissMessage) { Text("확인") } })
+    }
+}
+
+/** 홈에서 여는 판. */
+private enum class HomeSheet { AIRCRAFT, PROFILE, REPLAY, ABOUT, PRIVACY, CLEAR }
+
+@Composable
+private fun SheetDialog(title: String, onClose: () -> Unit, content: @Composable () -> Unit) {
+    FullscreenAlertDialog(
+        onDismissRequest = onClose, title = { Text(title) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { content() } },
+        confirmButton = { TextButton(onClick = onClose) { Text("닫기") } },
+    )
+}
+
+@Composable
+private fun SheetItem(title: String, subtitle: String, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold)
+                Text(subtitle, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, modifier = Modifier.size(12.dp))
+        }
+    }
+}
+
+/**
+ * 오른쪽 기체 판(Pilot 2): 위 연결 상태 글과 HMS 칸(표준 녹 / 경고 주황 / 확인 빨강, 누르면 기체 점검), 가운데 기체 이름,
+ * 페이로드 · 조종기 두 칸, 아래 [카메라 뷰 입력].
+ */
+@Composable
+private fun AircraftPanel(a: AircraftStatus, modifier: Modifier, onHms: () -> Unit, onDetail: () -> Unit, onCamera: () -> Unit) {
+    val (color, label) = statusOf(a)
+    Column(modifier.background(MaterialTheme.colorScheme.surfaceContainerLow).padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(color))
+            Text(label, Modifier.weight(1f).padding(start = 6.dp), fontSize = FontSize.Body, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val (hms, hmsColor) = when (a.level) {
+                null -> "연결 안 됨" to MaterialTheme.colorScheme.outline
+                AircraftStatus.Level.OK -> "표준" to MaterialTheme.colorScheme.tertiary
+                AircraftStatus.Level.WARN -> "경고" to Warning
+                AircraftStatus.Level.ERROR -> "확인" to MaterialTheme.colorScheme.error
+            }
+            Surface(onClick = onHms, shape = RoundedCornerShape(4.dp), color = hmsColor) {
+                Text("$hms ›", Modifier.padding(horizontal = 12.dp, vertical = 4.dp), fontSize = FontSize.Label, fontWeight = FontWeight.Bold, color = Color.Black)
+            }
+        }
+        Column(Modifier.weight(1f).fillMaxWidth().clickable(onClickLabel = "기체 세부", onClick = onDetail), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text(a.model?.uppercase() ?: "기체 연결 안 됨", fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            if (a.simulator) Text("시뮬레이터", fontSize = FontSize.Caption, color = Warning)
+            Row(Modifier.padding(top = 18.dp).height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                PanelFigure(if (a.connected) "M3E" else "--", "페이로드 1")
+                VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                PanelFigure("A", "조종기")
+                if (a.batteryPct != null) {
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    PanelFigure("${a.batteryPct}%", "배터리")
+                }
+            }
+        }
+        Button(onClick = onCamera, modifier = Modifier.fillMaxWidth().height(Dimens.ButtonPrimary), shape = RoundedCornerShape(4.dp)) {
+            Text("카메라 뷰 입력", fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun PanelFigure(value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = numberStyle(18.sp))
+        Text(label, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 /** 최근 미션 카드: 위 경로 미리보기, 아래 이름·수치·채운 버튼. 판독은 앨범에서만 하므로 끝난 미션은 [새 계획]. 미션이 없으면 비행경로로 안내. */
@@ -261,19 +364,6 @@ private fun HomeTile(
                 Text(title, fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = if (enabled) Color.White else dim)
                 Text(subtitle, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-        }
-    }
-}
-
-/** 기체 상태 칩(26dp): 상태색 점, 기종(없으면 "기체 연결 안 됨"), 배터리. 누르면 세부. */
-@Composable
-private fun AircraftChip(a: AircraftStatus, onClick: () -> Unit) {
-    val (color, _) = statusOf(a)
-    Surface(onClick = onClick, modifier = Modifier.height(26.dp), shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-        Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.size(6.dp).clip(CircleShape).background(color))
-            Text(a.model ?: "기체 연결 안 됨", fontSize = FontSize.Caption, color = TextSoft, maxLines = 1)
-            a.batteryPct?.let { Text("$it%", style = numberStyle(FontSize.Label), color = TextSoft) }
         }
     }
 }

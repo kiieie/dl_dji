@@ -118,8 +118,8 @@ internal fun CheckLine(c: PreflightCheck, modifier: Modifier = Modifier) {
 
 /** 설정 한 줄(Pilot 2: 이름 · (범위) · 오른쪽 조작). 아래 구분선. */
 @Composable
-internal fun SettingLine(label: String, hint: String? = null, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    Row(modifier.heightIn(min = 46.dp).padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+internal fun SettingLine(label: String, hint: String? = null, content: @Composable RowScope.() -> Unit) {
+    Row(Modifier.heightIn(min = 46.dp).padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             buildAnnotatedString {
                 append(label)
