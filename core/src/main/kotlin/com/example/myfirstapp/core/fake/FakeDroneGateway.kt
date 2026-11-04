@@ -28,6 +28,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -206,7 +208,10 @@ class FakeDroneGateway(
         return Result.success(Unit)
     }
 
-    override suspend fun capture(lens: Lens, gimbalPitchDeg: Double, zoomRatio: Double): Result<CaptureInfo> {
+    /** 앱 촬영은 하나씩(실제 기체 어댑터와 같음: 겹치면 같은 새 사진 알림을 나눠 받음). */
+    private val captureLock = Mutex()
+
+    override suspend fun capture(lens: Lens, gimbalPitchDeg: Double, zoomRatio: Double): Result<CaptureInfo> = captureLock.withLock {
         calls += "capture:$lens"
         delay(config.captureMs)
         if (failNextCaptures > 0) {
@@ -216,7 +221,7 @@ class FakeDroneGateway(
         val t = _telemetry.value
         val info = CaptureInfo("FAKE_${++mediaSeq}", lens, t.position, t.altitudeM, gimbalPitchDeg, 0.0, System.currentTimeMillis())
         sdCard += info
-        return Result.success(info)
+        Result.success(info)
     }
 
     // 모의 카메라: 줌·영상 모드·녹화는 받기만 한다(영상 파일은 만들지 않음)

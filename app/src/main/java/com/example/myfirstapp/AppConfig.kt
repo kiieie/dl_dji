@@ -30,6 +30,9 @@ object AppConfig {
          */
         const val CAMERA_CMD_MS = 5_000L
 
+        /** 재개 전 카메라(녹화 정지·사진 모드·망원 배율 되돌림)를 모두 합쳐 기다리는 최대 시간. 넘으면 그대로 재개한다. */
+        const val RESUME_CAMERA_MS = 5_000L
+
         /** 화면 수동 촬영 뒤 새 사진 알림 기다림. */
         const val NEW_PHOTO_MS = 5_000L
 
@@ -139,6 +142,9 @@ object AppConfig {
 
         /** 지금 위치에 기체 GPS를 쓰는 최소 위성 수. */
         const val LOCATION_MIN_SATELLITES = 6
+
+        /** 조종기 안드로이드 GPS의 마지막 위치를 쓰는 최대 나이(이륙 지점·조종기 점·[조종기 위치로], 10.5.5). */
+        const val LOCATION_MAX_AGE_MS = 120_000L
     }
 
     object Sound {

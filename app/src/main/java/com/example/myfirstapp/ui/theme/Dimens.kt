@@ -36,4 +36,9 @@ object Dimens {
     val MiniMap = DpSize(132.dp, 92.dp)
     /** 계획 화면 파라미터 −/+ 버튼. */
     val Stepper = 32.dp
+
+    /** 지도 홈 표지(노란 원 "H", 10.5.4). */
+    val MarkerHome = 22.dp
+    /** 지도 기체 표지(파란 화살촉, 10.5.4). */
+    val MarkerAircraft = 28.dp
 }

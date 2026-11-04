@@ -30,6 +30,8 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
     private var screenActive = false
     private var screenGot = false
     private var screenUntil = Long.MIN_VALUE / 2
+    /** 앱 촬영이 사진 알림 없이 끝났다(시간 초과): 늦게 오는 그 파일을 지점 사진으로 넘기지 않는다. 미션을 재개하면 버린다. */
+    private var screenOwed = false
     private var lastShot: Int? = null
     private var actionsAt: (Int) -> List<PhotoAction> = { ONE }
     private val files = mutableMapOf<Int, Int>()
@@ -41,9 +43,16 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
         screenGot = false
     }
 
-    @Synchronized fun screenEnded(now: Long) {
+    /** [owed]: 카메라가 촬영을 거절하지 않았다(사진이 늦게 올 수 있음). */
+    @Synchronized fun screenEnded(now: Long, owed: Boolean = false) {
         screenActive = false
         screenUntil = now + tailMs
+        screenOwed = owed && !screenGot
+    }
+
+    /** 미션 재개: 일시정지 중 늦은 앱 촬영 파일을 더 기다리지 않는다(뒤 파일은 지점 사진). */
+    @Synchronized fun missionResumed() {
+        screenOwed = false
     }
 
     /** 새 소티 미션(테스트·단순 경우): 모든 지점에서 광각 동작 [filesPerShot]개, 동작마다 파일 1장. */
@@ -58,6 +67,7 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
         actionsAt = { actions(it).ifEmpty { ONE } }
         files.clear()
         reachedShot = null
+        screenOwed = false
     }
 
     /** 촬영 지점 [shot]에 도착(웨이포인트 알림). */
@@ -73,6 +83,7 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
     /** [classify]와 같고, 지점 사진이면 어느 지점의 몇 번째 파일인지도 돌려준다. [lens]는 파일 종류로 안 렌즈(모르면 null). */
     @Synchronized fun classifyFile(now: Long, shot: Int?, lens: Lens? = null): Pair<MediaOwner, WaypointFile?> = when {
         screenActive && !screenGot -> (MediaOwner.SCREEN to null).also { screenGot = true }
+        screenOwed -> (MediaOwner.SCREEN to null).also { screenOwed = false }
         shot != null && shot != lastShot -> MediaOwner.WAYPOINT to waypointFile(now, shot, lens)
         screenActive || now < screenUntil -> MediaOwner.SCREEN to null
         shot != null -> MediaOwner.WAYPOINT to waypointFile(now, shot, lens)
@@ -85,19 +96,15 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
     private fun slots(shot: Int) = actionsAt(shot).flatMapIndexed { i, a -> a.lenses.ifEmpty { listOf(Lens.WIDE) }.map { Slot(i, it, a.equipment) } }
 
     /**
-     * 지점 사진의 주인 지점(6.4 사진 순서): 지금 지점에 막 도착했는데([Tuning.Photo.LATE_FILE_MS] 안) 앞 지점 파일이 덜 왔으면 앞 지점의 늦은 파일,
-     * 아직 아무 지점도 없었으면 그 앞 번호 지점. 그 밖에는 지금 지점. 한 지점이 통째로 안 찍혀도 뒤 지점이 밀리지 않는다.
+     * 지점 사진의 주인 지점(6.4 사진 순서): 보통은 지금 지점이다. 지금 지점에 막 도착했을 때([Tuning.Photo.LATE_FILE_MS] 안) 온 파일은
+     * 렌즈를 알고(파일 종류) 그 렌즈 자리가 앞 지점에 비어 있으며 지금 지점이 다음에 기다리는 렌즈가 아닐 때만 앞 지점의 늦은 파일로 본다.
+     * 렌즈를 모르면(`_V`) 지금 지점 것: 11-03 현장에서 지점 사진은 도착 0.5~0.8초 뒤에 왔고, 앞 지점 파일 하나가 빠지면 뒤 파일이 모두 한 칸씩 밀렸다.
      * 지점 안에서는 파일이 온 차례가 동작 차례다. 렌즈를 알면 그 렌즈의 다음 자리로 건너뛴다(앞 동작 파일이 빠졌을 때).
      */
     private fun waypointFile(now: Long, shot: Int, lens: Lens?): WaypointFile {
         val justArrived = shot == reachedShot && now - reachedAt < Tuning.Photo.LATE_FILE_MS
         val last = lastShot
-        val owner = when {
-            !justArrived -> shot
-            last != null && last < shot && files.getOrDefault(last, 0) < slots(last).size -> last
-            last == null && shot > 0 -> shot - 1
-            else -> shot
-        }
+        val owner = if (justArrived && lens != null && shot > 0 && lateFor(shot - 1, shot, lens)) shot - 1 else shot
         lastShot = maxOf(owner, last ?: owner)
         val s = slots(owner)
         val n = files.getOrDefault(owner, 0)
@@ -105,6 +112,13 @@ class MediaClassifier(private val tailMs: Long = Tuning.Photo.MULTI_FILE_MS) {
         files[owner] = i + 1
         val slot = s.getOrElse(i) { s.last() }
         return WaypointFile(owner, i, slot.action, lens ?: slot.lens, slot.equipment)
+    }
+
+    /** [lens] 파일이 앞 지점 [prev]의 남은 자리에 있고, 지금 지점 [shot]이 다음에 기다리는 렌즈가 아니다. */
+    private fun lateFor(prev: Int, shot: Int, lens: Lens): Boolean {
+        val p = slots(prev)
+        val missing = (files.getOrDefault(prev, 0) until p.size).any { p[it].lens == lens }
+        return missing && slots(shot).getOrNull(files.getOrDefault(shot, 0))?.lens != lens
     }
 
     private companion object {

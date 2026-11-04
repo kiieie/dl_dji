@@ -23,4 +23,13 @@ class ZoomTest {
         assertEquals(2.0, nextZoom(4.0, up = false, steps), 0.0)
         assertEquals(ZOOM_STEPS, zoomSteps(null))
     }
+
+    @Test
+    fun 기체가_돌려준_배율은_가까운_단계로_맞춰_같은_단계를_되풀이하지_않는다() {
+        assertEquals(7.0, snapZoom(6.98), 0.0)
+        assertEquals(7.0, snapZoom(7.02), 0.0)
+        assertEquals(5.0, snapZoom(5.0), 0.0) // 단계 사이 값은 그대로
+        assertEquals(14.0, nextZoom(6.98, up = true), 0.0) // 7을 다시 고르지 않는다
+        assertEquals(4.0, nextZoom(7.02, up = false), 0.0)
+    }
 }

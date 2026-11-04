@@ -36,6 +36,8 @@ object FontSize {
     val MapLabel = 16.5.sp
     /** 지도 전주 번호(미니맵). */
     val MapLabelMini = 13.5.sp
+    /** 지도 홈 표지의 "H". */
+    val MapMarkerHome = 13.sp
 }
 
 /** 수치 글자 스타일(10.2). */

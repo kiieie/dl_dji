@@ -47,13 +47,12 @@ class MediaClassifierTest {
     }
 
     @Test
-    fun `다음 지점에 막 도착했을 때 온 파일은 앞 지점 파일이 덜 왔을 때만 앞 지점 것`() {
+    fun `렌즈를 모르면 다음 지점에 막 도착했을 때 온 파일도 그 지점 것(앞 지점 파일이 덜 왔어도)`() {
         val c = MediaClassifier().apply { sortieStarted(filesPerShot = 2) }
         c.shotReached(0, 0)
         c.shotReached(1, 10_000) // 0번 사진이 아직 안 옴
-        assertEquals(0, c.classifyFile(10_300, shot = 1).second!!.shot)
-        assertEquals(0, c.classifyFile(10_400, shot = 1).second!!.shot)
-        assertEquals(WaypointFile(1, 0), c.classifyFile(13_000, shot = 1).second) // 1번 지점에서 찍은 것
+        assertEquals(WaypointFile(1, 0), c.classifyFile(10_300, shot = 1).second)
+        assertEquals(WaypointFile(1, 1, 1), c.classifyFile(10_400, shot = 1).second)
     }
 
     @Test
@@ -85,12 +84,56 @@ class MediaClassifierTest {
     }
 
     @Test
-    fun `11-03 현장 - 앞 지점 사진이 다음 지점 도착 뒤에 와도 앞 지점 것`() {
-        val c = MediaClassifier().apply { sortieStarted { listOf(wide) } }
+    fun `렌즈별 동작 - 렌즈를 모르는 파일 하나가 빠져도 뒤 지점 파일이 밀리지 않는다`() {
+        // 11-04 리뷰: 1번 지점 망원 파일이 빠지면 옛 규칙은 2번 지점 광각을 1번 망원 자리로 당겨 소티 끝까지 한 칸씩 밀렸다
+        val c = MediaClassifier().apply { sortieStarted { listOf(wide, zoom) } }
+        val got = (0 until 4).flatMap { k ->
+            val at = 10_000L * (k + 1)
+            c.shotReached(k, at)
+            listOfNotNull(
+                c.classifyFile(at + 600, shot = k).second!!,
+                if (k == 1) null else c.classifyFile(at + 1_500, shot = k).second!!, // 1번 망원 없음
+            )
+        }
+        assertEquals(listOf(0, 0, 1, 2, 2, 3, 3), got.map { it.shot })
+        assertEquals(listOf(0, 1, 0, 0, 1, 0, 1), got.map { it.ordinal })
+    }
+
+    @Test
+    fun `렌즈를 알면 앞 지점의 빈 망원 자리를 늦게 온 망원 파일로 채운다`() {
+        val c = MediaClassifier().apply { sortieStarted { listOf(wide, zoom) } }
         c.shotReached(0, 0)
+        assertEquals(WaypointFile(0, 0, 0, Lens.WIDE), c.classifyFile(600, shot = 0, lens = Lens.WIDE).second)
         c.shotReached(1, 3_000)
-        assertEquals(0, c.classifyFile(3_400, shot = 1).second!!.shot) // 0번 지점 사진이 늦게
-        assertEquals(1, c.classifyFile(3_900, shot = 1).second!!.shot) // 1번 지점 자기 사진
+        // 0번 망원이 1번 도착 뒤에 옴: 1번은 다음에 광각을 기다리므로 0번 것
+        assertEquals(WaypointFile(0, 1, 1, Lens.ZOOM), c.classifyFile(3_300, shot = 1, lens = Lens.ZOOM).second)
+        assertEquals(WaypointFile(1, 0, 0, Lens.WIDE), c.classifyFile(3_600, shot = 1, lens = Lens.WIDE).second)
+        assertEquals(WaypointFile(1, 1, 1, Lens.ZOOM), c.classifyFile(3_900, shot = 1, lens = Lens.ZOOM).second)
+    }
+
+    @Test
+    fun `렌즈를 알면 앞 지점 망원이 끝내 안 와도 지금 지점 파일은 제자리`() {
+        val c = MediaClassifier().apply { sortieStarted { listOf(wide, zoom) } }
+        c.shotReached(0, 0)
+        c.classifyFile(600, shot = 0, lens = Lens.WIDE)
+        c.shotReached(1, 3_000) // 0번 망원은 끝내 안 옴
+        assertEquals(WaypointFile(1, 0, 0, Lens.WIDE), c.classifyFile(3_500, shot = 1, lens = Lens.WIDE).second) // 광각은 0번 빈 자리가 아님
+        assertEquals(WaypointFile(1, 1, 1, Lens.ZOOM), c.classifyFile(3_900, shot = 1, lens = Lens.ZOOM).second) // 1번이 다음에 기다리는 망원
+    }
+
+    @Test
+    fun `일시정지 중 시간 초과한 앱 촬영의 늦은 파일은 지점 사진이 아니다`() {
+        val c = MediaClassifier().apply { sortieStarted() }
+        c.shotReached(0, 0)
+        assertEquals(WAYPOINT, c.classify(600, shot = 0))
+        c.screenStarted()
+        c.screenEnded(10_000, owed = true) // 사진 알림 없이 끝남
+        assertEquals(SCREEN, c.classify(20_000, shot = 0)) // 그 촬영의 늦은 파일
+        assertEquals(WAYPOINT, c.classify(30_000, shot = 0))
+        c.screenStarted()
+        c.screenEnded(40_000, owed = true)
+        c.missionResumed() // 재개하면 더 기다리지 않는다
+        assertEquals(WAYPOINT, c.classify(50_000, shot = 0))
     }
 
     @Test
@@ -104,16 +147,6 @@ class MediaClassifierTest {
         }
         assertEquals(listOf(0, 0, 1, 1, 2, 2, 3, 3), got.map { it.shot })
         assertEquals(listOf(false, true, false, true, false, true, false, true), got.map { it.equipment })
-    }
-
-    @Test
-    fun `설비 전주의 설비 사진이 다음 지점 도착 뒤에 와도 앞 지점의 설비 사진`() {
-        val c = MediaClassifier().apply { sortieStarted { listOf(wide, wide.copy(equipment = true)) } }
-        c.shotReached(0, 0)
-        assertEquals(WaypointFile(0, 0, 0, Lens.WIDE, false), c.classifyFile(600, shot = 0).second)
-        c.shotReached(1, 3_000)
-        assertEquals(WaypointFile(0, 1, 1, Lens.WIDE, true), c.classifyFile(3_300, shot = 1).second)
-        assertEquals(WaypointFile(1, 0, 0, Lens.WIDE, false), c.classifyFile(3_800, shot = 1).second)
     }
 
     @Test

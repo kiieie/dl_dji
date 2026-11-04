@@ -56,7 +56,10 @@ import dji.v5.manager.datacenter.media.MediaFileListDataSource
 import dji.v5.manager.datacenter.media.PullMediaFileListParam
 import dji.v5.manager.ldm.LDMManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -110,6 +113,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     private var restorePending = false
     private val newPhotos = MutableSharedFlow<CaptureInfo>(extraBufferCapacity = 16)
     private val mediaLock = Mutex()
+    /** 앱 촬영은 하나씩(화면 셔터와 RC 셔터가 겹치면 둘 다 같은 첫 새 사진 알림을 받아 하나는 잃음). */
+    private val captureLock = Mutex()
     /** 기체가 FINISHED를 마지막 사진보다 먼저 알린다(2026-10-30 확인). 그 뒤 잠깐 들어온 사진도 미션 사진으로 넘긴다. */
     @Volatile private var photoGraceUntil = 0L
 
@@ -347,15 +352,23 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         sortieLenses = params.lenses.distinct().ifEmpty { listOf(Lens.WIDE) }
         // 망원 사진 배율(기본 7배, 10-30 사용자 결정). 실패해도 미션은 간다(망원은 지금 배율로 찍힘)
         if (Lens.ZOOM in sortieLenses) setZoom(params.zoomRatio).onFailure { OpLog.log("error", "sortieZoom", mapOf("message" to it.djiDetail())) }
-        // 렌즈별 동작이면 동작마다 파일 1장. 한 동작에 렌즈를 묶는 옛 방식만 카메라 렌즈 동시 저장을 맞추고, 거절되면 동작당 1장으로 본다(11-03 현장)
+        // 렌즈별 동작이면 동작마다 파일 1장: 카메라 렌즈 동시 저장이 켜져 있으면 끄고, 못 끄면 동작마다 그 렌즈들 파일을 기다린다.
+        // 한 동작에 렌즈를 묶는 옛 방식만 카메라 렌즈 동시 저장을 맞추고, 거절되면 동작당 1장으로 본다(11-03 현장)
         val perLens = Tuning.Photo.ACTION_PER_LENS
+        val stuck = if (perLens) singleCaptureLens() else null
         val multiFile = !perLens && sortieLenses.size > 1 && setCaptureLenses(sortieLenses)
         owners.sortieStarted { shot ->
             points.getOrNull(shot)?.let { v ->
-                WpmlWriter.photoActions(v, params, perLens).map { if (multiFile) it else it.copy(lenses = it.lenses.take(1)) }
+                WpmlWriter.photoActions(v, params, perLens).map {
+                    when {
+                        stuck != null -> it.copy(lenses = stuck)
+                        perLens || multiFile -> it
+                        else -> it.copy(lenses = it.lenses.take(1))
+                    }
+                }
             }.orEmpty()
         }
-        OpLog.log("mission", "photoActions", mapOf("perLens" to perLens, "multiFile" to multiFile, "first" to points.firstOrNull()?.let { WpmlWriter.photoActions(it, params, perLens).size }))
+        OpLog.log("mission", "photoActions", mapOf("perLens" to perLens, "multiFile" to multiFile, "stuck" to stuck?.joinToString(), "first" to points.firstOrNull()?.let { WpmlWriter.photoActions(it, params, perLens).size }))
         missionName = name
         // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
         runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected("미션 시작 거절: ${it.message}", it) }
@@ -387,6 +400,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     override suspend fun resumeMission(): Result<Unit> = runCatching {
         check(missionName != null) { "올린 미션 없음" }
         djiDone { missions.resumeMission(it) }
+        owners.missionResumed()
     }
 
     override suspend fun stopMission(): Result<Unit> {
@@ -400,14 +414,24 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         return runCatching { djiDone { missions.stopMission(name, it) } }
     }
 
-    /** 앱 촬영(화면·RC 셔터): 찍고 새 사진 알림을 기다린다. 그 동안 첫 파일은 이 촬영 것이다(지점 사진으로 넘기지 않음). */
+    /**
+     * 앱 촬영(화면·RC 셔터): 찍고 새 사진 알림을 기다린다. 그 동안 첫 파일은 이 촬영 것이다(지점 사진으로 넘기지 않음).
+     * 알림은 촬영 명령을 보내기 전에 구독한다(명령 응답보다 알림이 먼저 올 수 있음). 시간 초과 뒤 늦게 온 파일도 지점 사진으로 넘기지 않는다.
+     */
     override suspend fun capture(lens: Lens, gimbalPitchDeg: Double, zoomRatio: Double): Result<CaptureInfo> = runCatching {
-        owners.screenStarted()
-        try {
-            djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.performAction(KeyTools.createKey(CameraKey.KeyStartShootPhoto, camera), it) }
-            withTimeoutOrNull(AppConfig.Timeouts.NEW_PHOTO_MS) { newPhotos.first() } ?: error("사진 알림 없음")
-        } finally {
-            owners.screenEnded(System.currentTimeMillis())
+        captureLock.withLock {
+            owners.screenStarted()
+            var refused = false
+            try {
+                coroutineScope {
+                    val photo = async(start = CoroutineStart.UNDISPATCHED) { newPhotos.first() }
+                    runCatching { djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.performAction(KeyTools.createKey(CameraKey.KeyStartShootPhoto, camera), it) } }
+                        .onFailure { refused = it is DjiException }.getOrThrow()
+                    withTimeoutOrNull(AppConfig.Timeouts.NEW_PHOTO_MS) { photo.await() } ?: error("사진 알림 없음")
+                }
+            } finally {
+                owners.screenEnded(System.currentTimeMillis(), owed = !refused)
+            }
         }
     }
 
@@ -486,13 +510,15 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
 
     /** 기체에 물어 지금 FPV 렌즈를 읽는다(렌즈 전환 확인). */
     override suspend fun videoLens(): Lens? = runCatching {
-        when (djiValue<CameraVideoStreamSourceType>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.getValue(KeyTools.createKey(CameraKey.KeyCameraVideoStreamSource, camera), it) }) {
-            CameraVideoStreamSourceType.ZOOM_CAMERA -> Lens.ZOOM
-            CameraVideoStreamSourceType.WIDE_CAMERA -> Lens.WIDE
-            CameraVideoStreamSourceType.INFRARED_CAMERA -> Lens.THERMAL
-            else -> null
-        }
+        lensOf(djiValue<CameraVideoStreamSourceType>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.getValue(KeyTools.createKey(CameraKey.KeyCameraVideoStreamSource, camera), it) })
     }.getOrNull()
+
+    private fun lensOf(s: CameraVideoStreamSourceType?): Lens? = when (s) {
+        CameraVideoStreamSourceType.ZOOM_CAMERA -> Lens.ZOOM
+        CameraVideoStreamSourceType.WIDE_CAMERA -> Lens.WIDE
+        CameraVideoStreamSourceType.INFRARED_CAMERA -> Lens.THERMAL
+        else -> null
+    }
 
     override suspend fun toggleGimbal(): Result<Unit> = runCatching {
         djiValue<EmptyMsg>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.performAction(KeyTools.createKey(GimbalKey.KeyGimbalReset), GimbalResetType.PITCH_UP_OR_DOWN, it) }
@@ -505,15 +531,16 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createCameraKey(CameraKey.KeyCameraZoomRatios, camera, CameraLensType.CAMERA_LENS_ZOOM), r, it) }
     }
 
-    @Volatile private var zoomRangeRead: ClosedFloatingPointRange<Double>? = null
+    /** 읽은 줌 범위. 못 읽었어도 이 연결 동안 다시 묻지 않는다(재개 때마다 5초씩 기다리지 않게). */
+    @Volatile private var zoomRangeRead: Result<ClosedFloatingPointRange<Double>?>? = null
 
     /** 망원 줌 범위(`KeyCameraZoomRatiosRange`의 gears 최소~최대). 처음 한 번 읽고 운용 로그에 원래 값을 남긴다. */
-    override suspend fun zoomRange(): ClosedFloatingPointRange<Double>? = zoomRangeRead ?: runCatching {
+    override suspend fun zoomRange(): ClosedFloatingPointRange<Double>? = (zoomRangeRead ?: runCatching {
         val r = djiValue(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.getValue(KeyTools.createCameraKey(CameraKey.KeyCameraZoomRatiosRange, camera, CameraLensType.CAMERA_LENS_ZOOM), it) }
         val gears = r.gears?.takeIf { it.isNotEmpty() }
         OpLog.log("camera", "zoomRange", mapOf("continuous" to r.isContinuous, "gears" to gears?.joinToString()))
-        gears?.let { it.min().toDouble()..it.max().toDouble() }?.also { zoomRangeRead = it }
-    }.onFailure { OpLog.log("camera", "zoomRange", mapOf("error" to it.djiDetail())) }.getOrNull()
+        gears?.let { it.min().toDouble()..it.max().toDouble() }
+    }.onFailure { OpLog.log("camera", "zoomRange", mapOf("error" to it.djiDetail())) }.also { zoomRangeRead = it }).getOrNull()
 
     /** 기체에 물어 지금 망원 줌 배율을 읽는다. */
     override suspend fun zoomRatio(): Double? = runCatching {
@@ -556,6 +583,31 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         val result = runCatching { djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(key, CameraStreamSettingsInfo(false, sources), it) } }
         OpLog.log("camera", "captureLenses", mapOf("before" to before, "set" to sources.joinToString { it.name }, "ok" to result.isSuccess, "error" to result.exceptionOrNull()?.djiDetail()))
         return result.isSuccess
+    }
+
+    /**
+     * 렌즈별 동작(5.6) 전에 카메라 "사진 저장"(`KeyCaptureCameraStreamSettings`)을 본다. Pilot 2에서 광각+망원을 켜 두었으면 동작마다 파일이 여럿 생겨
+     * 사진 주인이 밀린다(6.4): 지금 값을 로그에 남기고 한 렌즈(광각)로 바꾼다. 못 바꾸면 동작마다 지금 설정의 렌즈 파일이 온다고 보고 그 렌즈들을 돌려준다.
+     * 한 렌즈였거나 바꿨거나 읽지 못하면 null(동작마다 1장). 실패해도 미션은 간다.
+     * ponytail: 한 렌즈 저장에서 망원 동작이 망원으로 찍히는지는 실내 기체 시험 전(13.0). 광각으로 찍히면 지금(11-03)과 같다.
+     */
+    private suspend fun singleCaptureLens(): List<Lens>? {
+        val key = KeyTools.createKey(CameraKey.KeyCaptureCameraStreamSettings, camera)
+        val now = runCatching { djiValue<CameraStreamSettingsInfo>(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.getValue(key, it) } }
+        val lenses = now.getOrNull()?.let { s -> s.cameraVideoStreamSources.orEmpty().mapNotNull(::lensOf) + listOfNotNull(Lens.WIDE.takeIf { s.requestCurrentScreen }) }.orEmpty()
+        val set = if (lenses.size > 1) {
+            runCatching { djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(key, CameraStreamSettingsInfo(false, listOf(CameraVideoStreamSourceType.WIDE_CAMERA)), it) } }
+        } else {
+            null
+        }
+        OpLog.log(
+            "camera", "captureSingle",
+            mapOf(
+                "before" to now.getOrNull()?.toJson()?.toString(), "readError" to now.exceptionOrNull()?.djiDetail(),
+                "set" to set?.isSuccess, "error" to set?.exceptionOrNull()?.djiDetail(),
+            ),
+        )
+        return lenses.takeIf { set?.isFailure == true }
     }
 
     /** 마지막으로 만든 소티 KMZ의 미션 이름(`sortie_<시각>`). */

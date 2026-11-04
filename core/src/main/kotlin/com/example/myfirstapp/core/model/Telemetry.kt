@@ -35,4 +35,15 @@ data class Telemetry(
 }
 
 /** 계획 화면의 지금 위치(10.5.5): 기체(연결되고 위성이 충분할 때)와 기수, 조종기 GPS. 모르면 null. */
-data class LivePositions(val aircraft: GeoPoint? = null, val headingDeg: Double = 0.0, val rc: GeoPoint? = null)
+data class LivePositions(val aircraft: GeoPoint? = null, val headingDeg: Double = 0.0, val rc: GeoPoint? = null) {
+    /** 자동 이륙 지점 후보와 출처(운용 로그 값): 기체 → DJI 조종기 GPS → 조종기 안드로이드 GPS([device]) 중 있는 첫 것. */
+    fun homeCandidate(device: GeoPoint?): Pair<GeoPoint, String>? =
+        aircraft?.let { it to "aircraft" } ?: rc?.let { it to "rc" } ?: device?.let { it to "device" }
+
+    companion object {
+        private val HOME_RANK = listOf("device", "rc", "aircraft")
+
+        /** 자동으로 정한 이륙 지점(출처 [current])을 [candidate] 출처로 올릴지: 더 믿을 만할 때만(기체 > DJI 조종기 > 안드로이드). */
+        fun upgradesHome(current: String?, candidate: String): Boolean = HOME_RANK.indexOf(candidate) > HOME_RANK.indexOf(current)
+    }
+}

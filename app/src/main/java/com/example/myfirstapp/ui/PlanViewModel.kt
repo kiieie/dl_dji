@@ -64,6 +64,8 @@ data class PlanUiState(
     val home: GeoPoint? = null,
     /** 이륙 지점을 어디서 정했나(운용 로그): aircraft, rc, device(조종기 안드로이드 GPS), map. */
     val homeSource: String? = null,
+    /** 이륙 지점을 앱이 자동으로 정했다: 더 믿을 만한 위치(기체 > DJI 조종기 > 안드로이드)가 생기면 올린다. 운용자가 정하거나 계획을 저장하면 거짓. */
+    val homeAuto: Boolean = false,
     /** 지금 기체 위치·기수(지도 화살표, [기체 위치로])와 조종기 위치([조종기 위치로], 파란 점). 모르면 null(10.5.5). */
     val aircraft: GeoPoint? = null,
     val aircraftHeadingDeg: Double = 0.0,
@@ -116,6 +118,9 @@ class PlanViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(PlanUiState(mapFiles = listMbtiles(mapsDir)))
     val state: StateFlow<PlanUiState> = _state.asStateFlow()
+    /** 화면이 맨 위에 보이는 동안만 참(화면이 `LifecycleResumeEffect`로 바꾼다). 비행 화면이 덮으면 위치를 읽지 않는다. */
+    private val active = MutableStateFlow(false)
+    fun setActive(on: Boolean) { active.value = on }
 
     init {
         viewModelScope.launch { _state.update { it.copy(projectName = dao.projectName(projectId).orEmpty()) } }
@@ -129,16 +134,18 @@ class PlanViewModel(
             dao.observePoles(projectId).collect { list -> _state.update { it.copy(poles = list) } }
         }
         replanFrom?.let { viewModelScope.launch { seedReplan(it) } }
-        // 지금 위치를 계속 읽는다(10.5.5): 기체 화살표·버튼을 갱신하고, 이륙 지점이 없으면 기체 → DJI 조종기 → 안드로이드 GPS 순으로 정한다.
-        // 한 번 읽고 끝내지 않는다(11-03 현장: 화면을 열 때 GPS가 없으면 손으로 찍어야 했음)
+        // 화면이 보이는 동안 지금 위치를 계속 읽는다(10.5.5): 기체 화살표·버튼을 갱신하고, 이륙 지점이 없으면 기체 → DJI 조종기 → 안드로이드 GPS 순으로 정한다.
+        // 한 번 읽고 끝내지 않는다(11-03 현장: 화면을 열 때 GPS가 없으면 손으로 찍어야 했음). 자동으로 정한 지점은 더 믿을 만한 위치가 생기면 올린다
         viewModelScope.launch {
-            while (true) {
-                val p = positions()
-                val noHome = _state.value.home == null
-                val rc = p.rc ?: deviceLocation(noHome && p.aircraft == null)
-                _state.update { it.copy(aircraft = p.aircraft, aircraftHeadingDeg = p.headingDeg, rc = rc) }
-                if (noHome) (p.aircraft?.let { it to "aircraft" } ?: p.rc?.let { it to "rc" } ?: rc?.let { it to "device" })?.let { (at, src) -> seedHome(at, src) }
-                delay(AppConfig.Polling.PLAN_LOCATION_MS)
+            active.collectLatest { on ->
+                while (on) {
+                    val p = positions()
+                    val noHome = _state.value.home == null
+                    val rc = p.rc ?: deviceLocation(noHome && p.aircraft == null)
+                    _state.update { it.copy(aircraft = p.aircraft, aircraftHeadingDeg = p.headingDeg, rc = rc) }
+                    p.homeCandidate(device = rc)?.let { (at, src) -> seedHome(at, src) }
+                    delay(AppConfig.Polling.PLAN_LOCATION_MS)
+                }
             }
         }
         viewModelScope.launch { mapBackgroundRetrying(settings).let { bg -> _state.update { it.copy(background = bg) } } }
@@ -161,18 +168,23 @@ class PlanViewModel(
         val poles: List<PoleEntity>?, val vertices: List<GeoPoint>, val home: GeoPoint?, val params: FlightParams, val excluded: Set<String>,
     )
 
-    /** 이륙 지점이 아직 없으면 지금 위치로 두고, 그 둘레 약 500m로 지도를 옮긴다. */
+    /**
+     * 이륙 지점이 아직 없으면 지금 위치로 두고, 그 둘레 약 500m로 지도를 옮긴다.
+     * 자동으로 정한 지점은 더 믿을 만한 출처([LivePositions.upgradesHome])가 생기면 그 위치로 올린다(운용자가 정하기 전까지).
+     */
     private fun seedHome(p: GeoPoint, source: String) {
-        if (_state.value.home != null) return
+        fun PlanUiState.takes() = home == null || homeAuto && LivePositions.upgradesHome(homeSource, source)
+        val first = _state.value.home == null
+        if (!_state.value.takes()) return
         _state.update {
-            if (it.home != null) return@update it
+            if (!it.takes()) return@update it
             val d = 0.005
             it.copy(
-                home = p, homeSource = source,
+                home = p, homeSource = source, homeAuto = true,
                 focus = if (it.focus.isEmpty()) listOf(GeoPoint(p.lat - d, p.lon - d), GeoPoint(p.lat + d, p.lon + d)) else it.focus,
             )
         }
-        OpLog.log("plan", "homeAuto", mapOf("source" to source, "home" to p.toString()))
+        OpLog.log("plan", if (first) "homeAuto" else "homeUpgrade", mapOf("source" to source, "home" to p.toString()))
     }
 
     /** Pilot 2 [기체 위치로]·[조종기 위치로](10.5.5): 지금 위치를 이륙 지점으로. 모르면 아무것도 하지 않는다(버튼이 꺼져 있음). */
@@ -181,7 +193,7 @@ class PlanViewModel(
     private fun setHomeFrom(p: GeoPoint?, source: String) {
         p ?: return
         OpLog.log("plan", "homeFrom", mapOf("source" to source, "home" to p.toString()))
-        _state.update { it.copy(home = p, homeSource = source, tool = Tool.NONE, plan = null) }
+        _state.update { it.copy(home = p, homeSource = source, homeAuto = false, tool = Tool.NONE, plan = null) }
     }
 
     /** 남은 전주를 감싸는 사각형을 영역으로 두고, 그 안의 다른 전주는 제외한다(F-06 제외와 같은 방식). */
@@ -210,7 +222,7 @@ class PlanViewModel(
         when (it.tool) {
             Tool.NONE -> it
             Tool.AREA -> it.copy(vertices = Polygon.untangle(it.vertices + p), plan = null)
-            Tool.HOME -> it.copy(home = p, homeSource = "map", tool = Tool.NONE, plan = null)
+            Tool.HOME -> it.copy(home = p, homeSource = "map", homeAuto = false, tool = Tool.NONE, plan = null)
         }
     }
 
@@ -287,7 +299,8 @@ class PlanViewModel(
         if (s.saving) return
         val p = s.plan ?: return
         OpLog.log("plan", "save", mapOf("project" to projectId, "sorties" to p.sorties.size, "homeSource" to s.homeSource))
-        _state.update { it.copy(saving = true) }
+        // 저장한 계획의 이륙 지점은 더 바꾸지 않는다(자동 올리기 끝)
+        _state.update { it.copy(saving = true, homeAuto = false) }
         viewModelScope.launch {
             val rowIds = s.poles.orEmpty().associate { it.poleId to it.id }
             val mission = MissionEntity(

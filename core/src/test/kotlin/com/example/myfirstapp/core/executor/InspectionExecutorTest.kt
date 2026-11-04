@@ -722,6 +722,71 @@ class InspectionExecutorTest {
     }
 
     @Test
+    fun `방식 A - 셔터 사진만 있는 전주는 재개해 지나가면 실패로 남는다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly) { it.failNextCaptures = 1 } // A 자동 사진 실패
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("A").status == VisitStatus.IN_PROGRESS && h.drone.failNextCaptures == 0 }
+        h.drone.pressRcPause()
+        h.awaitState(ExecState.Paused)
+        h.send(Command.RcShutter(Lens.WIDE))
+        h.awaitUntil { h.recorder.captures.any { it.second == CaptureSource.MANUAL } }
+        h.send(Command.Resume)
+        h.awaitState(ExecState.MissionDone)
+        assertEquals(VisitStatus.FAILED, h.visit("A").status)
+        assertEquals(1, h.recorder.captures.count { it.first == 0 && it.second == CaptureSource.MANUAL }) // 셔터 사진은 남는다
+    }
+
+    @Test
+    fun `방식 A - 셔터 사진만 있는 전주는 복귀·착륙하면 완료가 아니라 다음 소티로 남는다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly) { it.failNextCaptures = 1 }
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("A").status == VisitStatus.IN_PROGRESS && h.drone.failNextCaptures == 0 }
+        h.drone.pressRcPause()
+        h.awaitState(ExecState.Paused)
+        h.send(Command.RcShutter(Lens.WIDE))
+        h.awaitUntil { h.recorder.captures.any { it.second == CaptureSource.MANUAL } }
+        h.send(Command.ReturnHome)
+        h.awaitUntil { !h.drone.telemetry.value.isFlying && h.state in setOf(ExecState.SortieDone, ExecState.MissionDone) }
+        assertEquals(VisitStatus.PENDING, h.visit("A").status)
+        assertEquals(0, h.visit("A").captureCount)
+    }
+
+    @Test
+    fun `RC 셔터 - 실행기가 쉬는데 기체가 떠 있으면 찍는다(대기·미션 완료)`() = runTest {
+        // 대기: 수동 비행에서 넘어와 A 상공에 떠 있음
+        val idle = harness(config = sortieMode, params = wideOnly, droneConfig = FakeDroneGateway.Config(airborneAt = threePoles[0].position))
+        assertEquals(ExecState.Idle, idle.state)
+        idle.send(Command.RcShutter(Lens.WIDE))
+        idle.awaitUntil { idle.recorder.captures.any { it.second == CaptureSource.MANUAL } }
+        assertEquals(0 to CaptureSource.MANUAL, idle.recorder.captures.single())
+
+        // 미션 완료 뒤 다시 떠 있음
+        val done = harness(config = sortieMode, params = wideOnly)
+        done.send(Command.Start)
+        done.awaitState(ExecState.MissionDone)
+        done.drone.simulateFlightModeArrives(FlightMode.MANUAL)
+        done.scope.runCurrent()
+        done.send(Command.RcShutter(Lens.WIDE))
+        done.awaitUntil { "capture:WIDE" in done.drone.calls }
+    }
+
+    @Test
+    fun `일시정지 중 화면 수동 촬영과 RC 셔터가 겹쳐도 사진 둘이 따로 저장된다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly)
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("A").captureCount == 1 }
+        h.drone.pressRcPause()
+        h.awaitState(ExecState.Paused)
+        h.executor.send(Command.ManualCapture)
+        h.executor.send(Command.RcShutter(Lens.ZOOM))
+        h.scope.runCurrent()
+        assertEquals(1, h.drone.calls.count { it.startsWith("capture:") }) // 촬영은 하나씩
+        h.awaitUntil { h.recorder.captures.count { it.second == CaptureSource.MANUAL } == 2 }
+        val manual = h.recorder.infos.filterIndexed { i, _ -> h.recorder.captures[i].second == CaptureSource.MANUAL }
+        assertEquals(2, manual.map { it.mediaId }.distinct().size)
+    }
+
+    @Test
     fun `RC 셔터 - 전주에서 20m 넘게 떨어져 찍으면 전주에 붙이지 않는다`() = runTest {
         val h = harness(config = sortieMode, params = wideOnly)
         h.send(Command.Start)
