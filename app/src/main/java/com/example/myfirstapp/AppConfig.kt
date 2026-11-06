@@ -121,7 +121,7 @@ object AppConfig {
         /** 큰 지도에서 전주 라벨을 보이는 최소 확대. */
         const val LABEL_MIN_ZOOM = 15
 
-        /** 점이 하나뿐일 때 맞추는 확대. */
+        /** 점이 하나뿐일 때·지도 검색(전주·좌표·주석)·과녁으로 옮길 때의 확대(지금이 더 가까우면 그대로). */
         const val SINGLE_POINT_ZOOM = 17.0
 
         /**
@@ -159,9 +159,6 @@ object AppConfig {
 
         /** 경로 그림 지도 바탕 JPEG 품질(앱 임시 폴더 `thumbs/`). */
         const val THUMB_JPEG_QUALITY = 85
-
-        /** 계획 지도 검색·과녁으로 옮길 때 그 점 둘레 여유(도, 약 50m). */
-        const val FOCUS_PAD_DEG = 0.0005
     }
 
     /** 핀포인트·지도 주석(10.4.7). */
