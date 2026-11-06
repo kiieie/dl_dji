@@ -2,8 +2,10 @@
 
 두 단계(export_facility_model.py와 같은 이유로 환경을 나눈다):
   1) 기준: Ultralytics 환경   python tools/compare_facility_models.py ref <사진 폴더>   → build/yolo-export/facility/ref.json
-  2) 비교: tensorflow 환경    build/yolo-export/venv/Scripts/python.exe tools/compare_facility_models.py eval <사진 폴더> [모델 폴더 ...]
+  2) 비교: tensorflow 환경    build/yolo-export/venv/Scripts/python.exe tools/compare_facility_models.py eval <사진 폴더> [--crop 0.5] [모델 폴더 ...]
   모델 폴더 기본값: build/models/facility-v1-coco-*-fp16
+  모델 자리에 .pt 파일을 주면 Ultralytics로 1280에서 돌린다(Ultralytics 환경에서 실행. 예: 11n .pt와 11l .pt 비교, 2026-11-06).
+  --crop F: 앱 비행 중 탐지처럼 가운데 F 비율(가로·세로)만 넣는다(centerRegion과 같음). 재현율은 중심이 그 안에 있는 기준 상자로 센다.
   기준: models_src/.../best.pt를 imgsz 1280, conf 0.25, iou 0.45로 돌린 상자
   같은 클래스이고 IoU 0.5 이상이면 일치로 센다. 결과는 클래스별 재현율·정밀도와 PC 1장 시간(참고용, RC 시간은 따로 잰다).
 tflite 실행은 앱과 같은 방식(레터박스 114, RGB 0-1, 클래스별 NMS)이다(tools/yolo_ref.py와 같음).
@@ -74,6 +76,26 @@ class Tflite:
         return nms(dets, th["iou"])
 
 
+class Pt:
+    """Ultralytics .pt(기준과 같은 설정)."""
+
+    def __init__(self, path: Path, imgsz: int = 1280):
+        from ultralytics import YOLO
+
+        self.m, self.S = YOLO(str(path)), imgsz
+
+    def run(self, im: Image.Image):
+        r = self.m.predict(im, imgsz=self.S, conf=0.25, iou=0.45, verbose=False)[0]
+        return [(self.m.names[int(c)], float(s), tuple(b)) for c, s, b in zip(r.boxes.cls.tolist(), r.boxes.conf.tolist(), r.boxes.xyxy.tolist())]
+
+
+def center_region(w, h, f):
+    """core/detect/YoloDecoder.kt centerRegion과 같다: (x0, y0, x1, y1)"""
+    cw, ch = int(w * f), int(h * f)
+    x0, y0 = (w - cw) // 2, (h - ch) // 2
+    return x0, y0, x0 + cw, y0 + ch
+
+
 REF = ROOT / "build/yolo-export/facility/ref.json"
 
 
@@ -94,19 +116,25 @@ def make_ref(folder):
     print(f"기준 .pt 1280: 사진 {len(photos)}장, 상자 {sum(map(len, out.values()))}개, PC {1000 * (time.time() - t) / max(len(photos), 1):.0f} ms/장 → {REF}")
 
 
-def evaluate(folder, folders):
+def evaluate(folder, folders, crop=1.0):
     ref = json.loads(REF.read_text(encoding="utf-8"))
     photos = [p for p in photos_in(folder) if p.name in ref]
     images = [Image.open(p).convert("RGB") for p in photos]
     folders = folders or sorted((ROOT / "build/models").glob("facility-v1-coco-*-fp16"))
     for f in folders:
-        m = Tflite(Path(f))
+        m = Pt(Path(f)) if str(f).endswith(".pt") else Tflite(Path(f))
         stats = {}
         t = time.time()
         for p, im in zip(photos, images):
-            pd = m.run(im)
+            refs = ref[p.name]
+            if crop < 1:
+                x0, y0, x1, y1 = center_region(*im.size, crop)
+                pd = [(lab, s, (b[0] + x0, b[1] + y0, b[2] + x0, b[3] + y0)) for lab, s, b in m.run(im.crop((x0, y0, x1, y1)))]
+                refs = [r for r in refs if x0 <= (r[2][0] + r[2][2]) / 2 < x1 and y0 <= (r[2][1] + r[2][3]) / 2 < y1]
+            else:
+                pd = m.run(im)
             used = set()
-            for lab, _, box in ref[p.name]:
+            for lab, _, box in refs:
                 s = stats.setdefault(lab, [0, 0, 0])  # 기준 수, 일치, 예측 수
                 s[0] += 1
                 j = max((j for j in range(len(pd)) if j not in used and pd[j][0] == lab), key=lambda j: iou(box, pd[j][2]), default=None)
@@ -117,7 +145,7 @@ def evaluate(folder, folders):
                 stats.setdefault(lab, [0, 0, 0])[2] += 1
         ms = 1000 * (time.time() - t) / max(len(images), 1)
         tot = [sum(v[i] for v in stats.values()) for i in range(3)]
-        print(f"\n{Path(f).name}: PC {ms:.0f} ms/장, 재현율 {tot[1] / max(tot[0], 1):.2f}, 정밀도 {tot[1] / max(tot[2], 1):.2f}")
+        print(f"\n{Path(f).name}{f' 가운데 {crop}' if crop < 1 else ''}: PC {ms:.0f} ms/장, 재현율 {tot[1] / max(tot[0], 1):.2f}, 정밀도 {tot[1] / max(tot[2], 1):.2f}")
         for lab, (n, hit, pred) in sorted(stats.items()):
             print(f"  {lab}: 기준 {n}, 일치 {hit}, 예측 {pred}, 재현율 {hit / max(n, 1):.2f}, 정밀도 {hit / max(pred, 1):.2f}")
 
@@ -126,4 +154,9 @@ if __name__ == "__main__":
     if sys.argv[1] == "ref":
         make_ref(sys.argv[2])
     else:
-        evaluate(sys.argv[2], sys.argv[3:])
+        args, crop = sys.argv[3:], 1.0
+        if "--crop" in args:
+            i = args.index("--crop")
+            crop = float(args[i + 1])
+            del args[i : i + 2]
+        evaluate(sys.argv[2], args, crop)

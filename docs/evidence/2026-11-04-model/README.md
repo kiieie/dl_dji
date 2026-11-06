@@ -6,6 +6,7 @@
 - ONNX: 기존 `D:/kiie/projects/inspection/.venv`의 Ultralytics 8.4.50을 썼다.
 - tflite: `build/yolo-export/venv`의 tensorflow 2.19 + onnx2tf 1.20으로 fp16을 만들었다(`tools/export_facility_model.py`).
 - 결과는 `build/models/facility-v1-coco-{640,960,1280}-fp16/`(각 약 50MB)이다.
+- 경량 11n 재학습 모델의 변환·정확도는 `docs/evidence/2026-11-06-model-n`에 있다.
 
 ## 정확도: 원본(.pt, 1280)과 일치율
 
