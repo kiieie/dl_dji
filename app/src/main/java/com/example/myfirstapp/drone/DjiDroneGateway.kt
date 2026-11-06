@@ -48,6 +48,7 @@ import dji.sdk.keyvalue.value.gimbal.GimbalAngleRotation
 import dji.sdk.keyvalue.value.gimbal.GimbalAngleRotationMode
 import dji.sdk.keyvalue.value.camera.CameraFocusMode
 import dji.sdk.keyvalue.value.common.DoublePoint2D
+import dji.sdk.keyvalue.value.flightcontroller.AltitudeDataQuality
 import dji.sdk.keyvalue.value.flightcontroller.WindDirection
 import dji.sdk.keyvalue.value.camera.DateTime
 import dji.sdk.keyvalue.value.common.ComponentIndexType
@@ -204,8 +205,15 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(AirLinkKey.KeySignalQuality) { q -> _telemetry.update { it.copy(signalPct = q) } }
         on(BatteryKey.KeyChargeRemainingInPercent) { b -> _telemetry.update { it.copy(batteryPct = (b ?: 0).toDouble()) } }
         on(FlightControllerKey.KeyGPSSignalLevel) { g -> _telemetry.update { it.copy(gpsLevel = gpsLevelOf(g)) } }
+        // 홈은 기체가 기록했을 때만(Pilot 2: 기록 전에는 H 없음, 11-06 RC). 기록 여부를 모르면(키 없음) 위치만 본다.
+        // 기록 전이면 실행기는 비행 전 이륙 지점으로 귀환을 판단한다(6.x, `homePoint()`)
+        var homeSet: Boolean? = null
+        var homeAt: GeoPoint? = null
+        fun home() = _telemetry.update { it.copy(home = homeAt.takeIf { homeSet != false }) }
+        on(FlightControllerKey.KeyIsHomeLocationSet) { s -> homeSet = s; home() }
         on(FlightControllerKey.KeyHomeLocation) { h ->
-            _telemetry.update { it.copy(home = h?.takeIf { validGeo(h.latitude, h.longitude) }?.let { GeoPoint(h.latitude, h.longitude) }) }
+            homeAt = h?.takeIf { validGeo(h.latitude, h.longitude) }?.let { GeoPoint(h.latitude, h.longitude) }
+            home()
         }
         on(FlightControllerKey.KeyFlightMode) { m -> onFlightMode(m) }
         on(FlightControllerKey.KeyAreMotorsOn) { m -> _telemetry.update { it.copy(motorsOn = m == true) } }
@@ -230,7 +238,11 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         // ponytail: 풍속 단위를 0.1 m/s로 본다(MSDK 문서에 단위 없음). 실기에서 Pilot 2 WS와 대조한다
         on(FlightControllerKey.KeyWindSpeed) { w -> _telemetry.update { it.copy(windSpeedMps = w?.div(10.0)) } }
         on(FlightControllerKey.KeyWindDirection) { d -> _telemetry.update { it.copy(windDirDeg = windDeg(d)) } }
-        on(FlightControllerKey.KeyHeightAboveSeaLevel) { h -> _telemetry.update { it.copy(altitudeAslM = h?.height) } }
+        // 위성이 없으면(실내) 품질 VERY_BAD(0)에 높이 0이 온다(11-06 RC `{"height":0,"quality":0}`): 모르는 값으로 두어 "--"
+        on(FlightControllerKey.KeyHeightAboveSeaLevel) { h ->
+            val ok = h?.quality.let { q -> q != null && q != AltitudeDataQuality.VERY_BAD && q != AltitudeDataQuality.UNKNOWN }
+            _telemetry.update { it.copy(altitudeAslM = h?.height?.takeIf { ok }) }
+        }
         // 상단 바 비행 모드(10.5.10): 스위치 F는 다중 비행 모드·T/N/S·A/N/S 설정에 따라 T 또는 A
         var rcSwitch: Char? = null
         var multiMode: Boolean? = null

@@ -145,6 +145,12 @@ object AppConfig {
         /** 경로 그림 지도 바탕: 알맞은 확대에 타일이 없으면 아래·위로 이만큼 단계까지 찾는다. */
         const val THUMB_ZOOM_STEPS = 3
 
+        /**
+         * 경로 그림 지도 바탕: 칸의 타일이 없으면(미리 받은 영역 밖) 이만큼 아래 확대까지 조상 타일을 늘려 메운다(5단계 = 32배, 흐려도 빈 색보다 낫다).
+         * 미리 받기 최소 확대([PREFETCH_MIN_ZOOM])보다 아래는 사용자 MBTiles에만 있다.
+         */
+        const val THUMB_ANCESTOR_STEPS = 5
+
         /** 경로 그림 지도 바탕 한 장에 그리는 타일 수 상한. 넘는 확대는 건너뛴다(큰 영역을 높은 확대로 그리지 않게). */
         const val THUMB_MAX_TILES = 64
 
@@ -209,6 +215,9 @@ object AppConfig {
 
         /** 안내문(받음·지움·막힘)을 보이는 시간. */
         const val NOTICE_MS = 3_000L
+
+        /** 홈 앨범 타일(10.5.5): 파일이 남아 있는 사진을 찾아볼 최근 DB 사진 수. */
+        const val HOME_RECENT_DB_PHOTOS = 20
     }
 
     object Checks {
@@ -414,6 +423,12 @@ object AppConfig {
 
         /** 카메라 뷰 안내문(Pilot 2 토스트 "기체 비행 전. 파노라마 촬영 불가" 등, 10.5.7)을 보이는 시간. */
         const val NOTICE_MS = 2_500L
+
+        /** 카메라 뷰 안내 줄(사진 저장됨·촬영 실패·홈포인트 지정 등, `TimedMessage`)을 보이는 시간. */
+        const val MESSAGE_MS = 3_000L
+
+        /** 촬영 모드 메뉴를 바깥 누름으로 닫은 뒤 이 시간 안의 모드 아이콘 누름은 다시 열지 않는다(닫으려고 누른 것, `CameraControl.openShootMenu`). */
+        const val MENU_REOPEN_GUARD_MS = 500L
 
         /** 타이머 간격(초): 기체가 범위(`KeyIntervalModeParamRange`)를 알려 주지 않을 때. M3E 사양 JPEG 0.7~60초. */
         val TIMER_INTERVALS_SEC = listOf(0.7, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0, 60.0)

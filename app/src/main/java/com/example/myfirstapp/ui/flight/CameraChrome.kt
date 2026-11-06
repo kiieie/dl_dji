@@ -75,8 +75,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.InspectionApp
@@ -96,6 +96,7 @@ import com.example.myfirstapp.core.model.batteryLevel
 import com.example.myfirstapp.core.model.remainingFlightSec
 import com.example.myfirstapp.core.model.videoContentRect
 import com.example.myfirstapp.core.model.zoomFrameFraction
+import com.example.myfirstapp.ui.MENU_PROPERTIES
 import com.example.myfirstapp.ui.PinpointButton
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.CardBg
@@ -238,7 +239,7 @@ private fun StatusBox(warnings: List<TopWarning>, alarm: Boolean, connected: Boo
                 color = if (first == null && !connected) Muted else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
-        DropdownMenu(open, onDismissRequest = { open = false }, containerColor = CardBg) {
+        DropdownMenu(open, onDismissRequest = { open = false }, containerColor = CardBg, properties = MENU_PROPERTIES) {
             if (warnings.isEmpty()) DropdownMenuItem({ Text("경고 없음", fontSize = FontSize.Body, color = TextSoft) }, onClick = { open = false })
             warnings.forEach { w ->
                 DropdownMenuItem({ Text(w.text, fontSize = FontSize.Body, color = if (w.severe) Error else Warning) }, onClick = { open = false })
@@ -253,7 +254,7 @@ private fun PopupItem(label: String, rows: List<Pair<String, String>>, content: 
     var open by remember { mutableStateOf(false) }
     Box(Modifier.clickable(onClickLabel = label) { open = true }) {
         content()
-        DropdownMenu(open, onDismissRequest = { open = false }, containerColor = CardBg) {
+        DropdownMenu(open, onDismissRequest = { open = false }, containerColor = CardBg, properties = MENU_PROPERTIES) {
             rows.forEach { (k, v) ->
                 DropdownMenuItem({
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -598,7 +599,7 @@ internal fun CameraLeftColumn(
                 Modifier.size(Dimens.TouchSmall).clip(RoundedCornerShape(3.dp)).clickable(onClickLabel = "짐벌 메뉴") { gimbal = true },
                 contentAlignment = Alignment.Center,
             ) { Icon(painterResource(R.drawable.ic_gimbal_center), contentDescription = "짐벌 메뉴", modifier = Modifier.size(20.dp), tint = Color.White) }
-            DropdownMenu(gimbal, onDismissRequest = { gimbal = false }, containerColor = CardBg) {
+            DropdownMenu(gimbal, onDismissRequest = { gimbal = false }, containerColor = CardBg, properties = MENU_PROPERTIES) {
                 DropdownMenuItem({ Text("짐벌 중앙", fontSize = FontSize.Body, color = Color.White) }, onClick = { gimbal = false; onGimbal(false) })
                 DropdownMenuItem({ Text("짐벌 아래(-90°)", fontSize = FontSize.Body, color = Color.White) }, onClick = { gimbal = false; onGimbal(true) })
             }
@@ -703,12 +704,14 @@ internal fun CameraColumn(
                 }
             }
         }
-        // 촬영 모드 메뉴(Pilot 2 11-04 녹화 0254·0255): 오른쪽 열 바로 왼쪽, 위는 열보다 조금 아래
+        // 촬영 모드 메뉴(Pilot 2 11-04 녹화 0254·0255): 오른쪽 열 바로 왼쪽, 위는 열보다 조금 아래.
+        // 포커스를 받는 팝업이면 숨긴 시스템 바가 나와 화면이 밀린다(11-06 RC): ⋯ 메뉴처럼 포커스 없이, RC `<`는 메뉴를 닫게
         if (s.shootMenu) {
+            BackHandler(onBack = onCloseMenu)
             val d = LocalDensity.current
             Popup(
                 alignment = Alignment.TopEnd, offset = with(d) { IntOffset(-44.dp.roundToPx(), 7.dp.roundToPx()) },
-                onDismissRequest = onCloseMenu, properties = PopupProperties(focusable = true),
+                onDismissRequest = onCloseMenu, properties = MENU_PROPERTIES,
             ) { ShootMenu(s, onVideoMode, onShootMode, onTimer) }
         }
     }

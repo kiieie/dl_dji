@@ -91,6 +91,26 @@ class TileMathTest {
     }
 
     @Test
+    fun `빈 타일은 자기 자신, 그다음 조상 타일의 그 칸으로 메운다`() {
+        val f = TileMath.fallbacks(13, 6, 4, 2)
+        assertEquals(3, f.size) // z4, z3, z2
+        assertEquals(TileMath.TileCrop(4, 13, 6, 0.0, 0.0, 1.0), f[0])
+        // z3 조상 (6, 3): 13 = 2·6 + 1 → 오른쪽 반, 6 = 2·3 + 0 → 위쪽 반
+        assertEquals(TileMath.TileCrop(3, 6, 3, 0.5, 0.0, 0.5), f[1])
+        // z2 조상 (3, 1): 13 = 4·3 + 1 → 왼쪽에서 두 번째 1/4 칸, 6 = 4·1 + 2 → 위에서 세 번째
+        assertEquals(TileMath.TileCrop(2, 3, 1, 0.25, 0.5, 0.25), f[2])
+        // 조상 칸은 메르카토르로 같은 자리: 칸의 왼쪽 위 = 원래 타일의 왼쪽 위
+        f.forEach { c ->
+            val n = (1 shl c.z).toDouble()
+            assertEquals(13.0 / 16, (c.x + c.left) / n, 1e-12)
+            assertEquals(6.0 / 16, (c.y + c.top) / n, 1e-12)
+            assertEquals(1.0 / 16, c.size / n, 1e-12)
+        }
+        assertEquals(1, TileMath.fallbacks(5, 5, 3, 3).size) // 최소 확대 = 자기 확대
+        assertEquals(1, TileMath.fallbacks(0, 0, 0, -2).size) // 0 밑으로는 가지 않음
+    }
+
+    @Test
     fun `확대 차례는 알맞은 것, 아래, 위 순이고 상한·타일 수를 넘으면 뺀다`() {
         val v = TileMath.ThumbView.fit(pts, 320, 200, 25, 150.0)!!
         val z = v.zoom
