@@ -109,7 +109,7 @@ fun ProjectScreen(
     val vm: MissionListViewModel = viewModel(
         factory = MissionListViewModel.factory(
             dao, initialProjectId, missionDir = { pid, mid -> files?.let { File(it, "projects/$pid/missions/$mid") } },
-            copyToFolder = { tree, list -> copyZipsToTree(resolver, tree, list) },
+            copyToFolder = { tree, list -> copyZipsToTree(resolver, tree, list) }, mapThumbs = (context.applicationContext as InspectionApp).mapThumbs,
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()

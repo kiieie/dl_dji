@@ -61,6 +61,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.BuildConfig
 import com.example.myfirstapp.R
 import com.example.myfirstapp.data.clearCacheAndLogs
+import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.ui.AppBadge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -129,7 +130,9 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val vm: HomeViewModel = viewModel(
-        factory = HomeViewModel.factory(dao, ::djiAircraftStatus, { djiHmsIssues(context.applicationContext) }, ::djiGeoSummary) { clearCacheAndLogs(context.applicationContext) },
+        factory = HomeViewModel.factory(
+            dao, ::djiAircraftStatus, { djiHmsIssues(context.applicationContext) }, ::djiGeoSummary, (context.applicationContext as InspectionApp).mapThumbs,
+        ) { clearCacheAndLogs(context.applicationContext) },
     )
     val s by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refresh() }
@@ -164,12 +167,12 @@ fun HomeScreen(
                     Icon(painterResource(R.drawable.ic_shield), contentDescription = "데이터 보호", modifier = Modifier.size(20.dp))
                 }
             }
-            MissionCard(latest, Modifier.weight(1f).fillMaxWidth(), onRoutes, onFlight, onNewPlan)
+            MissionCard(latest, Modifier.weight(1f).fillMaxWidth(), onRoutes, onFlight, onNewPlan, vm::mapThumb)
             Row(Modifier.padding(top = 8.dp).height(104.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GeoCard(s.geo, Modifier.weight(1f))
                 // Pilot 2 타일(p2s_1): 바탕 그림 위 흰 제목. 비행 경로는 최근 경로 그림, 앨범은 최근 사진
                 HomeTile("비행 경로", Modifier.weight(1f), onClick = onRoutes) {
-                    latest?.takeIf { it.route.isNotEmpty() }?.let { RoutePreview(it.route, it.home, Modifier.fillMaxSize(), labels = false) }
+                    latest?.takeIf { it.route.isNotEmpty() }?.let { RoutePreview(it.route, it.home, Modifier.fillMaxSize(), labels = false, mapThumb = vm::mapThumb) }
                 }
                 HomeTile("앨범", Modifier.weight(1f), onClick = { onAlbum(latest?.projectId ?: 0, latest?.missionId ?: 0) }) {
                     s.latestPhoto?.let { Photo(it, Modifier.fillMaxSize(), sample = 8) }
@@ -304,10 +307,13 @@ private fun MissionCard(
     onRoutes: () -> Unit,
     onFlight: (Long, Long) -> Unit,
     onNewPlan: (Long) -> Unit,
+    mapThumb: MapThumbSource,
 ) {
     Surface(modifier, shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Box {
-            if (m != null) RoutePreview(m.route, m.home, Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(start = 10.dp, end = 10.dp, top = 34.dp).clip(RoundedCornerShape(4.dp)))
+            if (m != null) {
+                RoutePreview(m.route, m.home, Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(start = 10.dp, end = 10.dp, top = 34.dp).clip(RoundedCornerShape(4.dp)), mapThumb = mapThumb)
+            }
             Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("최근 미션", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)

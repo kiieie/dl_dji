@@ -139,6 +139,21 @@ object AppConfig {
         /** 지도 검색(10.5.7) 결과 목록 개수. */
         const val SEARCH_LIMIT = 8
 
+        /** 경로 그림 지도 바탕(10.4.10): 범위가 이보다 좁으면(전주 1개) 이만큼(m) 넓혀 맞춘다. */
+        const val THUMB_MIN_SPAN_M = 150.0
+
+        /** 경로 그림 지도 바탕: 알맞은 확대에 타일이 없으면 아래·위로 이만큼 단계까지 찾는다. */
+        const val THUMB_ZOOM_STEPS = 3
+
+        /** 경로 그림 지도 바탕 한 장에 그리는 타일 수 상한. 넘는 확대는 건너뛴다(큰 영역을 높은 확대로 그리지 않게). */
+        const val THUMB_MAX_TILES = 64
+
+        /** 경로 그림 지도 바탕을 동시에 만드는 수. */
+        const val THUMB_PARALLEL = 2
+
+        /** 경로 그림 지도 바탕 JPEG 품질(앱 임시 폴더 `thumbs/`). */
+        const val THUMB_JPEG_QUALITY = 85
+
         /** 계획 지도 검색·과녁으로 옮길 때 그 점 둘레 여유(도, 약 50m). */
         const val FOCUS_PAD_DEG = 0.0005
     }

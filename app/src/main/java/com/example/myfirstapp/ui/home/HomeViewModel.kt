@@ -16,7 +16,13 @@ import com.example.myfirstapp.drone.AircraftStatus
 import com.example.myfirstapp.core.model.GeoSummary
 import com.example.myfirstapp.core.model.HmsIssue
 import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import com.example.myfirstapp.data.MapThumbs
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +31,10 @@ import kotlinx.coroutines.launch
 
 /** 홈 카드 경로 미리보기의 전주 한 점. [label]은 선로번호(없으면 전산화번호 끝 4자리). */
 data class RoutePoint(val lat: Double, val lon: Double, val done: Boolean, val label: String = "")
+
+/** 경로 그림이 맞추는 점(모든 전주 + 이륙 지점). 지도 바탕(10.4.10)도 같은 점으로 맞춰야 선과 바탕이 겹친다. */
+fun thumbPoints(route: List<List<RoutePoint>>, home: GeoPoint?): List<GeoPoint> =
+    route.flatten().map { GeoPoint(it.lat, it.lon) } + listOfNotNull(home)
 
 /** 홈 [미션 비행 시작]·[앨범]과 수동 비행 화면의 경로 알약이 여는 가장 최근 미션. [route]는 소티마다 방문 순서. */
 data class LatestMission(
@@ -84,6 +94,7 @@ class HomeViewModel(
     private val clearCaches: suspend () -> Int = { 0 },
     private val readHms: () -> List<HmsIssue> = { emptyList() },
     private val readGeo: suspend () -> GeoSummary? = { null },
+    private val mapThumbs: MapThumbs? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -126,9 +137,16 @@ class HomeViewModel(
 
     fun dismissMessage() = _state.update { it.copy(message = null) }
 
+    /** 최근 미션 경로 그림의 지도 바탕(10.4.10): [w]×[h] 픽셀, 둘레 [pad] 픽셀. 미리 받은 타일이 없으면 null. */
+    fun mapThumb(w: Int, h: Int, pad: Int): Flow<ImageBitmap?> {
+        val m = _state.value.latest ?: return flowOf(null)
+        return mapThumbs?.flow(m.missionId, thumbPoints(m.route, m.home), w, h, pad)?.map { it?.asImageBitmap() } ?: flowOf(null)
+    }
+
     companion object {
         fun factory(
-            dao: ProjectDao, readAircraft: suspend () -> AircraftStatus, readHms: () -> List<HmsIssue>, readGeo: suspend () -> GeoSummary?, clearCaches: suspend () -> Int,
-        ) = viewModelFactory { initializer { HomeViewModel(dao, readAircraft, clearCaches, readHms, readGeo) } }
+            dao: ProjectDao, readAircraft: suspend () -> AircraftStatus, readHms: () -> List<HmsIssue>, readGeo: suspend () -> GeoSummary?,
+            mapThumbs: MapThumbs?, clearCaches: suspend () -> Int,
+        ) = viewModelFactory { initializer { HomeViewModel(dao, readAircraft, clearCaches, readHms, readGeo, mapThumbs) } }
     }
 }

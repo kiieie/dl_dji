@@ -42,12 +42,12 @@ suspend fun mapBackground(source: MapSource, labels: Boolean): MapBackground {
     val key = BuildConfig.VWORLD_API_KEY
     return when {
         source == MapSource.VWORLD_SATELLITE && key.isNotBlank() -> MapBackground(
-            source, listOf("$VWORLD_WMTS/$key/Satellite/{z}/{y}/{x}.jpeg"), "vworld-satellite-cache.mbtiles", "jpg", VWORLD_ATTRIBUTION,
+            source, listOf("$VWORLD_WMTS/$key/Satellite/{z}/{y}/{x}.jpeg"), source.cacheName, "jpg", VWORLD_ATTRIBUTION,
             labelTiles = if (labels) listOf("$VWORLD_WMTS/$key/Hybrid/{z}/{y}/{x}.png") else emptyList(),
             labelCacheName = if (labels) "vworld-hybrid-cache.mbtiles" else null,
         )
         source == MapSource.VWORLD_BASE && key.isNotBlank() ->
-            MapBackground(source, listOf("$VWORLD_WMTS/$key/Base/{z}/{y}/{x}.png"), "vworld-base-cache.mbtiles", "png", VWORLD_ATTRIBUTION)
+            MapBackground(source, listOf("$VWORLD_WMTS/$key/Base/{z}/{y}/{x}.png"), source.cacheName, "png", VWORLD_ATTRIBUTION)
         else -> MapBackground.NONE.copy(tiles = onlineSatelliteTiles())
     }
 }
@@ -63,8 +63,18 @@ suspend fun mapBackgroundRetrying(settings: SettingsStore): MapBackground {
     }
 }
 
-/** 지도에 깔 MBTiles: 사용자가 넣은 지도 + 지금 배경의 캐시. 다른 배경의 캐시와 라벨 캐시는 뺀다(라벨은 [labelCacheFile]로 맨 위에). */
-fun MapBackground.baseFiles(files: List<File>): List<File> = files.filter { it.name !in CACHE_NAMES || it.name == cacheName }
+/** 배경의 미리 받기 캐시 이름. 인터넷 없이 정해진다(경로 그림 바탕 10.4.10도 씀). VWorld 키가 없으면 Bing([mapBackground]와 같다). */
+val MapSource.cacheName: String
+    get() = when {
+        this == MapSource.VWORLD_SATELLITE && vworldAvailable -> "vworld-satellite-cache.mbtiles"
+        this == MapSource.VWORLD_BASE && vworldAvailable -> "vworld-base-cache.mbtiles"
+        else -> SATELLITE_CACHE_NAME
+    }
+
+/** 지도에 깔 MBTiles: 사용자가 넣은 지도 + 캐시 [cacheName]. 다른 배경의 캐시와 라벨 캐시는 뺀다(라벨은 [labelCacheFile]로 맨 위에). */
+fun baseMapFiles(files: List<File>, cacheName: String): List<File> = files.filter { it.name !in CACHE_NAMES || it.name == cacheName }
+
+fun MapBackground.baseFiles(files: List<File>): List<File> = baseMapFiles(files, cacheName)
 
 fun MapBackground.labelCacheFile(files: List<File>): File? = labelCacheName?.let { n -> files.firstOrNull { it.name == n } }
 
