@@ -1,6 +1,20 @@
 package com.example.myfirstapp.ui.home
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import com.example.myfirstapp.AppConfig
+import com.example.myfirstapp.core.route.TileMath
+import com.example.myfirstapp.ui.theme.MapThumbCasing
+import kotlinx.coroutines.flow.Flow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -27,46 +41,53 @@ import com.example.myfirstapp.ui.theme.MAP_POLE_PENDING_STROKE
 import com.example.myfirstapp.ui.theme.MapThumbBg
 import androidx.compose.foundation.background
 import com.example.myfirstapp.ui.theme.numberStyle
-import kotlin.math.cos
-import kotlin.math.min
+
+/** 경로 그림 지도 바탕(10.4.10)을 내는 ViewModel 함수: 그림 픽셀 너비·높이와 둘레 여백 픽셀. */
+internal typealias MapThumbSource = (w: Int, h: Int, pad: Int) -> Flow<ImageBitmap?>
 
 /**
- * 경로 미리보기: 연한 지도 색 바탕([MapThumbBg], Pilot 2 라이브러리 썸네일처럼 카드가 그림·글로 갈라져 보이지 않게) 위에
+ * 경로 미리보기: 미리 받은 지도 바탕([mapThumb], 10.4.10, 없으면 연한 지도 색 [MapThumbBg]) 위에
  * 소티마다 이륙 지점(H)에서 방문 순서대로 초록 선, 전주 점(끝남 초록, 남음은 비행 지도와 같은 밝은 회색에 어두운 테두리)과 전주번호.
- * 위경도를 위도 cos로 보정한 평면에 그대로 맞춘다(수 km 안의 미리보기라 충분). [labels]가 거짓이면(라이브러리 카드 그림) 번호를 쓰지 않는다.
- * ponytail: 위성 MBTiles 조각을 깔지 않고 단색 지도 색만 깐다(타일 합성은 비싸다). 필요하면 미션 영역 캐시 타일을 비트맵으로 붙인다.
+ * 선·점과 바탕이 같은 웹 메르카토르 배치([TileMath.ThumbView])라 겹친다. [labels]가 거짓이면(라이브러리 카드 그림) 번호를 쓰지 않는다.
  */
 @Composable
-internal fun RoutePreview(route: List<List<RoutePoint>>, home: GeoPoint?, modifier: Modifier, labels: Boolean = true) {
+internal fun RoutePreview(
+    route: List<List<RoutePoint>>,
+    home: GeoPoint?,
+    modifier: Modifier,
+    labels: Boolean = true,
+    mapThumb: MapThumbSource? = null,
+) {
     val measurer = rememberTextMeasurer()
     val routeColor = MaterialTheme.colorScheme.tertiary
     val labelStyle = numberStyle(FontSize.Caption, FontWeight.Medium).copy(color = TextSoft)
     val pending = Color(android.graphics.Color.parseColor(MAP_POLE_PENDING))
     val pendingStroke = Color(android.graphics.Color.parseColor(MAP_POLE_PENDING_STROKE))
-    Canvas(modifier.background(MapThumbBg)) {
+    val pad = with(LocalDensity.current) { (if (labels) 20 else 10).dp.roundToPx() }
+    var px by remember { mutableStateOf(IntSize.Zero) }
+    val source by rememberUpdatedState(mapThumb)
+    // 그림 크기·경로가 바뀌면 바탕을 다시 받는다(만들기는 ViewModel·data 몫, 여기서는 받기만)
+    val bg by produceState<ImageBitmap?>(null, px, pad, route, home) {
+        val f = source ?: return@produceState
+        if (px.width <= 0 || px.height <= 0 || route.all { it.isEmpty() }) return@produceState
+        f(px.width, px.height, pad).collect { value = it }
+    }
+    Canvas(modifier.background(MapThumbBg).onSizeChanged { px = it }) {
         val pts = route.flatten()
-        if (pts.isEmpty()) return@Canvas
-        val lats = pts.map { it.lat } + listOfNotNull(home?.lat)
-        val lons = pts.map { it.lon } + listOfNotNull(home?.lon)
-        val k = cos(Math.toRadians(lats.average()))
-        val minX = lons.min() * k
-        val maxY = lats.max()
-        val spanX = (lons.max() * k - minX).coerceAtLeast(1e-6)
-        val spanY = (maxY - lats.min()).coerceAtLeast(1e-6)
-        val pad = (if (labels) 20 else 10).dp.toPx()
-        val w = size.width - 2 * pad
-        val h = size.height - 2 * pad
-        val scale = min(w / spanX, h / spanY)
-        val ox = pad + (w - spanX * scale) / 2
-        val oy = pad + (h - spanY * scale) / 2
-        fun at(lat: Double, lon: Double) = Offset((ox + (lon * k - minX) * scale).toFloat(), (oy + (maxY - lat) * scale).toFloat())
+        val view = TileMath.ThumbView.fit(thumbPoints(route, home), size.width.toInt(), size.height.toInt(), pad, AppConfig.Map.THUMB_MIN_SPAN_M)
+        if (pts.isEmpty() || view == null) return@Canvas
+        bg?.let { drawImage(it, dstSize = IntSize(size.width.toInt(), size.height.toInt())) }
+        fun at(lat: Double, lon: Double) = Offset(view.x(lon).toFloat(), view.y(lat).toFloat())
 
         val homeAt = home?.let { at(it.lat, it.lon) }
         route.forEach { sortie ->
+            if (sortie.isEmpty()) return@forEach
             val path = Path()
             val first = homeAt ?: at(sortie[0].lat, sortie[0].lon)
             path.moveTo(first.x, first.y)
             sortie.forEach { p -> at(p.lat, p.lon).let { path.lineTo(it.x, it.y) } }
+            // 위성 위에서는 녹색 선 밑에 어두운 테두리(밝은 길·논에서도 보이게)
+            if (bg != null) drawPath(path, MapThumbCasing, style = Stroke(4.5.dp.toPx(), join = StrokeJoin.Round))
             drawPath(path, routeColor, style = Stroke(2.5.dp.toPx(), join = StrokeJoin.Round))
         }
         val r = (if (pts.size > 60) 2.5 else 4.0).dp.toPx()

@@ -39,6 +39,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.R
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.data.MissionSummary
+import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.ui.MENU_PROPERTIES
 import com.example.myfirstapp.ui.home.RoutePreview
@@ -58,6 +59,7 @@ internal fun libraryPanelViewModel(dao: ProjectDao, projectId: Long?): MissionLi
         key = "library-panel",
         factory = MissionListViewModel.factory(
             dao, projectId, missionDir = { pid, mid -> files?.let { File(it, "projects/$pid/missions/$mid") } }, copyToFolder = { _, _ -> 0 },
+            mapThumbs = (LocalContext.current.applicationContext as InspectionApp).mapThumbs,
         ),
     )
 }
@@ -112,7 +114,7 @@ private fun PanelCard(m: MissionSummary, s: MissionListUiState, vm: MissionListV
         border = if (selected) BorderStroke(1.5.dp, Accent) else null, modifier = Modifier.fillMaxWidth().height(72.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            RoutePreview(s.routes[m.id].orEmpty(), GeoPoint(m.homeLat, m.homeLon), Modifier.size(72.dp), labels = false)
+            RoutePreview(s.routes[m.id].orEmpty(), GeoPoint(m.homeLat, m.homeLon), Modifier.size(72.dp), labels = false) { w, h, pad -> vm.mapThumb(m, w, h, pad) }
             Column(Modifier.weight(1f).padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(painterResource(R.drawable.ic_route), contentDescription = null, modifier = Modifier.padding(end = 4.dp).size(12.dp))

@@ -63,6 +63,8 @@ val DarkButton = Color(0xFF45484D)
 val HomeTileFallback = Color(0xFF8E949B)
 /** 경로 그림 바탕(Pilot 2 라이브러리 썸네일의 지도 색). 카드가 그림과 글로 갈라져 보이지 않게 연한 지도 색을 깐다. */
 val MapThumbBg = Color(0xFFF1ECE2)
+/** 경로 그림에 지도 바탕(10.4.10)이 있을 때 녹색 경로 밑에 까는 어두운 테두리(밝은 길·논 위에서도 보이게). */
+val MapThumbCasing = Color(0x99000000)
 
 /** 우리 앱 표지 고유색(왼쪽 위 `KEPCO 점검` 테두리, 10.5.1). Pilot 2와 구별하는 유일한 색. */
 val Brand = Color(0xFF8B5CF6)

@@ -27,6 +27,9 @@ import com.example.myfirstapp.drone.initWpmz
 import dji.v5.manager.SDKManager
 import dji.v5.manager.ldm.LDMManager
 import dji.v5.manager.interfaces.SDKManagerCallback
+import androidx.compose.ui.graphics.toArgb
+import com.example.myfirstapp.data.MapThumbs
+import com.example.myfirstapp.ui.theme.MapThumbBg
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +48,11 @@ class InspectionApp : Application() {
 
     val database by lazy { AppDatabase.create(this) }
     val settings by lazy { SettingsStore(this) }
+
+    /** 홈·라이브러리 경로 그림의 지도 바탕(10.4.10): 미리 받은 MBTiles만 읽고, 만든 그림은 임시 폴더 `thumbs/`에. */
+    val mapThumbs by lazy {
+        MapThumbs(File(getExternalFilesDir(null), "maps"), File(cacheDir, "thumbs"), settings, MapThumbBg.toArgb())
+    }
 
     private val _djiStatus = MutableStateFlow("DJI SDK: 초기화 중")
     /** 검증 화면에 보이는 SDK 상태 문구. SDK 콜백 스레드에서 갱신하므로 StateFlow로 넘긴다. */

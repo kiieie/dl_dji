@@ -181,7 +181,7 @@ private fun MissionCard(
             .clickable(onClickLabel = "${m.projectName} #${m.id}") { if (s.selecting) vm.toggleCheck(m) else vm.select(m) },
     ) {
         Box(Modifier.width(128.dp).fillMaxHeight()) {
-            RoutePreview(route, GeoPoint(m.homeLat, m.homeLon), Modifier.fillMaxSize(), labels = false)
+            RoutePreview(route, GeoPoint(m.homeLat, m.homeLon), Modifier.fillMaxSize(), labels = false) { w, h, pad -> vm.mapThumb(m, w, h, pad) }
             if (m.favorite) Text("★", Modifier.align(Alignment.TopStart).padding(4.dp), color = Caution, fontSize = FontSize.Title)
         }
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {

@@ -21,6 +21,13 @@ import com.example.myfirstapp.data.flightParamsFromJson
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.ui.home.RoutePoint
+import com.example.myfirstapp.ui.home.thumbPoints
+import com.example.myfirstapp.data.MapThumbs
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -134,6 +141,7 @@ class MissionListViewModel(
     private val missionDir: (projectId: Long, missionId: Long) -> File? = { _, _ -> null },
     /** 고른 폴더(SAF 트리)에 ZIP을 복사한다. 복사한 개수. */
     private val copyToFolder: suspend (folder: Uri, files: List<File>) -> Int = { _, _ -> 0 },
+    private val mapThumbs: MapThumbs? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(MissionListUiState(projectFilter = initialProject))
     val state: StateFlow<MissionListUiState> = _state.asStateFlow()
@@ -171,6 +179,11 @@ class MissionListViewModel(
             }
         }
     }
+
+    /** 카드 경로 그림의 지도 바탕(10.4.10): [w]×[h] 픽셀, 둘레 [pad] 픽셀. 미리 받은 타일이 없으면 null. */
+    fun mapThumb(m: MissionSummary, w: Int, h: Int, pad: Int): Flow<ImageBitmap?> =
+        mapThumbs?.flow(m.id, thumbPoints(_state.value.routes[m.id].orEmpty(), GeoPoint(m.homeLat, m.homeLon)), w, h, pad)
+            ?.map { it?.asImageBitmap() } ?: flowOf(null)
 
     fun select(m: MissionSummary) = _state.update { it.copy(selectedId = m.id) }
     fun setMenu(m: MissionSummary?) = _state.update { it.copy(menuFor = m?.id) }
@@ -321,7 +334,9 @@ class MissionListViewModel(
         const val COLUMNS = 2
 
         fun factory(
-            dao: ProjectDao, initialProject: Long?, missionDir: (Long, Long) -> File?, copyToFolder: suspend (Uri, List<File>) -> Int,
-        ) = viewModelFactory { initializer { MissionListViewModel(dao, initialProject, missionDir = missionDir, copyToFolder = copyToFolder) } }
+            dao: ProjectDao, initialProject: Long?, missionDir: (Long, Long) -> File?, copyToFolder: suspend (Uri, List<File>) -> Int, mapThumbs: MapThumbs?,
+        ) = viewModelFactory {
+            initializer { MissionListViewModel(dao, initialProject, missionDir = missionDir, copyToFolder = copyToFolder, mapThumbs = mapThumbs) }
+        }
     }
 }

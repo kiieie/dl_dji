@@ -100,9 +100,8 @@ private fun download(
         var failed = 0
         var inARow = 0
         for (z in AppConfig.Map.PREFETCH_MIN_ZOOM..maxZoom) {
-            val nz = 1 shl z
             for (x in TileMath.tileX(w, z)..TileMath.tileX(e, z)) for (y in TileMath.tileY(n, z)..TileMath.tileY(s, z)) {
-                val row = nz - 1 - y // MBTiles는 TMS(아래부터)
+                val row = TileMath.tmsRow(y, z) // MBTiles는 TMS(아래부터)
                 val have = db.rawQuery("SELECT 1 FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", arrayOf("$z", "$x", "$row")).use { it.moveToFirst() }
                 if (have) continue
                 val url = TileMath.expandUrl(urls[(x + y) % urls.size], x, y, z)
