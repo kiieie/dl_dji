@@ -34,6 +34,8 @@ import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.PoleOverride
+import com.example.myfirstapp.core.model.Voltage
+import androidx.compose.material3.FilterChip
 import androidx.core.net.toUri
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Checkbox
@@ -272,7 +274,7 @@ fun MapScreen(
                 }
                 // 경로 열기 칩(Pilot 2, 10.5.8): 왼쪽 그리기 도구 옆. 할 일 안내는 그 아래
                 Column(Modifier.align(Alignment.TopStart).padding(top = 8.dp, start = 52.dp, end = 52.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    RouteChip(s, inArea.size, kind, onPlay = { vm.savePlan(fly = true) }, onSave = { vm.savePlan() }, onLibrary = vm::requestLeave)
+                    RouteChip(s, kind, onPlay = { vm.savePlan(fly = true) }, onSave = { vm.savePlan() }, onLibrary = vm::requestLeave)
                     HintChip(s, inArea.size, vm)
                 }
                 // 오른쪽 지도 도구(10.5.4): 검색 · 전체 보기 · 레이어(배경 지도 고르기, 배경 끄기) · 지우기(영역) · 과녁(기체·조종기 위치로)
@@ -319,7 +321,7 @@ private fun PlanHeader(s: PlanUiState, kind: String, onBack: () -> Unit) {
  * ▶는 저장(필요하면)하고 비행 화면의 비행 전 점검 → 체크리스트로 간다. ˅는 저장 · 라이브러리.
  */
 @Composable
-private fun RouteChip(s: PlanUiState, inAreaCount: Int, kind: String, onPlay: () -> Unit, onSave: () -> Unit, onLibrary: () -> Unit) {
+private fun RouteChip(s: PlanUiState, kind: String, onPlay: () -> Unit, onSave: () -> Unit, onLibrary: () -> Unit) {
     val plan = s.plan
     val sum = plan?.let { RouteSummary.of(it.sorties, s.params) }
     val ready = s.canSave
@@ -355,7 +357,7 @@ private fun RouteChip(s: PlanUiState, inAreaCount: Int, kind: String, onPlay: ()
             "예상 시간" to (sum?.let { mmss(it.durationSec) } ?: "-"),
             "웨이포인트" to (sum?.waypoints?.toString() ?: "-"),
             "사진" to (sum?.photos?.toString() ?: "-"),
-            "전주" to (plan?.sorties?.sumOf { it.poles.size }?.toString() ?: if (s.vertices.size >= 3) "${inAreaCount - s.excluded.size}" else "-"),
+            "전주" to (plan?.sorties?.sumOf { it.poles.size }?.toString() ?: if (s.vertices.size >= 3) "${s.targets.size}" else "-"),
             "소티" to (plan?.let { "${it.sorties.size}" } ?: "-"),
         )
         Row(Modifier.clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)).background(Color.Black.copy(alpha = 0.75f)).height(IntrinsicSize.Min)) {
@@ -381,7 +383,7 @@ private fun HintChip(s: PlanUiState, inAreaCount: Int, vm: PlanViewModel) {
         s.vertices.size < 3 -> "① 왼쪽 [영역]으로 점검 영역을 그리세요"
         s.home == null -> "② [H]로 이륙 지점을 정하세요"
         s.planning -> "경로 계산 중"
-        s.plan == null -> s.paramErrors.firstOrNull() ?: "영역 안에 넣을 전주가 없습니다"
+        s.plan == null -> s.paramErrors.firstOrNull() ?: "경로에 넣을 전주가 없습니다"
         s.savedMissionId == null -> "③ 경로를 확인하고 [저장하고 수행]"
         else -> null
     }
@@ -433,11 +435,12 @@ private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewMode
                 PoleSection(pole, s, canExclude = inArea.any { it.id == pole.id }, vm)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
-            val guys = inArea.count { it.guy && it.poleId in s.excluded }
+            val guys = inArea.count { it.guy && s.manual[it.poleId] == false }
             Row(Modifier.fillMaxWidth().height(Dimens.HeaderSection).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(listOfNotNull("미션 설정", "지선주 ${guys}개 기본 제외".takeIf { guys > 0 }).joinToString(" · "), fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            VoltageChips(s, vm::toggleVoltage)
             ParamRows(s.params, pole, enabled = s.tool == Tool.NONE, focus = s.paramFocus, simulator = s.simulator, onChange = vm::updateParams)
             s.paramErrors.forEach { Text(it, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) }
             s.plan?.let { PlanSummary(it, s.planMs, s.params) }
@@ -462,13 +465,34 @@ private fun SidePanel(s: PlanUiState, inArea: List<PoleEntity>, vm: PlanViewMode
     }
 }
 
+private val VOLTAGE_CHIPS = listOf(Voltage.HIGH to "고압", Voltage.BOTH to "고저압", Voltage.LOW to "저압", null to "미상")
+
+/** 전압 대상 칩(4.5.8): 2×2, 여러 개 고름, 칩마다 영역 안 전주 수. 영역·이륙 지점을 찍는 동안은 잠근다. */
+@Composable
+private fun VoltageChips(s: PlanUiState, onToggle: (Voltage?) -> Unit) {
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Text("전압 대상", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        VOLTAGE_CHIPS.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { (v, label) ->
+                    FilterChip(
+                        selected = v in s.params.voltageTargets, onClick = { onToggle(v) }, enabled = s.tool == Tool.NONE,
+                        label = { Text("$label ${s.voltageCounts[v] ?: 0}", fontSize = FontSize.Caption, maxLines = 1) },
+                        modifier = Modifier.weight(1f).height(Dimens.TouchSmall),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * 고른 전주(Pilot 2 개별 웨이포인트 설정 자리): 이름·설치기기, 속성 한 줄, 경로 넣기/빼기(F-06).
  * 경로 위 전주면 Pilot 2 "< 웨이포인트 n >"처럼 ‹ › 로 차례를 옮기고, 전주별 고도·짐벌 피치(5.7)를 정한다.
  */
 @Composable
 private fun PoleSection(pole: PoleEntity, s: PlanUiState, canExclude: Boolean, vm: PlanViewModel) {
-    val isExcluded = pole.poleId in s.excluded
+    val isExcluded = !s.isTarget(pole)
     Column(Modifier.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val route = s.plan?.sorties?.flatMap { it.poles }.orEmpty()
         val at = route.indexOfFirst { it.poleId == pole.poleId }
@@ -495,7 +519,7 @@ private fun PoleSection(pole: PoleEntity, s: PlanUiState, canExclude: Boolean, v
         Text(attrs, fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         when {
             !canExclude -> Text("영역 밖 전주", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else -> ChipButton(if (isExcluded) "경로에 다시 넣기" else "경로에서 빼기") { vm.toggleExcluded(pole.poleId) }
+            else -> ChipButton(if (isExcluded) "경로에 넣기" else "경로에서 빼기") { vm.togglePole(pole.poleId) }
         }
         if (at >= 0) Column(Modifier.padding(end = 8.dp)) { PoleOverrideRows(pole.toPole(), s.params, enabled = s.tool == Tool.NONE) { vm.setOverride(pole.poleId, it) } }
     }

@@ -59,6 +59,8 @@ data class FlightParams(
     val photoFolder: String? = null,
     /** 전주별 설정(5.7, Pilot 2 웨이포인트별 ALT·짐벌 피치): 전주번호 → 덮어쓸 값. 없는 전주·값은 위 미션 설정을 따른다(Pilot 2 "경로 팔로우"). */
     val poleOverrides: Map<String, PoleOverride> = emptyMap(),
+    /** 전압 대상(4.5.8): 경로에 넣을 전주 고/저압, null은 미상. 손 선택은 [PoleTargets.isTarget]. 필드가 없는 옛 미션은 모두. */
+    val voltageTargets: Set<Voltage?> = PoleTargets.ALL_VOLTAGES,
 ) {
     /** 촬영 고도: 4방향 사선은 사선 고도, 전주 위는 점검 고도(5.6). */
     val shotAltitudeM: Double get() = if (shotMode == ShotMode.DIAGONAL4) diagonalAltitudeM else inspectAltitudeM

@@ -29,6 +29,7 @@ import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ShotMode
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.PoleOverride
+import com.example.myfirstapp.core.model.Voltage
 import com.example.myfirstapp.core.model.poleDisplayName
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
@@ -137,6 +138,8 @@ fun FlightParams.toJson(): String = JSONObject()
     .apply { takeoffSecurityM?.let { put("takeoffSecurityM", it) } }
     .apply { photoFolder?.let { put("photoFolder", it) } }
     // 전주별 설정(5.7): {"전주번호": {"altitudeM": 35.0, "gimbalPitchDeg": -60.0}}, 경로 팔로우(null)는 넣지 않는다
+    // 전압 대상(4.5.8): 미상(null)은 "UNKNOWN"
+    .put("voltageTargets", JSONArray(voltageTargets.map { it?.name ?: UNKNOWN_VOLTAGE }))
     .apply {
         if (poleOverrides.isNotEmpty()) put("poleOverrides", JSONObject().also { m ->
             poleOverrides.forEach { (id, o) -> m.put(id, JSONObject().apply { o.altitudeM?.let { put("altitudeM", it) }; o.gimbalPitchDeg?.let { put("gimbalPitchDeg", it) } }) }
@@ -347,8 +350,13 @@ fun flightParamsFromJson(json: String, legacyTerrainFollow: Boolean = false): Fl
                 }
             }
         } ?: d.poleOverrides,
+        voltageTargets = o.optJSONArray("voltageTargets")?.let { a ->
+            List(a.length()) { a.getString(it).let { n -> if (n == UNKNOWN_VOLTAGE) null else Voltage.valueOf(n) } }.toSet()
+        } ?: d.voltageTargets,
     )
 }
+
+private const val UNKNOWN_VOLTAGE = "UNKNOWN"
 
 /** 결과 화면(10장 ⑤)과 내보내기의 전주 한 줄. */
 data class ResultRow(
