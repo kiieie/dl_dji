@@ -72,7 +72,8 @@ sealed interface Command {
     data object DismissTerrainFallback : Command
 }
 
-data class VisitView(val sortieIndex: Int, val order: Int, val pole: Pole, val status: VisitStatus, val captureCount: Int)
+/** [captureCount]는 모든 사진(완료 판정), [autoCaptureCount]는 지점(자동) 사진만(화면 "사진 n/예상", 10.5 숫자 규칙). */
+data class VisitView(val sortieIndex: Int, val order: Int, val pole: Pole, val status: VisitStatus, val captureCount: Int, val autoCaptureCount: Int = 0)
 
 data class ExecutorUiState(
     val state: ExecState = ExecState.Idle,

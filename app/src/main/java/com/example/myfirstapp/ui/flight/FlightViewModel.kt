@@ -163,7 +163,7 @@ data class FlightUiState(
     val capturing: Boolean = false,
     /** Pilot 2 안내문(10.5.7). */
     val notice: CameraNotice? = null,
-    /** 땅 위·타이머 수동 사진(수동 사진 경로) 저장·실패, 홈포인트 지정 안내(미션 화면 안내 줄, [AppConfig.CameraView.MESSAGE_MS] 뒤 지움). */
+    /** 수동 사진(땅 위·타이머·일시정지 중 화면 셔터·RC 셔터) 저장·실패, 홈포인트 지정 안내(미션 화면 안내 줄, [AppConfig.CameraView.MESSAGE_MS] 뒤 지움). */
     val shotMessage: String? = null,
     /** 카메라 뷰 AR 표시(10.5.2, 왼쪽 열 AR, [SettingsStore.arEnabled]에 남김). */
     val ar: Boolean = true,
@@ -317,6 +317,8 @@ class FlightViewModel(
             config = ExecutorConfig(sortieMission = true),
             recoverSortie = open?.let { o -> groups.indexOfFirst { it.first == o.id } },
         ).also { executor = it }
+        // 일시정지 중 수동 촬영·RC 셔터 사진 결과는 다른 사진 안내처럼 잠깐 보이고 지운다(11-06)
+        viewModelScope.launch { executor.photoNotes.collect(shotFlash::show) }
         executor.start()
         // 비행 궤적(TELEMETRY_SAMPLE, 4.2): 떠 있는 동안 1초마다 그 소티에 남긴다
         viewModelScope.launch {
@@ -348,7 +350,7 @@ class FlightViewModel(
             it.copy(
                 loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = it.camera.zoomRatio ?: params.zoomRatio,
                 simulated = drone is FakeDroneGateway,
-                missionPoles = all.size, finishedBefore = all.size - rows.size, photosBefore = dao.missionCaptures(missionId).size,
+                missionPoles = all.size, finishedBefore = all.size - rows.size, photosBefore = dao.missionCaptureCount(missionId),
                 expectedPhotos = params.expectedPhotos(all.map { r -> r.toPole() }),
                 sortieNumbers = groups.map { (id, _) -> dbSorties.indexOfFirst { d -> d.id == id } + 1 }, sortieTotal = dbSorties.size,
                 routeName = "$projectName #$missionId",

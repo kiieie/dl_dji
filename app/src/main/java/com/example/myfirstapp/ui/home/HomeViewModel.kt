@@ -63,7 +63,7 @@ data class LatestMission(
 
 /**
  * 날 미션(남은 전주가 있는 가장 최근 것, 없으면 가장 최근 미션)과 진행 수. 미션이 없으면 null.
- * 숫자 규칙(10.5, 모든 화면 같음): 전주 = 끝난(완료·건너뜀·실패)/모든 방문, 사진 = 찍은(CAPTURE)/예상([FlightParams.expectedPhotos]).
+ * 숫자 규칙(10.5, 모든 화면 같음): 전주 = 끝난(완료·건너뜀·실패)/모든 방문, 사진 = 찍은 지점(자동) 사진/예상([FlightParams.expectedPhotos]), 수동 사진은 세지 않음(11-06).
  */
 suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     val m = dao.latestOpenMission() ?: dao.latestMission() ?: return null

@@ -306,11 +306,8 @@ class PlanViewModel(
 
     fun selectPole(id: String?) = _state.update { it.copy(selected = id) }
 
-    /** 지도 검색·과녁(10.5.7): 그 점 둘레로 지도를 옮긴다. [poleId]가 있으면(검색) 그 전주를 고른다. */
-    fun focusOn(p: GeoPoint, poleId: String? = null) = _state.update {
-        val d = AppConfig.Map.FOCUS_PAD_DEG
-        it.copy(focus = listOf(GeoPoint(p.lat - d, p.lon - d), GeoPoint(p.lat + d, p.lon + d)), selected = poleId ?: it.selected)
-    }
+    /** 지도 검색·과녁(10.5.7): 그 점으로 옮겨 확대한다(점 하나 = [AppConfig.Map.SINGLE_POINT_ZOOM]). [poleId]가 있으면(검색) 그 전주를 고른다. */
+    fun focusOn(p: GeoPoint, poleId: String? = null) = _state.update { it.copy(focus = listOf(p), selected = poleId ?: it.selected) }
 
     /** 지도 레이어(10.5.7): 배경을 바꾸고 설정에도 남긴다(계획을 저장하면 고른 배경으로 미리 받음). */
     fun setMapSource(source: MapSource) { viewModelScope.launch { settings.pickMapSource(source).let { bg -> _state.update { it.copy(background = bg) } } } }

@@ -21,6 +21,7 @@ import com.example.myfirstapp.core.route.Enu
 import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.route.SortiePlan
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -215,6 +216,7 @@ class InspectionExecutorTest {
         assertEquals(VisitStatus.SKIPPED, h.visit("B").status)
         h.send(Command.ManualCapture) // 방금 점검한 A에 사선 사진 추가
         h.awaitUntil { h.visit("A").captureCount == 3 }
+        assertEquals(2, h.visit("A").autoCaptureCount) // 화면 "사진 n/예상"은 지점 사진만(11-06 "33/32")
         h.send(Command.Resume)
         assertEquals("C", h.executor.uiState.value.target?.pole?.poleId)
     }
@@ -348,6 +350,8 @@ class InspectionExecutorTest {
     @Test
     fun `일시정지 중 수동 촬영은 MANUAL로 저장되고 전주를 완료로 만든다`() = runTest {
         val h = harness()
+        val notes = mutableListOf<String>()
+        backgroundScope.launch { h.executor.photoNotes.collect { notes += it } }
         h.send(Command.Start)
         h.awaitState(ExecState.FlyingLeg)
         h.drone.pressRcPause()
@@ -355,6 +359,11 @@ class InspectionExecutorTest {
         h.send(Command.ManualCapture)
         h.awaitUntil { h.visit("A").status == VisitStatus.DONE }
         assertEquals(CaptureSource.MANUAL, h.recorder.captures.single().second)
+        // 지점 사진 수에는 넣지 않고, 저장 안내는 남는 message가 아니라 잠깐 보이는 안내로(11-06)
+        assertEquals(1, h.visit("A").captureCount)
+        assertEquals(0, h.visit("A").autoCaptureCount)
+        assertEquals(listOf("A 수동 촬영 저장"), notes)
+        assertFalse(h.executor.uiState.value.message.orEmpty().contains("수동 촬영 저장"))
 
         h.send(Command.Resume)
         assertEquals("B", h.executor.uiState.value.target?.pole?.poleId)
@@ -841,6 +850,8 @@ class InspectionExecutorTest {
     @Test
     fun `RC 셔터 - 전주에서 20m 넘게 떨어져 찍으면 전주에 붙이지 않는다`() = runTest {
         val h = harness(config = sortieMode, params = wideOnly)
+        val notes = mutableListOf<String>()
+        backgroundScope.launch { h.executor.photoNotes.collect { notes += it } }
         h.send(Command.Start)
         h.awaitUntil { h.visit("A").captureCount == 1 }
         // A(100,0)와 B(100,100) 사이, 어느 전주에서도 20m 넘게 떨어진 곳
@@ -848,7 +859,7 @@ class InspectionExecutorTest {
         h.drone.pressRcPause()
         h.awaitState(ExecState.Paused)
         h.send(Command.RcShutter(Lens.WIDE))
-        h.awaitUntil { h.executor.uiState.value.message?.contains("연결할 전주가 없습니다") == true }
+        h.awaitUntil { notes.any { it.contains("연결할 전주가 없습니다") } }
         assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
     }
 

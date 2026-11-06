@@ -36,6 +36,7 @@ import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.PoleOverride
 import com.example.myfirstapp.core.model.Voltage
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.core.net.toUri
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Checkbox
@@ -475,9 +476,12 @@ private fun VoltageChips(s: PlanUiState, onToggle: (Voltage?) -> Unit) {
         VOLTAGE_CHIPS.chunked(2).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { (v, label) ->
+                    val on = v in s.params.voltageTargets
+                    // MD3 고른 칩: 앞 ✓ + 옅은 파랑 바탕(테마 secondaryContainer). 흰 바탕 칩이 켜진 것으로 읽혔다(11-06)
                     FilterChip(
-                        selected = v in s.params.voltageTargets, onClick = { onToggle(v) }, enabled = s.tool == Tool.NONE,
+                        selected = on, onClick = { onToggle(v) }, enabled = s.tool == Tool.NONE,
                         label = { Text("$label ${s.voltageCounts[v] ?: 0}", fontSize = FontSize.Caption, maxLines = 1) },
+                        leadingIcon = if (on) ({ Icon(painterResource(R.drawable.ic_check), contentDescription = null, Modifier.size(FilterChipDefaults.IconSize)) }) else null,
                         modifier = Modifier.weight(1f).height(Dimens.TouchSmall),
                     )
                 }
@@ -841,11 +845,16 @@ private fun PoleMap(
         }
     }
 
-    // 영역을 다 그리면 그 영역으로 확대한다(경로를 알아볼 수 있게).
+    // 영역을 다 그리면 그 영역으로 확대한다(경로를 알아볼 수 있게). 검색·과녁은 점 하나: 그 점으로 [AppConfig.Map.SINGLE_POINT_ZOOM]까지 확대
+    // (지금이 더 가까우면 그대로, 비행 지도 jump와 같음). 11-06: 둘레 칸에 여백을 넣어 맞추던 것은 확대되지 않았다
     LaunchedEffect(focus) {
-        if (focus.size < 2) return@LaunchedEffect
+        if (focus.isEmpty()) return@LaunchedEffect
         mapView.getMapAsync { map ->
-            map.animateCamera(fitCamera(focus, density))
+            val p = focus.singleOrNull()
+            map.animateCamera(
+                if (p == null) fitCamera(focus, density)
+                else CameraUpdateFactory.newLatLngZoom(LatLng(p.lat, p.lon), maxOf(map.cameraPosition.zoom, AppConfig.Map.SINGLE_POINT_ZOOM)),
+            )
         }
     }
 
@@ -904,7 +913,7 @@ private fun PoleMap(
  * [points]가 다 보이게 맞추는 카메라. 지도 위 버튼(왼쪽 도구 줄, 위쪽 저장 카드·안내, 오른쪽 지도 버튼, 아래 [수행])에 가리지 않게 여백을 둔다.
  */
 private fun fitCamera(points: List<GeoPoint>, density: Float) =
-    if (points.distinct().size < 2) CameraUpdateFactory.newLatLngZoom(LatLng(points.first().lat, points.first().lon), 17.0)
+    if (points.distinct().size < 2) CameraUpdateFactory.newLatLngZoom(LatLng(points.first().lat, points.first().lon), AppConfig.Map.SINGLE_POINT_ZOOM)
     else CameraUpdateFactory.newLatLngBounds(
         LatLngBounds.Builder().includes(points.map { LatLng(it.lat, it.lon) }).build(),
         (80 * density).toInt(), (140 * density).toInt(), (64 * density).toInt(), (88 * density).toInt(),

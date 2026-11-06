@@ -47,7 +47,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -97,7 +99,9 @@ class InspectionExecutor(
     private class Visit(val sortieIndex: Int, val order: Int, val pole: Pole) {
         var status = VisitStatus.PENDING
         var captureCount = 0
-        fun view() = VisitView(sortieIndex, order, pole, status, captureCount)
+        /** 지점(자동) 사진 수: 화면 "사진 n/예상"(10.5 숫자 규칙)은 이것만 센다. 수동 사진은 [captureCount]에만(완료 판정). */
+        var autoCount = 0
+        fun view() = VisitView(sortieIndex, order, pole, status, captureCount, autoCount)
     }
 
     private val visits = sorties.flatMapIndexed { s, plan -> plan.poles.mapIndexed { i, p -> Visit(s, i, p) } }
@@ -138,6 +142,13 @@ class InspectionExecutor(
     private val inbox = Channel<Msg>(Channel.UNLIMITED)
     private val _ui = MutableStateFlow(ExecutorUiState())
     val uiState: StateFlow<ExecutorUiState> = _ui.asStateFlow()
+
+    /**
+     * 사진 결과 안내(일시정지 중 수동 촬영·RC 셔터 사진의 저장·실패·연결할 전주 없음): 화면이 잠깐 보이고 지운다(10.4.3).
+     * [ExecutorUiState.message]는 바뀔 때까지 남으므로 여기에 두면 "… 수동 촬영 저장"이 10분 넘게 남았다(11-06).
+     */
+    private val _photoNotes = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val photoNotes: SharedFlow<String> = _photoNotes
 
     private var state = Idle
     private var sortieIndex = 0
@@ -209,7 +220,7 @@ class InspectionExecutor(
             is Msg.Shutter -> {
                 shutterBusy = false
                 if (m.capture == null) {
-                    message = "셔터 촬영 실패"
+                    _photoNotes.tryEmit("셔터 촬영 실패")
                     notifier.play(Sound.ERROR)
                 } else onShutterPhoto(m.capture)
             }
@@ -579,6 +590,7 @@ class InspectionExecutor(
         }
         captured = captures.map { saveCapture(visit, it, CaptureSource.AUTO) to it }
         visit.captureCount += captures.size
+        visit.autoCount += captures.size
         // 사진이 있으므로 완료로 기록한다. 다운로드·분석이 실패해도 완료는 유지된다(6.4 재개 규칙)
         setStatus(visit, VisitStatus.DONE)
         afterArrivalStep(Downloading, "촬영 완료") {
@@ -644,12 +656,12 @@ class InspectionExecutor(
     private suspend fun onManualCaptured(r: StepResult.ManualCaptured) {
         val visit = currentTarget()
         if (r.capture == null) {
-            message = "수동 촬영 실패"
+            _photoNotes.tryEmit("수동 촬영 실패")
             notifier.play(Sound.ERROR)
             return
         }
         if (visit == null) {
-            message = "연결할 전주가 없습니다(사진은 SD 카드에 있음)."
+            _photoNotes.tryEmit("연결할 전주가 없습니다(사진은 SD 카드에 있음).")
             return
         }
         val id = saveCapture(visit, r.capture, CaptureSource.MANUAL)
@@ -658,7 +670,7 @@ class InspectionExecutor(
         // 운용자가 수동 촬영하면 그 결과로 완료 처리한다(6.4)
         if (visit.status != VisitStatus.DONE) setStatus(visit, VisitStatus.DONE)
         target = visit
-        message = "${visit.pole.poleId} 수동 촬영 저장"
+        _photoNotes.tryEmit("${visit.pole.poleId} 수동 촬영 저장")
     }
 
     /**
@@ -669,13 +681,13 @@ class InspectionExecutor(
     private suspend fun onShutterPhoto(capture: CaptureInfo) {
         val visit = shutterLinkTarget(capture.position, visits) { it.pole.position }
         if (visit == null) {
-            message = "셔터 사진을 연결할 전주가 없습니다(사진은 SD 카드에 있음)."
+            _photoNotes.tryEmit("셔터 사진을 연결할 전주가 없습니다(사진은 SD 카드에 있음).")
             return
         }
         val id = saveCapture(visit, capture.copy(viewpoint = null), CaptureSource.MANUAL)
         photosInProgress++
         photoQueue.send(id to capture)
-        message = "${visit.pole.poleId} 셔터 사진 저장"
+        _photoNotes.tryEmit("${visit.pole.poleId} 셔터 사진 저장")
     }
 
     // ---------------------------------------------------------------- 방식 A(소티 미션)
@@ -701,6 +713,7 @@ class InspectionExecutor(
         val capture = info.copy(viewpoint = missionPoints[index].index)
         val id = saveCapture(v, capture, CaptureSource.AUTO)
         v.captureCount++
+        v.autoCount++
         when {
             v.status == VisitStatus.FAILED -> setStatus(v, VisitStatus.DONE)
             v.status == VisitStatus.PENDING -> setStatus(v, if (missionActive) VisitStatus.IN_PROGRESS else VisitStatus.DONE)

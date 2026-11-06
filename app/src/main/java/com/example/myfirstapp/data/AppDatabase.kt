@@ -423,7 +423,7 @@ data class MissionSummary(
     val favorite: Boolean = false,
     val homeLat: Double = 0.0,
     val homeLon: Double = 0.0,
-    /** 미션에서 찍은 사진(CAPTURE 행) 수. */
+    /** 미션에서 찍은 지점(자동) 사진 수(카드 "사진 찍은/예상", 수동 사진 제외). */
     val photoCount: Int = 0,
     /** 비행 궤적(TELEMETRY_SAMPLE)이 있음: ⋯ [비행 다시 보기](10.4.6). */
     val hasTrack: Boolean = false,
@@ -697,8 +697,8 @@ interface ProjectDao {
     )
     suspend fun missionCaptures(missionId: Long): List<CaptureEntity>
 
-    /** 미션에서 찍은 사진 수(홈 카드 "사진 찍은/예상", 10.5 숫자 규칙). */
-    @Query("SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId")
+    /** 미션에서 찍은 지점(자동) 사진 수(홈 카드·미션 칸 "사진 찍은/예상", 10.5 숫자 규칙). 수동 사진은 예상에 없으므로 세지 않는다. */
+    @Query("SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId AND c.source = 'AUTO'")
     suspend fun missionCaptureCount(missionId: Long): Int
 
     /** 최근에 받은 사진 파일 [limit]개, 최신순(홈 앨범 타일 바탕, 10.5.5: 파일이 남아 있는 첫 것을 쓴다). */
@@ -742,7 +742,7 @@ interface ProjectDao {
             "(SELECT COUNT(DISTINCT r.visitId) FROM review r JOIN visit v ON v.id = r.visitId JOIN sortie s ON s.id = v.sortieId " +
             "WHERE s.missionId = m.id) AS reviewedCount, " +
             "(SELECT MAX(COALESCE(s.endedAt, s.startedAt)) FROM sortie s WHERE s.missionId = m.id) AS lastFlightAt, " +
-            "(SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS photoCount, " +
+            "(SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id AND c.source = 'AUTO') AS photoCount, " +
             "EXISTS (SELECT 1 FROM telemetry_sample t JOIN sortie s ON s.id = t.sortieId WHERE s.missionId = m.id) AS hasTrack " +
             "FROM mission m JOIN project p ON p.id = m.projectId ORDER BY m.id DESC",
     )

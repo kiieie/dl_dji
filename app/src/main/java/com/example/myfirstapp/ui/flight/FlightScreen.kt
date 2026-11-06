@@ -196,6 +196,10 @@ private fun FlightContent(
     val lib = if (library && mapMain) libraryPanelViewModel(dao, projectId) else null
     val ls = lib?.state?.collectAsStateWithLifecycle()?.value
     LaunchedEffect(lib) { lib?.nav?.collect(onLibraryNav) }
+    // 절차 화면(10.5.5: 비행 전 점검 → 체크리스트)은 카메라 뷰를 덮지 않고 바꿔 그린다(Pilot 2도 따로 된 화면). 밑에 FPV SurfaceView·지도 TextureView·
+    // 계속 바뀌는 계기·소티 완료 창을 둔 채 위에 겹치면 RC에서 일부가 다시 그려지지 않았다(제목·✕·HMS 칸·상태 값 빈칸, 소티 완료 창 버튼 테두리 잔상, 11-06).
+    // 홈에서 여는 같은 화면(밑에 아무것도 없음)은 바르게 그려졌다. 닫으면 FPV·미니맵을 다시 붙인다
+    if (s.page != null) return ProcedurePages(s, vm, onHms = onHms)
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         // FPV 프레임 크기(격자·줌 영역 사각형을 영상 자리에, 10.5.2). 모의 기체는 모름(4:3으로 봄)
         var stream by remember { mutableStateOf<IntSize?>(null) }
@@ -253,9 +257,6 @@ private fun FlightContent(
 
         if (!mapMain) CameraNoticeView(s.notice)
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
-        // 절차 화면(10.5.5): 비행 전 점검 → 체크리스트. 화면 전체를 덮는다
-        // HMS 칸을 누르면 HMS 목록
-        if (s.page != null) ProcedurePages(s, vm, onHms = onHms)
         if (ui.terrainFallbackAsk) TerrainFallbackDialog(vm)
     }
 }
@@ -285,7 +286,8 @@ private fun MissionChip(s: FlightUiState, summary: RouteSummary?, vm: FlightView
     // 미션 전체 수(홈·라이브러리와 같은 정의, [FlightUiState.missionPoles]): 이 화면을 열 때까지 + 이번 실행
     val done = s.finishedBefore + all.count { it.status == VisitStatus.DONE || it.status == VisitStatus.SKIPPED || it.status == VisitStatus.FAILED }
     val total = s.missionPoles
-    val photos = s.photosBefore + all.sumOf { it.captureCount }
+    // 사진은 지점(자동) 사진만(예상 수와 같은 셈, 10.5): 일시정지 중 수동·셔터·타이머 사진은 저장·목록에만(11-06 "33/32")
+    val photos = s.photosBefore + all.sumOf { it.autoCaptureCount }
     val pct = if (total == 0) 0 else done * 100 / total
     val paused = ui.state == ExecState.Paused
     val canPause = ui.state.airborne && !paused && ui.state != ExecState.ReturningHome

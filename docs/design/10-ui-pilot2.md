@@ -27,6 +27,7 @@
 | 카드·패널(surface, surfaceContainerLow) | `#FFF` | 미션 카드, 타일, 기체 판, 절차 화면 바탕, 계획 패널 |
 | 조작 칸(surfaceContainer) | `#EEEFF1` | 스테퍼 값, 고르기 칸 ˅, 소수 칸 |
 | ± 칸(surfaceContainerHigh) | `#E2E3E6` | 스테퍼 [−100\|−10] [+10\|+100] |
+| 고른 칩·칸 나눔(secondaryContainer) | `#DCE9FF` / 글자 `#00255C` | 전압 대상 칩(앞 ✓)·설정 렌즈 칩·칸 나눔 버튼(11-06: 조작 칸 회색이라 고른 것이 꺼진 것처럼 보였음) |
 | 글자(onSurface) / 보조(onSurfaceVariant) | `#1A1A1A` / `#6B6F76` | 이름·값 / 라벨·범위 |
 | 구분선(outlineVariant) | `#E3E5E8` | 줄 사이 선, 두 열 가운데 선 |
 | 짙은 회색 버튼 | `#45484D` | 홈 [카메라 뷰 입력](Pilot 2). 파랑 채운 버튼은 [미션 비행 시작] 하나 |

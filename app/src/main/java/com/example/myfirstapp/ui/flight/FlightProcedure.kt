@@ -19,7 +19,7 @@ import com.example.myfirstapp.ui.theme.LightScreen
 internal fun ProcedurePages(s: FlightUiState, vm: FlightViewModel, onHms: () -> Unit) {
     val pre: PreflightViewModel = viewModel(key = "preflight", factory = PreflightViewModel.factory(report = vm::preflightReport, checksOf = vm::checksFor))
     BackHandler { if (s.page == ProcedurePage.CHECKLIST) vm.backToPreflight() else vm.closeProcedure() }
-    // 절차 화면은 밝은 바탕(Pilot 2, 2026-11-04 사용자 결정). 비행 화면 위를 덮는다
+    // 절차 화면은 밝은 바탕(Pilot 2, 2026-11-04 사용자 결정). 카메라 뷰 대신 그린다([FlightContent], 11-06)
     if (s.page != null) LightScreen { ProcedureContent(s, vm, pre, onHms) }
 }
 
