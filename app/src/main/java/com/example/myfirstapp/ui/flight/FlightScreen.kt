@@ -257,17 +257,25 @@ private fun FlightContent(
 
         if (!mapMain) CameraNoticeView(s.notice)
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
-        if (ui.terrainFallbackAsk) TerrainFallbackDialog(vm)
+        if (ui.terrainFallbackAsk) TerrainFallbackDialog(ui.message, vm)
     }
 }
 
 /** 지형 추적 시작 거절(5.6, 2026-10-30 사용자 결정): 이륙 지점 기준으로 다시 올릴지 묻는다. 그동안 기체는 멈춰 호버링한다. */
 @Composable
-private fun TerrainFallbackDialog(vm: FlightViewModel) {
+private fun TerrainFallbackDialog(reason: String?, vm: FlightViewModel) {
     FullscreenAlertDialog(
         onDismissRequest = vm::dismissTerrainFallback,
         title = { Text("지형 추적으로 시작하지 못했습니다") },
-        text = { Text("이륙 지점 기준으로 다시 올리고 시작할까요? 비탈에서는 지면과의 거리가 달라지니 고도를 확인하세요. 취소하면 일시정지로 남습니다(수동 조종·RTH).") },
+        // 기체가 준 이유(GPS 약함 등, 11-06)를 먼저 보인다
+        text = {
+            Text(
+                listOfNotNull(
+                    reason?.substringAfter("(", "")?.substringBeforeLast(")")?.takeIf { it.isNotBlank() }?.let { "기체 답: $it" },
+                    "이륙 지점 기준으로 다시 올리고 시작할까요? 비탈에서는 지면과의 거리가 달라지니 고도를 확인하세요. 취소하면 일시정지로 남습니다(수동 조종·RTH).",
+                ).joinToString("\n\n"),
+            )
+        },
         confirmButton = { Button(onClick = vm::flyTakeoffHeight) { Text("이륙 기준으로 시작") } },
         dismissButton = { TextButton(onClick = vm::dismissTerrainFallback) { Text("취소") } },
     )

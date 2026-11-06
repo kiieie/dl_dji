@@ -157,7 +157,13 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         executeState = s
         Log.i(TAG, "미션 상태 $s"); OpLog.log("mission", s.name)
         when (s) {
-            WaypointMissionExecuteState.INTERRUPTED -> _events.tryEmit(DroneEvent.PausedByRc)
+            // 멈춤은 RC 일시정지 버튼만이 아니라 RTH 버튼도 낸다(11-06 실내: RTH가 "RC 일시정지 버튼"으로 기록됨). 잠깐 뒤 비행 모드가 RTH면
+            // 일시정지로 보내지 않는다(실행기는 GoHomeStarted로 "기체 주도 RTH"를 기록)
+            WaypointMissionExecuteState.INTERRUPTED -> scope.launch {
+                delay(AppConfig.Timeouts.INTERRUPT_RTH_CHECK_MS)
+                if (_telemetry.value.flightMode == AppFlightMode.GO_HOME) OpLog.log("mission", "interruptedByRth")
+                else _events.tryEmit(DroneEvent.PausedByRc)
+            }
             WaypointMissionExecuteState.FINISHED -> if (missionName != null) {
                 missionName = null
                 photoGraceUntil = System.currentTimeMillis() + AppConfig.Timeouts.PHOTO_GRACE_MS
@@ -442,12 +448,24 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         logMissionFailure("uploadSortie", e, params.terrainFollow)
     }
 
+    /** 미션 시작 거절 이유: SDK 글 그대로 + 알아볼 수 있는 말(지형 추적 확인 창에 보임, 5.6). */
+    private fun startRejectReason(sdk: String?): String {
+        val s = sdk.orEmpty()
+        val hint = when {
+            "GPS" in s.uppercase() -> "GPS 약함(위성 부족)"
+            "RTK" in s.uppercase() -> "RTK 상태"
+            "HEIGHT" in s.uppercase() || "ALTITUDE" in s.uppercase() -> "고도 제한"
+            else -> null
+        }
+        return "미션 시작 거절: " + (hint?.let { "$it — $s" } ?: s.ifBlank { "이유 모름" })
+    }
+
     override suspend fun startUploaded(): Result<Unit> = runCatching {
         val name = uploadedName ?: error("올린 미션 없음")
         ensureSinglePhoto("start")
         missionName = name
         // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
-        runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected("미션 시작 거절: ${it.message}", it) }
+        runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected(startRejectReason(it.message), it) }
         uploadedName = null
         // 땅에서 돌린 타이머의 파일 붙잡기를 푼다(이제 오는 파일은 지점 사진)
         owners.missionResumed()

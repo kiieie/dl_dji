@@ -757,7 +757,7 @@ class InspectionExecutor(
             // 카메라를 단일 사진으로 못 바꿈: 다시 올려도 같다. 운용자가 카메라를 정리하도록 이유를 그대로 보인다
             (r.exceptionOrNull() as? CameraNotReady)?.let { return StepResult.LegReady(false, it.message.orEmpty()) }
             // 올라갔는데 시작만 거절: 같은 KMZ는 다시 올려도 같다. 지형 추적이면 운용자에게 이륙 기준을 묻는다
-            if (r.exceptionOrNull() is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, TERRAIN_ASK, terrainRejected = true)
+            r.exceptionOrNull()?.let { x -> if (x is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, terrainAsk(x), terrainRejected = true) }
             if (attempt < config.legRetries) delay(config.legRetryDelayMs)
         }
         return StepResult.LegReady(false, "미션 업로드 실패(재시도 ${config.legRetries}회 초과)")
@@ -766,11 +766,12 @@ class InspectionExecutor(
     /** 체크리스트 [시작]: 올려 둔 미션을 시작한다. 거절은 다시 올려도 같으므로 재시도하지 않는다. */
     private suspend fun startUploadedStep(): StepResult {
         val e = drone.startUploaded().exceptionOrNull() ?: return StepResult.LegReady(true, "")
-        if (e is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, TERRAIN_ASK, terrainRejected = true)
+        if (e is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, terrainAsk(e), terrainRejected = true)
         return StepResult.LegReady(false, "미션 시작 실패: ${e.message}")
     }
 
-    private val TERRAIN_ASK = "지형 추적으로 시작하지 못했습니다. 이륙 지점 기준으로 다시 올리고 시작할까요?"
+    /** 지형 추적 거절 안내: 기체가 준 이유(GPS 약함 등)를 함께 보인다. */
+    private fun terrainAsk(e: Throwable) = "지형 추적으로 시작하지 못했습니다(${e.message}). 이륙 지점 기준으로 다시 올리고 시작할까요?"
 
     // ---------------------------------------------------------------- RTH
 
