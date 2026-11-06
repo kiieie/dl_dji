@@ -150,6 +150,31 @@ internal class CameraControl(
         toggleRecording()
     }
 
+    /**
+     * RC 셔터 버튼(10.5.10, 2026-11-06 사용자: 셔터는 늘 사진, 녹화는 녹화 버튼): 영상 모드면 사진 모드로 바꾼 뒤 [shoot]. 녹화 중이면 막고 안내한다.
+     * 화면 셔터는 Pilot 2처럼 영상 모드에서 녹화 그대로.
+     */
+    fun rcShutter(shoot: () -> Unit) {
+        val s = get()
+        when {
+            s.recordingSinceMs != null -> notice(RECORDING_PHOTO, NoticeKind.SMALL)
+            !s.videoMode -> shoot()
+            busy() -> Unit
+            else -> scope.launch {
+                OpLog.log(tag, "videoMode", mapOf("on" to false, "by" to "rcShutter"))
+                set { it.copy(videoMode = false) }
+                val r = lock.withLock {
+                    val d = drone()
+                    val back = d?.setVideoMode(false) ?: Result.success(Unit)
+                    // 사진으로 돌아오면 카메라는 일반 사진이다: SMART였으면 다시 건다(setVideoMode와 같음)
+                    if (back.isSuccess && get().shootMode == ShootMode.SMART) d?.setShootMode(ShootMode.SMART) ?: back else back
+                }
+                logResult("사진 모드", r)
+                if (r.isSuccess) shoot() else set { it.copy(videoMode = true) }
+            }
+        }
+    }
+
     /** 녹화·타이머를 멈추고 단일 사진 모드로 돌린다(일시정지를 벗어날 때, 10.4.3). */
     fun backToPhoto() {
         scope.launch { backToPhotoAndWait() }
@@ -321,6 +346,7 @@ internal class CameraControl(
         /** Pilot 2 안내문 문구(11-04 녹화). */
         const val BUSY = "촬영 중 기체 또는 카메라 작동 금지"
         const val RECORDING_LENS = "녹화 중에는 렌즈를 바꿀 수 없습니다"
+        const val RECORDING_PHOTO = "녹화 중에는 사진을 찍을 수 없습니다. 녹화 버튼으로 멈추세요"
         const val NO_POSITION = "이용 가능한 위성이 충분하지 않습니다. 위치 레코딩 실패"
         const val TIMER_STOP_FAILED = "타이머를 멈추지 못했습니다. 셔터를 다시 눌러 멈추세요"
         const val MISSION_PHOTOS = "미션 사진을 받는 중입니다. 잠시 뒤 촬영하세요"

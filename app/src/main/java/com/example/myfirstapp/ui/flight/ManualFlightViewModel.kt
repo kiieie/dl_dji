@@ -163,7 +163,8 @@ class ManualFlightViewModel(
             when (it) {
                 RcButton.C1 -> toggleLens()
                 RcButton.C2 -> swapView()
-                RcButton.FIVE_D_CENTER, RcButton.SHUTTER -> shutter() // ○(C3)도 5D 누름으로 온다
+                RcButton.FIVE_D_CENTER -> shutter() // ○(C3)도 5D 누름으로 온다
+                RcButton.SHUTTER -> camera.rcShutter(::shutter)
                 RcButton.RECORD -> camera.recordButton()
                 else -> {}
             }

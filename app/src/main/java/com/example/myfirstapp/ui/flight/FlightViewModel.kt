@@ -261,7 +261,7 @@ class FlightViewModel(
             RcButton.FIVE_D_CENTER -> if (paused && active && _state.value.page == null) resume()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
             // RC 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04). 화면 셔터와 같은 자리로 간다(자동 비행 중만 막음, [shutterRoute])
-            RcButton.SHUTTER -> if (active) shutter(rc = true)
+            RcButton.SHUTTER -> if (active) camera.rcShutter { shutter(rc = true) }
             RcButton.RECORD -> if (paused || _state.value.recordingSinceMs != null) camera.recordButton()
             else -> Unit // 5D 방향은 비행 명령에 쓰지 않는다(10장)
         }

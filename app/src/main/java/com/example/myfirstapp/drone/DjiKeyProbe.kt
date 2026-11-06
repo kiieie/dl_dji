@@ -63,6 +63,8 @@ object DjiKeyProbe {
         FlightControllerKey.KeyHomeLocation to null,
         RemoteControllerKey.KeyControlMode to null,
         RemoteControllerKey.KeyFlightModeSwitchState to null,
+        RemoteControllerKey.KeyRecordShutterButtonEnable to null,
+        RemoteControllerKey.KeyLockShutterAndRecordButton to null,
         AirLinkKey.KeyFrequencyBand to null,
         AirLinkKey.KeyRcAntennaRssi to null,
         AirLinkKey.KeyBandwidth to null,
