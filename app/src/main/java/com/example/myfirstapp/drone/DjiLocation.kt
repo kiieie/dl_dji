@@ -18,6 +18,7 @@ import dji.sdk.keyvalue.key.RemoteControllerKey
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.manager.KeyManager
+import dji.v5.manager.aircraft.simulator.SimulatorManager
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -37,7 +38,9 @@ suspend fun djiPositions(): LivePositions = runCatching {
         }
     }
     val connected = keys.getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false)
-    val aircraft = if (connected && (read(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount)) ?: 0) >= AppConfig.Checks.LOCATION_MIN_SATELLITES) {
+    // 시뮬레이터는 위성 수를 0으로 알린다(위치·홈은 정상, 2026-11-06 실내 시험): 시뮬레이터면 위성 수로 거르지 않는다
+    val sim = runCatching { SimulatorManager.getInstance().isSimulatorEnabled }.getOrDefault(false)
+    val aircraft = if (connected && (sim || (read(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount)) ?: 0) >= AppConfig.Checks.LOCATION_MIN_SATELLITES)) {
         read(KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D))?.takeIf { validGeo(it.latitude, it.longitude) }?.let { GeoPoint(it.latitude, it.longitude) }
     } else {
         null

@@ -8,7 +8,10 @@ import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.GimbalKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.RemoteControllerKey
+import dji.sdk.keyvalue.value.common.CameraLensType
 import dji.sdk.keyvalue.value.common.ComponentIndexType
+import dji.sdk.keyvalue.value.camera.CameraStreamSettingsInfo
+import dji.sdk.keyvalue.value.camera.CameraVideoStreamSourceType
 import dji.v5.manager.KeyManager
 import kotlinx.coroutines.withTimeout
 
@@ -28,6 +31,28 @@ object DjiKeyProbe {
         OpLog.log("keyProbe", "done")
     }
 
+    /**
+     * 망원 사진 저장 시험(2026-11-06): "사진 저장 렌즈" 키(`KeyCaptureCameraStreamSettings`)를 키 만드는 방식마다 읽고 광각+망원으로 써 본다.
+     * `createKey`로는 읽기·쓰기 모두 -473(CANNOT_START_TASK_VLOTAGE_ALARM). 카메라 설정을 바꾸므로 실내 시험에서만. `--es bench capture`.
+     */
+    suspend fun captureLenses() {
+        val info = CameraKey.KeyCaptureCameraStreamSettings
+        val both = CameraStreamSettingsInfo(false, listOf(CameraVideoStreamSourceType.WIDE_CAMERA, CameraVideoStreamSourceType.ZOOM_CAMERA))
+        val variants = listOf(
+            "createKey" to KeyTools.createKey(info, cam),
+            "lensDefault" to KeyTools.createCameraKey(info, cam, CameraLensType.CAMERA_LENS_DEFAULT),
+            "lensWide" to KeyTools.createCameraKey(info, cam, CameraLensType.CAMERA_LENS_WIDE),
+            "lensZoom" to KeyTools.createCameraKey(info, cam, CameraLensType.CAMERA_LENS_ZOOM),
+        )
+        for ((name, key) in variants) {
+            val read = probe { djiValue<CameraStreamSettingsInfo> { KeyManager.getInstance().getValue(key, it) }.toJson() }
+            val set = probe { djiDone { KeyManager.getInstance().setValue(key, both, it) } }
+            val after = probe { djiValue<CameraStreamSettingsInfo> { KeyManager.getInstance().getValue(key, it) }.toJson() }
+            OpLog.log("keyProbe", "capture/$name", mapOf("read" to read, "set" to set, "after" to after))
+        }
+        OpLog.log("keyProbe", "capture/done")
+    }
+
     private suspend fun probe(block: suspend () -> Any?): String =
         runCatching { withTimeout(PROBE_MS) { block() } }.fold({ it.toString() }, { "ERR " + it.djiDetail() })
 
@@ -45,6 +70,9 @@ object DjiKeyProbe {
 
     /** 화면 항목이 가공해 보이는 키의 원래 값(단위·형 확인용). */
     private val RAW: List<Pair<DJIKeyInfo<*>, ComponentIndexType?>> = listOf(
+        FlightControllerKey.KeyGPSSatelliteCount to null,
+        FlightControllerKey.KeyGPSSignalLevel to null,
+        FlightControllerKey.KeyConnection to null,
         FlightControllerKey.KeyGoHomeHeightRange to null,
         FlightControllerKey.KeyHeightLimitRange to null,
         FlightControllerKey.KeyDistanceLimitRange to null,

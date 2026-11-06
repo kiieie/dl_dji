@@ -165,7 +165,7 @@ object WpmlWriter {
         "<wpml:waypointTurnParam><wpml:waypointTurnMode>toPointAndStopWithDiscontinuityCurvature</wpml:waypointTurnMode><wpml:waypointTurnDampingDist>0</wpml:waypointTurnDampingDist></wpml:waypointTurnParam>"
 
     /** 촬영 지점에만 동작을 넣는다(이동 고도·마무리 지점은 동작 없음). */
-    private fun shotActions(i: Int, v: Waypoint, shots: List<Viewpoint>, p: FlightParams) = v.shot?.let { actions(i, shots[it], v.poi, photoActions(shots[it], p)) } ?: ""
+    private fun shotActions(i: Int, v: Waypoint, shots: List<Viewpoint>, p: FlightParams) = v.shot?.let { actions(i, shots[it], v.poi, photoActions(shots[it], p), p.zoomRatio) } ?: ""
 
     /** WPML `payloadLensIndex`: 렌즈를 쉼표로(예: `wide,zoom`). 망원 배율은 어댑터가 미션 전에 [FlightParams.zoomRatio]로 맞춘다. */
     fun lensIndex(lenses: List<Lens>) = lenses.distinct().joinToString(",") {
@@ -229,17 +229,20 @@ ${shotActions(i, v, shots, p)}
      * 도착하면 차례로: (사선) 기수를 이 지점의 전주로 → 짐벌 피치 맞추기 → [photos] 차례로 촬영(광각 → 망원)
      * → (설치기기 전주) 짐벌만 설비 쪽으로 내려 한 번 더 촬영(파일 이름 끝 `_E`, 5.6).
      * 사선은 구간 관심점이 다음 전주라 도착 뒤 기수가 그쪽으로 돌 수 있어, 찍기 전에 이 전주로 되돌린다(가까운 쪽으로).
+     * 촬영마다 앞에 `zoom`으로 렌즈를 맞추고(광각 24mm, 망원 [zoomRatio] × 24mm) 지점 끝에 광각으로 되돌린다(5.6, 2026-11-06 실내 시험:
+     * `payloadLensIndex`만으로는 망원 동작도 광각 사진이 됐고, 줌 동작을 넣으면 망원 4000×3000·161mm·디지털 줌 1.14(8배)).
      */
-    private fun actions(i: Int, v: Viewpoint, poi: Pole?, photos: List<PhotoAction>): String {
+    private fun actions(i: Int, v: Viewpoint, poi: Pole?, photos: List<PhotoAction>, zoomRatio: Double): String {
         var id = 0
         val body = buildString {
             if (poi != null) append(rotateYaw(id++, v, poi))
             append(gimbal(id++, v.gimbalPitchDeg))
-            photos.filter { !it.equipment }.forEach { append(photo(id++, fileSuffix(v), lensIndex(it.lenses))) }
+            photos.filter { !it.equipment }.forEach { append(zoom(id++, focalFor(it, zoomRatio))); append(photo(id++, fileSuffix(v), lensIndex(it.lenses))) }
             v.equipmentPitchDeg?.let {
                 append(gimbal(id++, it))
-                photos.filter { a -> a.equipment }.forEach { a -> append(photo(id++, "${fileSuffix(v)}_E", lensIndex(a.lenses))) }
+                photos.filter { a -> a.equipment }.forEach { a -> append(zoom(id++, focalFor(a, zoomRatio))); append(photo(id++, "${fileSuffix(v)}_E", lensIndex(a.lenses))) }
             }
+            append(zoom(id++, WIDE_FOCAL_MM))
         }
         return """        <wpml:actionGroup><wpml:actionGroupId>$i</wpml:actionGroupId><wpml:actionGroupStartIndex>$i</wpml:actionGroupStartIndex><wpml:actionGroupEndIndex>$i</wpml:actionGroupEndIndex><wpml:actionGroupMode>sequence</wpml:actionGroupMode><wpml:actionTrigger><wpml:actionTriggerType>reachPoint</wpml:actionTriggerType></wpml:actionTrigger>
 $body        </wpml:actionGroup>"""
@@ -250,6 +253,15 @@ $body        </wpml:actionGroup>"""
 
     private fun photo(id: Int, suffix: String, lenses: String) =
         "          <wpml:action><wpml:actionId>$id</wpml:actionId><wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex><wpml:fileSuffix>$suffix</wpml:fileSuffix><wpml:payloadLensIndex>$lenses</wpml:payloadLensIndex><wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex></wpml:actionActuatorFuncParam></wpml:action>\n"
+
+    /** 광각 35mm 환산 초점거리(M3E 24mm). 망원 배율 r의 초점거리는 r × 이 값. */
+    private const val WIDE_FOCAL_MM = 24.0
+
+    /** 동작의 초점거리(35mm 환산): 망원이 들면 배율 × 광각, 아니면 광각. 한 동작에 렌즈를 묶는 옛 방식([Tuning.Photo.ACTION_PER_LENS] 거짓)이면 광각. */
+    fun focalFor(a: PhotoAction, zoomRatio: Double): Double = if (a.lenses == listOf(Lens.ZOOM)) zoomRatio * WIDE_FOCAL_MM else WIDE_FOCAL_MM
+
+    private fun zoom(id: Int, focalMm: Double) =
+        "          <wpml:action><wpml:actionId>$id</wpml:actionId><wpml:actionActuatorFunc>zoom</wpml:actionActuatorFunc><wpml:actionActuatorFuncParam><wpml:payloadPositionIndex>0</wpml:payloadPositionIndex><wpml:focalLength>${n(focalMm)}</wpml:focalLength></wpml:actionActuatorFuncParam></wpml:action>\n"
 
     private fun rotateYaw(id: Int, v: Viewpoint, poi: Pole): String {
         val turn = (v.headingDeg - Viewpoints.bearing(v.position, poi.position)).mod(360.0)
