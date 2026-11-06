@@ -125,7 +125,7 @@ internal fun MapAttribution(text: String, modifier: Modifier) {
 }
 
 /**
- * 레이어(10.5.7): 배경 지도 Bing 위성 / VWorld 위성 / VWorld 일반(7.4, 설정과 같은 값). VWorld 키가 없는 빌드는 VWorld를 끈다.
+ * 레이어(10.5.7): 배경 지도 VWorld 위성 / VWorld 일반(7.4, 설정과 같은 값). VWorld 키가 없는 빌드는 VWorld를 끈다.
  * [background]가 있으면(계획 지도) 배경 끄기·켜기도 메뉴에 둔다. [geo]가 있으면(비행 지도) GEO 구역 보기 켬·끔(10.4.9, Pilot 2 레이어 → GEO 구역).
  */
 @Composable
@@ -142,7 +142,7 @@ internal fun MapLayerButton(
             MapSource.entries.forEach { s ->
                 DropdownMenuItem(
                     text = { Text((if (s == current) "✓ " else "    ") + s.title, fontSize = FontSize.Body) },
-                    enabled = s == MapSource.BING || vworldAvailable,
+                    enabled = vworldAvailable,
                     onClick = { open = false; onPick(s) },
                 )
             }

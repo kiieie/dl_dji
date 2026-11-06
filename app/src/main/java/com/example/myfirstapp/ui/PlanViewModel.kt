@@ -66,7 +66,7 @@ data class PlanUiState(
     /** 아직 읽지 않았으면 null. */
     val poles: List<PoleEntity>? = null,
     val mapFiles: List<File> = emptyList(),
-    /** 배경 지도(설정에서 고른 Bing·VWorld, 7.4). 타일 주소를 못 받으면 비어 있고 캐시만 보인다. */
+    /** 배경 지도(설정에서 고른 VWorld, 7.4). 타일 주소를 못 받으면 비어 있고 캐시만 보인다. */
     val background: MapBackground = MapBackground.NONE,
     val selected: String? = null,
     val message: String? = null,

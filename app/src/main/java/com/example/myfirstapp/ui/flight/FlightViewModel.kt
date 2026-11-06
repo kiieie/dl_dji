@@ -104,7 +104,7 @@ data class FlightUiState(
     val returnNeedPct: Int = 0,
     val home: GeoPoint? = null,
     val poles: List<Pole> = emptyList(),
-    /** 지도 배경: 앱 폴더의 MBTiles와 설정에서 고른 배경(Bing·VWorld, 7.4). 계획 화면과 같다. */
+    /** 지도 배경: 앱 폴더의 MBTiles와 설정에서 고른 배경(VWorld, 7.4). 계획 화면과 같다. */
     val mapFiles: List<File> = emptyList(),
     val background: MapBackground = MapBackground.NONE,
     /** 모의 기체면 true: 모의 RC 조작 줄을 보여 준다. */

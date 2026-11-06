@@ -203,7 +203,7 @@ fun HomeScreen(
         HomeSheet.PRIVACY -> SheetDialog("데이터 보호", onClose = { sheet = null }) {
             Item("LDM(로컬 데이터 모드)", if (s.aircraft.ldm) "켜짐 · DJI 서버로 보내지 않음" else "꺼짐 · 비행 시작 불가")
             Item("외부 전송", "배경 지도 타일만")
-            Text("비행 기록·사진·위치·전주 파일은 보내지 않습니다(7.2). 배경 지도(Bing·VWorld) 타일은 계획을 저장할 때 미리 받습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("비행 기록·사진·위치·전주 파일은 보내지 않습니다(7.2). 배경 지도(VWorld, 국내 서버) 타일은 계획을 저장할 때 미리 받습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = { sheet = HomeSheet.CLEAR }, modifier = Modifier.fillMaxWidth().height(Dimens.ButtonStd)) { Text("캐시·로그 삭제") }
         }
         HomeSheet.CLEAR -> FullscreenAlertDialog(

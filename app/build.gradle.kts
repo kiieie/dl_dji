@@ -11,9 +11,6 @@ val djiApiKey: String = rootProject.file("secrets/dji.properties").takeIf { it.e
     ?.let { f -> Properties().apply { f.inputStream().use(::load) }.getProperty("DJI_API_KEY") }
     ?: "".also { logger.warn("secrets/dji.properties 없음: DJI_API_KEY 없이 빌드합니다") }
 
-// Cesium ion 토큰(7.4 임시 결정, 온라인 위성 배경). secrets/cesium.properties(git 제외)가 없으면 온라인 배경 없이 빌드한다.
-val cesiumIonToken: String = rootProject.file("secrets/cesium.properties").takeIf { it.exists() }
-    ?.let { f -> Properties().apply { f.inputStream().use(::load) }.getProperty("CESIUM_ION_TOKEN") }
     .orEmpty()
 
 // VWorld 오픈API 키(7.4 배경 지도 선택). secrets/vworld.properties(git 제외)가 없으면 VWorld 지도 없이 빌드한다.
@@ -39,7 +36,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["DJI_API_KEY"] = djiApiKey
-        buildConfigField("String", "CESIUM_ION_TOKEN", "\"$cesiumIonToken\"")
         buildConfigField("String", "VWORLD_API_KEY", "\"$vworldApiKey\"")
         buildConfigField("String", "DJI_LDM_LICENSE", "\"$ldmLicense\"")
 

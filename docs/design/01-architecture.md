@@ -88,7 +88,7 @@ flowchart TB
 | DI | 수동 DI(`Application`에서 조립) | Hilt는 AGP 9/KSP 호환 부담이 있어 1차 제외, 필요 시 도입 |
 | DB | Room 2.8.5 (SQLite) + KSP 2.3.12 | 오프라인 저장. `:app`의 `data` 패키지 |
 | 설정 | DataStore | 비행 파라미터 기본값 등 |
-| 지도 | MapLibre Native Android 13.6.1(`android-sdk-opengl`) + 배경 Bing 위성(Cesium ion)·VWorld WMTS(설정에서 선택), 미리 받은 MBTiles(7.4) | 오픈소스, 중국계 아님. 13.x 기본 패키지는 Vulkan이라 RC Pro·에뮬레이터 호환을 위해 OpenGL ES 패키지 사용 |
+| 지도 | MapLibre Native Android 13.6.1(`android-sdk-opengl`) + 배경 VWorld WMTS 위성·일반(설정에서 선택, 2026-11-06 Bing 뺌), 미리 받은 MBTiles(7.4) | 오픈소스, 중국계 아님. 13.x 기본 패키지는 Vulkan이라 RC Pro·에뮬레이터 호환을 위해 OpenGL ES 패키지 사용 |
 | 드론 | DJI MSDK V5 5.18.0 + UX SDK(FPV 위젯 등, 샘플 저장소 소스 활용) | [공식 샘플](https://github.com/dji-sdk/Mobile-SDK-Android-V5) 기준 |
 | 탐지 | TensorFlow Lite 2.17 (+GPU delegate 선택) | |
 | CSV | 자체 파서 또는 경량 라이브러리 | 인코딩 자동 판별 |

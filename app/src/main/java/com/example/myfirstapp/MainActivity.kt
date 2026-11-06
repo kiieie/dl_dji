@@ -36,6 +36,9 @@ import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.detect.ModelBench
 import com.example.myfirstapp.drone.DjiKeyProbe
+import com.example.myfirstapp.drone.cleanDjiTraces
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.example.myfirstapp.drone.DjiPoc
 import com.example.myfirstapp.ui.MapScreen
 import com.example.myfirstapp.ui.ProjectScreen
@@ -79,6 +82,12 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    /** 다른 앱(Pilot 2 등)으로 가기 전에 MSDK 기록을 지운다(7.2). */
+    override fun onStop() {
+        super.onStop()
+        (application as InspectionApp).let { app -> app.appScope.launch(Dispatchers.IO) { cleanDjiTraces(app.getExternalFilesDir(null), "stop") } }
     }
 
     override fun onDestroy() {

@@ -65,7 +65,7 @@ class ManualFlightViewModel(
     private val dao: ProjectDao,
     private val appFilesDir: File?,
     rcButtons: Flow<RcButton> = emptyFlow(),
-    /** 배경 지도 선택(7.4). 없으면 Bing. */
+    /** 배경 지도 선택(7.4). 없으면 VWorld 위성. */
     private val settings: SettingsStore? = null,
     /** 착륙 뒤 정밀 탐지(9.6): 떠 있는 동안 쉬게 알린다. */
     private val precise: PreciseDetection? = null,

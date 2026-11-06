@@ -50,7 +50,7 @@ data class SettingsUiState(
     val deleting: PendingDelete? = null,
     val busy: Boolean = false,
     /** 배경 지도(7.4)와 VWorld 위성 라벨. */
-    val mapSource: MapSource = MapSource.BING,
+    val mapSource: MapSource = MapSource.VWORLD_SATELLITE,
     val vworldLabels: Boolean = true,
 ) {
     val paramErrors get() = params.validate()

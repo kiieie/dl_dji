@@ -10,9 +10,9 @@ import kotlin.math.log2
 import kotlin.math.min
 import kotlin.math.tan
 
-/** 웹 메르카토르 타일 계산(7.4 배경 지도 미리 받기). Bing(`{quadkey}`)과 VWorld WMTS(`{z}/{y}/{x}`) 주소를 함께 다룬다. */
+/** 웹 메르카토르 타일 계산(7.4 배경 지도 미리 받기). VWorld WMTS(`{z}/{y}/{x}`) 주소를 다룬다. */
 object TileMath {
-    /** 타일 한 장의 픽셀(Bing·VWorld·MBTiles 모두 256). */
+    /** 타일 한 장의 픽셀(VWorld·MBTiles 모두 256). */
     const val TILE_PX = 256
 
     /** 적도 둘레(m, WGS84). */
@@ -31,17 +31,9 @@ object TileMath {
     /** MBTiles 행 번호: TMS라 아래부터 센다(XYZ 타일 y를 뒤집음). */
     fun tmsRow(y: Int, z: Int): Int = (1 shl z) - 1 - y
 
-    /** Bing quadkey(타일 x, y, 확대 z). */
-    fun quadkey(x: Int, y: Int, z: Int): String = buildString {
-        for (i in z downTo 1) {
-            val mask = 1 shl (i - 1)
-            append((if (x and mask != 0) 1 else 0) + (if (y and mask != 0) 2 else 0))
-        }
-    }
-
-    /** 주소 틀의 `{quadkey}`, `{z}`, `{x}`, `{y}`를 채운다. */
+    /** 주소 틀의 `{z}`, `{x}`, `{y}`를 채운다. */
     fun expandUrl(template: String, x: Int, y: Int, z: Int): String =
-        template.replace("{quadkey}", quadkey(x, y, z)).replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y")
+        template.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y")
 
     /**
      * 다른 확대의 타일 한 장에서 잘라 쓸 자리(경로 그림 빈칸 메우기, 10.4.10): 확대 [z]의 타일 ([x], [y]), 그 타일 안 왼쪽·위·한 변(타일 한 변 = 1).

@@ -10,13 +10,7 @@ import kotlin.math.abs
 class TileMathTest {
 
     @Test
-    fun `Bing quadkey는 문서 예제와 같다`() {
-        assertEquals("213", TileMath.quadkey(3, 5, 3))
-    }
-
-    @Test
     fun `주소 틀을 채운다(VWorld WMTS는 z, y, x 순)`() {
-        assertEquals("https://t/a213.jpeg", TileMath.expandUrl("https://t/a{quadkey}.jpeg", 3, 5, 3))
         assertEquals("https://api.vworld.kr/req/wmts/1.0.0/K/Satellite/16/25867/55856.jpeg",
             TileMath.expandUrl("https://api.vworld.kr/req/wmts/1.0.0/K/Satellite/{z}/{y}/{x}.jpeg", 55856, 25867, 16))
     }

@@ -6,6 +6,7 @@ import com.example.myfirstapp.detect.GpuCachePrep
 import com.example.myfirstapp.detect.ModelBench
 import com.example.myfirstapp.detect.PreciseDetection
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CoroutineScope
@@ -17,7 +18,8 @@ import com.example.myfirstapp.core.port.RcButton
 import com.example.myfirstapp.data.AppDatabase
 import com.example.myfirstapp.data.RcBattery
 import com.example.myfirstapp.data.SettingsStore
-import com.example.myfirstapp.data.savedSatelliteTilesFile
+import com.example.myfirstapp.drone.cleanDjiTraces
+import com.example.myfirstapp.data.dropBingCache
 import java.io.File
 import com.example.myfirstapp.drone.djiRcButtonPresses
 import dji.v5.common.error.IDJIError
@@ -99,12 +101,18 @@ class InspectionApp : Application() {
     override fun onCreate() {
         super.onCreate()
         OpLog.init(this)
-        savedSatelliteTilesFile = File(filesDir, "satellite-tiles.txt")
         OpLog.log("app", "start")
         rcBattery = RcBattery.watch(this)
         precise = PreciseDetection(this, database.projectDao(), settings, appScope, rcBattery)
         gpuPrep = GpuCachePrep(File(getExternalFilesDir(null), "models"), precise.gpuCache, settings, precise.pauseReason, appScope)
-        initDjiSdk()
+        // SDK가 기록을 쓰기 시작하기 전에 지난 기록을 지운다(7.2). 처음엔 수 GB라 뒤에서 하고 끝나면 SDK를 켠다
+        appScope.launch {
+            withContext(Dispatchers.IO) {
+                cleanDjiTraces(getExternalFilesDir(null), "start", checkMotors = false)
+                getExternalFilesDir(null)?.let { dropBingCache(it, filesDir) }
+            }
+            initDjiSdk()
+        }
         appScope.launch { rcButtons.collect { OpLog.log("rc", it.name) } }
     }
 

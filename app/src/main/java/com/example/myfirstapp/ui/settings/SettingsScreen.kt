@@ -125,7 +125,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             val ldm by (LocalContext.current.applicationContext as InspectionApp).ldmStatus.collectAsStateWithLifecycle()
             StatusRow("LDM(로컬 데이터 모드)", ldm.removePrefix("LDM: "))
             // 7.4: 인터넷이 되면 배경 지도 타일만 받는다(키·토큰, IP, 타일 좌표). 비행·사진·전주 데이터는 보내지 않는다
-            StatusRow("외부 데이터 전송", "배경 지도 타일 받기만(${(if (vworldAvailable) s.mapSource else MapSource.BING).title}) · 비행·사진·전주 데이터는 보내지 않음")
+            StatusRow("외부 데이터 전송", "배경 지도 타일 받기만(${if (vworldAvailable) s.mapSource.title else "VWorld 키 없음"}) · 비행·사진·전주 데이터는 보내지 않음")
         }
     }
 
@@ -232,7 +232,7 @@ private fun equipmentDrop(p: FlightParams, e: Equipment): Triple<String, String,
     }
 }
 
-/** 배경 지도 고르기(7.4): Bing 위성 / VWorld 위성 / VWorld 일반, VWorld 위성의 도로·지명 라벨. 키가 없으면 VWorld를 막는다. */
+/** 배경 지도 고르기(7.4): VWorld 위성 / VWorld 일반, VWorld 위성의 도로·지명 라벨. 키가 없으면 VWorld를 막는다. */
 @Composable
 private fun MapSourcePicker(source: MapSource, labels: Boolean, onSource: (MapSource) -> Unit, onLabels: (Boolean) -> Unit) {
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -240,7 +240,7 @@ private fun MapSourcePicker(source: MapSource, labels: Boolean, onSource: (MapSo
             SegmentedButton(
                 selected = source == src,
                 onClick = { onSource(src) },
-                enabled = src == MapSource.BING || vworldAvailable,
+                enabled = vworldAvailable,
                 shape = SegmentedButtonDefaults.itemShape(i, MapSource.entries.size),
                 modifier = Modifier.heightIn(min = Dimens.TouchLarge),
             ) { Text(src.title) }

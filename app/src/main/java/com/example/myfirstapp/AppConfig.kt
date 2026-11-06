@@ -55,7 +55,6 @@ object AppConfig {
         const val HTTP_MS = 10_000
 
         /** 배경 지도 주소를 못 받았을 때 다시 해 보는 간격. */
-        const val BACKGROUND_RETRY_MS = 10_000L
 
         /** 앱 재시작 복구 때 SDK 등록·기체 연결을 기다리는 시간(6.4). */
         const val RECOVER_CONNECT_MS = 20_000L

@@ -1016,7 +1016,7 @@ private fun routeFeatures(plan: RoutePlan?, params: FlightParams): FeatureCollec
 
 /** 온라인 위성(7.4 임시)을 맨 아래에, 그 위에 MBTiles를 겹친다. */
 /**
- * 지도 스타일(7.4): 배경색 → 온라인 배경(설정에서 고른 Bing·VWorld) → MBTiles(사용자 지도 + 지금 배경의 미리 받기 캐시)
+ * 지도 스타일(7.4): 배경색 → 온라인 배경(설정에서 고른 VWorld) → MBTiles(사용자 지도 + 지금 배경의 미리 받기 캐시)
  * → 라벨(VWorld 하이브리드 온라인, 그 위에 라벨 캐시). 다른 배경의 캐시는 섞이지 않게 뺀다.
  */
 internal fun styleJson(mapFiles: List<File>, background: MapBackground): String {

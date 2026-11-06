@@ -16,12 +16,15 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** Bing 위성 미리 받기 캐시(앱 폴더 `maps/`). VWorld는 지도마다 따로([MapBackground.cacheName]). */
-const val SATELLITE_CACHE_NAME = "satellite-cache.mbtiles"
+/** VWorld 위성 미리 받기 캐시(앱 폴더 `maps/`). 다른 지도는 따로([MapBackground.cacheName]). */
+const val SATELLITE_CACHE_NAME = "vworld-satellite-cache.mbtiles"
+
+/** 2026-11-06 전 Bing 위성(미국 서버) 캐시. 앱을 켤 때 지운다([dropBingCache]). */
+private const val BING_CACHE_NAME = "satellite-cache.mbtiles"
 
 /**
- * 받기가 끝나지 않은 영역. 한 줄에 "이름 남 북 서 동 최대확대 캐시이름 형식 주소틀,주소틀…"(주소틀은 `{quadkey}` 또는 `{z}/{y}/{x}`).
- * 2026-10-31 첫 판의 6칸 줄(주소 없음)은 Bing 위성으로 본다. 앱을 다시 켜면 이어 받는다.
+ * 받기가 끝나지 않은 영역. 한 줄에 "이름 남 북 서 동 최대확대 캐시이름 형식 주소틀,주소틀…"(주소틀은 `{z}/{y}/{x}`).
+ * 주소가 없는 줄(옛 Bing 위성)은 버린다. 앱을 다시 켜면 이어 받는다.
  */
 private const val PENDING_NAME = "satellite-pending.txt"
 
@@ -42,13 +45,11 @@ fun prefetchSatellite(appFilesDir: File, points: List<GeoPoint>, name: String, b
     val e = points.maxOf { it.lon } + AppConfig.Map.PREFETCH_PAD_DEG
     var maxZoom = AppConfig.Map.PREFETCH_MAX_ZOOM
     while (maxZoom > AppConfig.Map.PREFETCH_MIN_ZOOM && TileMath.count(s, n, w, e, AppConfig.Map.PREFETCH_MIN_ZOOM, maxZoom) > AppConfig.Map.PREFETCH_MAX_TILES) maxZoom--
-    // Bing은 주소를 적지 않는다: 받을 때 저장한 주소를 쓰므로 아직 주소가 없어도(인터넷 없이 첫 실행) 줄이 남아 나중에 이어 받는다.
     // VWorld 주소의 키는 `{KEY}`로 적어 파일에 평문으로 남기지 않는다
     val key = BuildConfig.VWORLD_API_KEY
     fun hide(urls: List<String>) = urls.joinToString(",") { if (key.isBlank()) it else it.replace(key, "{KEY}") }
     val lines = listOfNotNull(
-        if (bg.source == MapSource.BING) "$name $s $n $w $e $maxZoom ${bg.cacheName} ${bg.format}"
-        else bg.tiles.takeIf { it.isNotEmpty() }?.let { "$name $s $n $w $e $maxZoom ${bg.cacheName} ${bg.format} ${hide(it)}" },
+        bg.tiles.takeIf { it.isNotEmpty() }?.let { "$name $s $n $w $e $maxZoom ${bg.cacheName} ${bg.format} ${hide(it)}" },
         bg.labelCacheName?.takeIf { bg.labelTiles.isNotEmpty() }?.let { "$name-label $s $n $w $e $maxZoom $it png ${hide(bg.labelTiles)}" },
     )
     scope.launch {
@@ -56,6 +57,12 @@ fun prefetchSatellite(appFilesDir: File, points: List<GeoPoint>, name: String, b
         OpLog.log("map", "prefetch", mapOf("name" to name, "source" to bg.source.name, "maxZoom" to maxZoom, "tiles" to TileMath.count(s, n, w, e, AppConfig.Map.PREFETCH_MIN_ZOOM, maxZoom)))
         resume(appFilesDir)
     }
+}
+
+/** 옛 Bing 위성 캐시와 그 타일 주소를 지운다(2026-11-06 VWorld만). 앱을 켤 때 부른다. */
+fun dropBingCache(appFilesDir: File, internalFilesDir: File) {
+    File(appFilesDir, "maps/$BING_CACHE_NAME").delete()
+    File(internalFilesDir, "satellite-tiles.txt").delete()
 }
 
 /** 끝나지 않은 미리 받기를 이어 받는다(앱을 끄거나 인터넷이 끊겨 멈춘 것). 지도를 열 때 부른다. */
@@ -68,12 +75,9 @@ private suspend fun resume(appFilesDir: File) = lock.withLock {
     if (!pending.isFile) return@withLock
     val left = pending.readLines().filter { it.isNotBlank() }.filterNot { line ->
         val p = line.split(" ")
-        // 옛 6칸 줄은 Bing 위성
-        val cache = p.getOrNull(6) ?: SATELLITE_CACHE_NAME
-        val format = p.getOrNull(7) ?: "jpg"
-        val urls = p.getOrNull(8)?.split(",")?.filter { it.isNotBlank() }?.map { it.replace("{KEY}", BuildConfig.VWORLD_API_KEY) } ?: savedSatelliteTiles()
-        if (urls.isEmpty()) return@filterNot false
-        runCatching { download(appFilesDir, urls, p[0], p[1].toDouble(), p[2].toDouble(), p[3].toDouble(), p[4].toDouble(), p[5].toInt(), cache, format) }
+        // 주소가 없는 줄은 옛 Bing 위성: 다시 받지 않는다
+        val urls = p.getOrNull(8)?.split(",")?.filter { it.isNotBlank() }?.map { it.replace("{KEY}", BuildConfig.VWORLD_API_KEY) } ?: return@filterNot true
+        runCatching { download(appFilesDir, urls, p[0], p[1].toDouble(), p[2].toDouble(), p[3].toDouble(), p[4].toDouble(), p[5].toInt(), p[6], p[7]) }
             .onFailure { Log.w("SatelliteCache", "미리 받기 멈춤(${p[0]}): ${it.message}") }
             .getOrDefault(false)
     }

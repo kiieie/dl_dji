@@ -11,7 +11,7 @@
 - **RC Pro Enterprise 실기기를 쓰고 있고 M3E 기체도 확보할 수 있습니다**(2026-10-28). RC Pro에서 DJI SDK 등록, PoC ⑤(TFLite 약 0.4초/장)·⑦(adb) 완료, ⑥ 하드웨어 버튼은 기체 없이 감지까지 확인했습니다(`docs/evidence/2026-10-28-rcpro`). 다음은 기체를 연결해 PoC ④ LDM, ⑥ 미션 중 일시정지·C1 재개(프로펠러 제거, 시뮬레이터), ①~③입니다. 기체가 필요한 항목(6.1 방식 B 등)은 PoC 전까지 가정으로 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
-- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 설비 탐지 모델(사용자 학습, 9.6 두 단계 탐지, Room 8 `CAPTURE.detectModel`, Room 9 `MISSION.favorite`, Room 10 수동 비행 궤적 `MANUAL_SESSION`·`MANUAL_TRACK`과 비행 다시 보기 `ui/replay` 10.4.6, Room 11 핀포인트·지도 주석 `ANNOTATION` 10.4.7)을 2026-11-04에 붙였고, 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)도 그대로 쓸 수 있습니다. RC 속도 측정은 앱 안에서 합니다(`adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`, 결과 `files/logs/bench-*.txt`). 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 프로젝트·계획 화면 `ViewModel` 전환(완료) ⑤ 앱 재시작 복구(6.4, 모의 기체, 완료) ⑥ 설정 화면(비행 기본값, 모델·지도 관리, 완료) ⑦ 비행 화면 DJI 배치(FPV 전체·상단 상태바·위성 미니맵, 반투명 버튼)와 RC 버튼 매핑(일시정지, C1 재개)은 2026-10-29 완료(RC Pro에서 C1 재개·일시정지 버튼·위성 미니맵 확인). 2026-11-04 C1·C2를 Pilot 2 기본값(C1 광각/줌, C2 지도/카메라)으로 바꾸고 재개는 화면 미션 칸 ▶, 짐벌은 화면 짐벌 메뉴로(10.5.10), FPV 영상은 기체 확보 뒤 DJI UX SDK로. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. 배경 지도는 ⑥ 설정에서 Bing 위성(Cesium ion, 기본) / VWorld 위성(라벨 켬·끔) / VWorld 일반 중 고르고, 계획을 저장하면 미션 영역을 `maps/`의 지도별 MBTiles 캐시로 미리 받습니다(7.4, 2026-10-31. 토큰 `secrets/cesium.properties`, 키 `secrets/vworld.properties`).
+- 진행 현황은 `docs/design/07-test-roadmap.md` 13.0에 기록합니다. `:core`(모델, 포트, CSV, 경로 계획, 상태머신, `FakeDroneGateway`)와 Room(`PROJECT`, `POLE`), 가져오기 화면, 오프라인 지도(MBTiles 표시), 계획 화면(영역 그리기, 경로 미리보기, 핵심 파라미터 4개, 전주 개별 포함/제외, 계획 저장 `MISSION`·`SORTIE`·`VISIT`)과 ④ 비행 화면(`FakeDroneGateway`로 저장한 계획 실행, 실행 기록 저장, 신호음 알림), ⑤ 결과 화면(전주 목록, 이상만 필터, 사진과 탐지 박스, ZIP 내보내기), AI 탐지 연결(TFLite YOLO 탐지기, 앱 폴더 `models/`의 모델, 없으면 `FakeDetector`)은 완료했습니다. 설비 탐지 모델(사용자 학습, 9.6 두 단계 탐지, Room 8 `CAPTURE.detectModel`, Room 9 `MISSION.favorite`, Room 10 수동 비행 궤적 `MANUAL_SESSION`·`MANUAL_TRACK`과 비행 다시 보기 `ui/replay` 10.4.6, Room 11 핀포인트·지도 주석 `ANNOTATION` 10.4.7)을 2026-11-04에 붙였고, 개발용 COCO 모델(`tools/export_coco_model.sh`, AGPL이라 저장소 제외)도 그대로 쓸 수 있습니다. RC 속도 측정은 앱 안에서 합니다(`adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`, 결과 `files/logs/bench-*.txt`). 진행 순서: ① 결과 화면 `ViewModel` 전환과 1차 판독(F-19, 완료) ② 비행 화면 `ViewModel` 전환과 소티 완료 화면(완료) ③ 미션 목록과 이어하기(F-20, 완료) ④ 프로젝트·계획 화면 `ViewModel` 전환(완료) ⑤ 앱 재시작 복구(6.4, 모의 기체, 완료) ⑥ 설정 화면(비행 기본값, 모델·지도 관리, 완료) ⑦ 비행 화면 DJI 배치(FPV 전체·상단 상태바·위성 미니맵, 반투명 버튼)와 RC 버튼 매핑(일시정지, C1 재개)은 2026-10-29 완료(RC Pro에서 C1 재개·일시정지 버튼·위성 미니맵 확인). 2026-11-04 C1·C2를 Pilot 2 기본값(C1 광각/줌, C2 지도/카메라)으로 바꾸고 재개는 화면 미션 칸 ▶, 짐벌은 화면 짐벌 메뉴로(10.5.10), FPV 영상은 기체 확보 뒤 DJI UX SDK로. 탐지는 객체 검출(조류 둥지, 이물질)만 하고, 2차 판독은 다른 플랫폼에서 합니다. 배경 지도는 ⑥ 설정에서 VWorld 위성(기본, 라벨 켬·끔) / VWorld 일반 중 고르고(2026-11-06 Bing 뺌, MSDK 기록은 앱 켤 때·떠날 때 지움 7.2), 계획을 저장하면 미션 영역을 `maps/`의 지도별 MBTiles 캐시로 미리 받습니다(7.4, 2026-10-31. 키 `secrets/vworld.properties`).
 
 ## 프로젝트 개요
 
@@ -89,7 +89,6 @@ app/src/main/
 │   ├── ui/settings/             # ⑥ 설정(SettingsViewModel + SettingsScreen): 비행 기본값, 모델·지도 관리
 │   ├── data/SettingsStore.kt    # 설정 값(DataStore): 비행 기본값 JSON, 비행 중·정밀 모델
 │   ├── data/AppFiles.kt         # 앱 폴더의 지도(maps/)·모델(models/) 파일 관리
-│   ├── data/CesiumImagery.kt    # Cesium ion(Bing Aerial) 온라인 위성 타일 주소 받기(7.4 임시)
 │   ├── sound/ToneNotifier.kt    # 알림음(신호음, 11장)
 │   ├── data/FakePhotos.kt       # 모의 기체 사진
 │   ├── ui/result/               # ⑤ 결과와 1차 판독(ResultViewModel + ResultScreen, MVVM·UDF)
@@ -111,7 +110,7 @@ core/src/                        # 순수 Kotlin(JVM) 도메인 모듈
 tools/make_test_data.py          # 시험용 전주 CSV와 합성 MBTiles 생성(python3 + Pillow)
 tools/export_coco_model.sh       # 개발용 COCO yolo11n 모델 폴더 생성(build/models/)
 tools/yolo_ref.py                # 같은 모델을 PC에서 돌린 탐지 기준값(스모크 대조용)
-secrets/                         # git 제외: DJI LDM 라이선스, VWorld 인증키, DJI API 키(dji.properties), Cesium ion 토큰(cesium.properties)
+secrets/                         # git 제외: DJI LDM 라이선스, VWorld 인증키, DJI API 키(dji.properties)
 .design-sync/                    # Claude Design용 토큰 묶음 생성(build.mjs, conventions.md). 출력 ds-bundle/은 git 제외
 README.md                        # 프로젝트 소개, 다른 컴퓨터에서 빌드·실행하는 법
 docs/

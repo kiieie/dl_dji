@@ -27,8 +27,8 @@ class SettingsStore(context: Context) {
     /** 정밀(full, 착륙 뒤) 모델로 고른 폴더. null이면 `role`로 자동으로 고른다. */
     val fullModelDir: Flow<String?> = store.data.map { it[FULL_MODEL] }
 
-    /** 배경 지도(7.4): Bing 위성(기본) / VWorld 위성 / VWorld 일반지도. 다음에 지도 화면을 열 때 적용된다. */
-    val mapSource: Flow<MapSource> = store.data.map { p -> MapSource.entries.firstOrNull { it.name == p[MAP_SOURCE] } ?: MapSource.BING }
+    /** 배경 지도(7.4): VWorld 위성(기본) / VWorld 일반지도. 다음에 지도 화면을 열 때 적용된다. */
+    val mapSource: Flow<MapSource> = store.data.map { p -> MapSource.entries.firstOrNull { it.name == p[MAP_SOURCE] } ?: MapSource.VWORLD_SATELLITE }
 
     /** VWorld 위성 위에 도로·지명 라벨(하이브리드)을 겹칠지. */
     val vworldLabels: Flow<Boolean> = store.data.map { it[VWORLD_LABELS] ?: true }
