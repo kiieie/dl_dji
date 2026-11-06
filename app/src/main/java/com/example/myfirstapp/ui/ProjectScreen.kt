@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -64,6 +65,7 @@ import com.example.myfirstapp.ui.mission.FiveDHints
 import com.example.myfirstapp.ui.mission.LibraryDialogs
 import com.example.myfirstapp.ui.mission.LibraryFilters
 import com.example.myfirstapp.ui.mission.MissionGrid
+import com.example.myfirstapp.ui.mission.RouteViewScreen
 import com.example.myfirstapp.ui.mission.MissionListViewModel
 import com.example.myfirstapp.ui.mission.MissionNav
 import com.example.myfirstapp.ui.mission.SelectionBar
@@ -110,6 +112,7 @@ fun ProjectScreen(
         factory = MissionListViewModel.factory(
             dao, initialProjectId, missionDir = { pid, mid -> files?.let { File(it, "projects/$pid/missions/$mid") } },
             copyToFolder = { tree, list -> copyZipsToTree(resolver, tree, list) }, mapThumbs = (context.applicationContext as InspectionApp).mapThumbs,
+            mapsDir = files?.let { File(it, "maps") }, settings = (context.applicationContext as InspectionApp).settings,
         ),
     )
     val s by vm.state.collectAsStateWithLifecycle()
@@ -149,7 +152,11 @@ fun ProjectScreen(
     val enabled5d = !ps.overlayOpen && !addMenu && !choosePlan
     LaunchedEffect(vm, enabled5d) { if (enabled5d) rc.collect(vm::on5d) }
 
-    Column(Modifier.fillMaxSize()) {
+    // 카드를 눌러 연 경로 보기(10.5.8): 뒤로(5D ← 포함)는 목록으로
+    BackHandler(enabled = s.viewing != null, onBack = vm::closeView)
+    val viewing = s.viewing
+    if (viewing != null) RouteViewScreen(viewing, s, vm)
+    else Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().height(Dimens.HeaderList).background(MaterialTheme.colorScheme.surface).padding(start = 4.dp, end = 8.dp)) {
             if (s.selecting) {
                 IconButton(onClick = { vm.setSelecting(false) }, modifier = Modifier.size(Dimens.TouchSmall).align(Alignment.CenterStart).semantics { contentDescription = "선택 끝내기" }) {

@@ -24,7 +24,10 @@ import com.example.myfirstapp.ui.theme.Caution
 import com.example.myfirstapp.ui.theme.Warning
 
 /** 설비 기호(10.4.3 판독·앨범 범례): 고/저압과 설치기기. 엑셀 값(4.5)에서 고른다. */
-enum class PoleSymbol(val title: String) { HIGH("고압"), LOW("저압"), BOTH("고저압"), TRANSFORMER("변압기"), SWITCH("개폐기"), ARRESTER("피뢰기") }
+/** [short]: 지도 글자 라벨에 쓰는 한두 글자(계획·경로 보기 지도, 10.5.8). */
+enum class PoleSymbol(val title: String, val short: String) {
+    HIGH("고압", "고"), LOW("저압", "저"), BOTH("고저압", "고저"), TRANSFORMER("변압기", "변"), SWITCH("개폐기", "개"), ARRESTER("피뢰기", "피"),
+}
 
 /** 엑셀 `고/저압`·`설치기기` 값 → 기호. 판정 규칙은 [PoleCodes]에 있다. */
 fun poleSymbols(voltage: String?, equipment: String?): List<PoleSymbol> = buildList {
@@ -42,14 +45,15 @@ fun poleSymbols(voltage: String?, equipment: String?): List<PoleSymbol> = buildL
 
 /** 기호 줄. 기호마다 접근성 이름을 단다. */
 @Composable
-fun PoleSymbolRow(symbols: List<PoleSymbol>, size: Dp = 12.dp, modifier: Modifier = Modifier) {
+/** [ink]: 변압기·개폐기 선 색(어두운 바탕 흰색, 밝은 패널은 글자색). */
+fun PoleSymbolRow(symbols: List<PoleSymbol>, size: Dp = 12.dp, modifier: Modifier = Modifier, ink: Color = Color.White) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-        symbols.forEach { s -> PoleSymbolIcon(s, size) }
+        symbols.forEach { s -> PoleSymbolIcon(s, size, ink) }
     }
 }
 
 @Composable
-fun PoleSymbolIcon(s: PoleSymbol, size: Dp = 12.dp) {
+fun PoleSymbolIcon(s: PoleSymbol, size: Dp = 12.dp, ink: Color = Color.White) {
     Canvas(Modifier.size(size * (if (s == PoleSymbol.TRANSFORMER || s == PoleSymbol.SWITCH || s == PoleSymbol.ARRESTER) 14f / 12f else 1f), size).semantics { contentDescription = s.title }) {
         val u = this.size.height / 12f
         when (s) {
@@ -60,14 +64,14 @@ fun PoleSymbolIcon(s: PoleSymbol, size: Dp = 12.dp) {
                 drawCircle(Accent, 1.8f * u, center)
             }
             PoleSymbol.TRANSFORMER -> {
-                drawCircle(Color.White, 3.3f * u, Offset(5 * u, 6 * u), style = Stroke(1.4f * u))
-                drawCircle(Color.White, 3.3f * u, Offset(9 * u, 6 * u), style = Stroke(1.4f * u))
+                drawCircle(ink, 3.3f * u, Offset(5 * u, 6 * u), style = Stroke(1.4f * u))
+                drawCircle(ink, 3.3f * u, Offset(9 * u, 6 * u), style = Stroke(1.4f * u))
             }
             PoleSymbol.SWITCH -> {
                 val w = 1.5f * u
-                drawLine(Color.White, Offset(1 * u, 8.5f * u), Offset(4.5f * u, 8.5f * u), w)
-                drawLine(Color.White, Offset(9.5f * u, 8.5f * u), Offset(13 * u, 8.5f * u), w)
-                drawLine(Color.White, Offset(4.5f * u, 8.5f * u), Offset(10 * u, 3 * u), w)
+                drawLine(ink, Offset(1 * u, 8.5f * u), Offset(4.5f * u, 8.5f * u), w)
+                drawLine(ink, Offset(9.5f * u, 8.5f * u), Offset(13 * u, 8.5f * u), w)
+                drawLine(ink, Offset(4.5f * u, 8.5f * u), Offset(10 * u, 3 * u), w)
             }
             PoleSymbol.ARRESTER -> drawPath(
                 Path().apply {

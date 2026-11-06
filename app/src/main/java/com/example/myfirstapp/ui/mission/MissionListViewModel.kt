@@ -23,6 +23,14 @@ import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.ui.home.RoutePoint
 import com.example.myfirstapp.ui.home.thumbPoints
 import com.example.myfirstapp.data.MapThumbs
+import com.example.myfirstapp.data.MapBackground
+import com.example.myfirstapp.data.MissionVisitRow
+import com.example.myfirstapp.data.PoleEntity
+import com.example.myfirstapp.data.SettingsStore
+import com.example.myfirstapp.data.listMbtiles
+import com.example.myfirstapp.data.mapBackgroundRetrying
+import com.example.myfirstapp.core.model.FlightParams
+import com.example.myfirstapp.core.route.RoutePlan
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.flow.Flow
@@ -79,6 +87,11 @@ data class MissionListUiState(
     val message: String? = null,
     /** 내보내기로 만든 ZIP(저장 폴더를 고르면 복사). */
     val exported: List<ExportResult> = emptyList(),
+    /** 카드를 눌러 연 경로 보기(10.5.8). null이면 카드 목록. */
+    val viewing: RouteView? = null,
+    /** 경로 보기 지도의 MBTiles·배경(계획 화면과 같음). */
+    val mapFiles: List<File> = emptyList(),
+    val background: MapBackground = MapBackground.NONE,
 ) {
     /** 거르고 정렬한 카드. */
     val shown: List<MissionSummary>
@@ -103,6 +116,25 @@ data class MissionListUiState(
             val home = GeoPoint(m.homeLat, m.homeLon)
             routes[m.id].orEmpty().map { s -> listOf(home) + s.map { GeoPoint(it.lat, it.lon) } + home }
         }.orEmpty()
+}
+
+/**
+ * 경로 보기(10.5.8): 저장된 미션의 영역·소티 경로·방문 전주. [plan]은 저장된 방문 차례 그대로(다시 계산하지 않음).
+ * [selected]는 목록·지도에서 고른 전주, [focus]는 지도를 옮길 점.
+ */
+data class RouteView(
+    val mission: MissionSummary,
+    val visits: List<MissionVisitRow>,
+    val area: List<GeoPoint>,
+    val params: FlightParams,
+    val plan: RoutePlan,
+    val selected: String? = null,
+    val focus: List<GeoPoint> = emptyList(),
+) {
+    /** 지도에 그릴 방문 전주(계획 화면 지도와 같은 꼴). */
+    val poles: List<PoleEntity> by lazy {
+        visits.distinctBy { it.poleId }.map { PoleEntity(0, mission.projectId, it.poleId, it.lat, it.lon, it.lineName, it.note, it.lineNo, it.lengthM, it.equipment, it.guy, it.installedYm, it.voltage) }
+    }
 }
 
 /** 카드의 주 동작: 계획됨은 비행, 남은 전주가 있으면 이어하기, 아니면 결과(사진이 있을 때). */
@@ -142,6 +174,9 @@ class MissionListViewModel(
     /** 고른 폴더(SAF 트리)에 ZIP을 복사한다. 복사한 개수. */
     private val copyToFolder: suspend (folder: Uri, files: List<File>) -> Int = { _, _ -> 0 },
     private val mapThumbs: MapThumbs? = null,
+    /** 경로 보기 지도: MBTiles 폴더와 배경 설정. 없으면(비행 화면 패널) 경로 보기를 쓰지 않는다. */
+    private val mapsDir: File? = null,
+    private val settings: SettingsStore? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(MissionListUiState(projectFilter = initialProject))
     val state: StateFlow<MissionListUiState> = _state.asStateFlow()
@@ -186,6 +221,35 @@ class MissionListViewModel(
             ?.map { it?.asImageBitmap() } ?: flowOf(null)
 
     fun select(m: MissionSummary) = _state.update { it.copy(selectedId = m.id) }
+
+    /** 카드 누르기(10.5.8): 경로 보기를 연다. 저장된 소티·방문 차례 그대로 그린다. */
+    fun view(m: MissionSummary) {
+        select(m)
+        viewModelScope.launch {
+            val visits = dao.missionVisits(m.id)
+            val params = flightParamsFromJson(m.flightParams)
+            val home = GeoPoint(m.homeLat, m.homeLon)
+            val energy = EnergyModel(EnergyParams(), params)
+            val plan = RoutePlan(home, visits.groupBy { it.sortieId }.values.map { s -> energy.sortiePlan(home, s.map { it.toPole() }) }, emptyList())
+            val area = dao.mission(m.id)?.areaGeoJson?.let { json ->
+                runCatching { org.maplibre.geojson.Polygon.fromJson(json).coordinates()[0].dropLast(1).map { GeoPoint(it.latitude(), it.longitude()) } }.getOrNull()
+            }.orEmpty()
+            OpLog.log("library", "view", mapOf("mission" to m.id, "poles" to visits.size))
+            _state.update { it.copy(viewing = RouteView(m, visits, area, params, plan, focus = area.ifEmpty { visits.map { v -> GeoPoint(v.lat, v.lon) } + home })) }
+        }
+        val dir = mapsDir ?: return
+        if (_state.value.mapFiles.isEmpty()) _state.update { it.copy(mapFiles = listMbtiles(dir)) }
+        settings?.let { st -> viewModelScope.launch { mapBackgroundRetrying(st).let { bg -> _state.update { it.copy(background = bg) } } } }
+    }
+
+    fun closeView() = _state.update { it.copy(viewing = null) }
+
+    /** 경로 보기에서 전주 고르기(목록·지도). 목록에서 고르면 지도를 그 전주로 옮긴다. */
+    fun viewPole(poleId: String?, move: Boolean = false) = _state.update { s ->
+        val v = s.viewing ?: return@update s
+        val at = v.visits.firstOrNull { it.poleId == poleId }?.takeIf { move }?.let { listOf(GeoPoint(it.lat, it.lon)) }
+        s.copy(viewing = v.copy(selected = poleId, focus = at ?: v.focus))
+    }
     fun setMenu(m: MissionSummary?) = _state.update { it.copy(menuFor = m?.id) }
     fun setProject(id: Long?) = _state.update { it.copy(projectFilter = id, selectedId = null) }
     fun setFilter(f: LibraryFilter) = _state.update { it.copy(filter = f, selectedId = null) }
@@ -232,6 +296,8 @@ class MissionListViewModel(
     private fun apply5d(r: FiveDGate.Result) = r.actions.forEach { b ->
         val s = _state.value
         if (s.overlayOpen) return@forEach
+        // 경로 보기: ● 주 동작만(← 뒤로는 화면의 BackHandler)
+        s.viewing?.let { v -> if (b == RcButton.FIVE_D_CENTER) run(v.mission); return@forEach }
         val list = s.shown
         val i = list.indexOf(s.selected)
         when (b) {
@@ -335,8 +401,9 @@ class MissionListViewModel(
 
         fun factory(
             dao: ProjectDao, initialProject: Long?, missionDir: (Long, Long) -> File?, copyToFolder: suspend (Uri, List<File>) -> Int, mapThumbs: MapThumbs?,
+            mapsDir: File? = null, settings: SettingsStore? = null,
         ) = viewModelFactory {
-            initializer { MissionListViewModel(dao, initialProject, missionDir = missionDir, copyToFolder = copyToFolder, mapThumbs = mapThumbs) }
+            initializer { MissionListViewModel(dao, initialProject, missionDir = missionDir, copyToFolder = copyToFolder, mapThumbs = mapThumbs, mapsDir = mapsDir, settings = settings) }
         }
     }
 }

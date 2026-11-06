@@ -306,8 +306,11 @@ data class MissionVisitRow(
     val equipment: String?,
     /** 고/저압(지도·판독 기호). */
     val voltage: String? = null,
+    /** 지선주·설치년월(경로 보기 전주 목록, 4.5). */
+    val guy: Boolean = false,
+    val installedYm: String? = null,
 ) {
-    fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note, lineNo, lengthM, equipment, voltage = voltage)
+    fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note, lineNo, lengthM, equipment, guy, installedYm, voltage)
 }
 
 /**
@@ -522,7 +525,7 @@ interface ProjectDao {
     suspend fun latestOpenMission(): MissionEntity?
 
     @Query(
-        "SELECT s.id AS sortieId, s.seq, v.id AS visitId, v.status, p.poleId, p.lat, p.lon, p.lineName, p.note, p.lineNo, p.lengthM, p.equipment, p.voltage " +
+        "SELECT s.id AS sortieId, s.seq, v.id AS visitId, v.status, p.poleId, p.lat, p.lon, p.lineName, p.note, p.lineNo, p.lengthM, p.equipment, p.voltage, p.guy, p.installedYm " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
             "WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`",
     )

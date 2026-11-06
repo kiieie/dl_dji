@@ -164,7 +164,7 @@ internal fun MissionGrid(s: MissionListUiState, vm: MissionListViewModel, modifi
 /**
  * 경로 카드 128dp(Pilot 2: 왼쪽 경로 그림, 유형 아이콘 + 이름, "기체 · 카메라 · 고도", 생성/업데이트 시간): 이름 "<프로젝트> #<미션>",
  * M3 · M3E · 촬영 고도, 우리 배지(상태 · 전주 끝난/전체 · 소티 · 사진 찍은/예상, 10.5 숫자 규칙)와 주 버튼([비행]/[이어하기]/[결과]),
- * ⋯(결과 · 다시 날기 · 즐겨찾기 · 삭제). 다중 선택 중이면 ⋯ 대신 체크.
+ * ⋯(결과 · 다시 날기 · 즐겨찾기 · 삭제). 다중 선택 중이면 ⋯ 대신 체크. 카드를 누르면 경로 보기(10.5.8).
  */
 @Composable
 private fun MissionCard(
@@ -178,7 +178,7 @@ private fun MissionCard(
     Row(
         Modifier.fillMaxWidth().height(128.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow)
             .border(if (selected || checked) 1.5.dp else 0.dp, if (selected || checked) Accent else Color.Transparent, RoundedCornerShape(6.dp))
-            .clickable(onClickLabel = "${m.projectName} #${m.id}") { if (s.selecting) vm.toggleCheck(m) else vm.select(m) },
+            .clickable(onClickLabel = "${m.projectName} #${m.id}") { if (s.selecting) vm.toggleCheck(m) else vm.view(m) },
     ) {
         Box(Modifier.width(128.dp).fillMaxHeight()) {
             RoutePreview(route, GeoPoint(m.homeLat, m.homeLon), Modifier.fillMaxSize(), labels = false) { w, h, pad -> vm.mapThumb(m, w, h, pad) }

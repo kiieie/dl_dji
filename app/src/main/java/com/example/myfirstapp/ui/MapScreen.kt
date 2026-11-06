@@ -1,6 +1,7 @@
 package com.example.myfirstapp.ui
 
 import com.example.myfirstapp.AppConfig
+import com.example.myfirstapp.ui.flight.poleLabel
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -48,6 +49,8 @@ import kotlinx.coroutines.withContext
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.layers.PropertyFactory.iconImage
 import org.maplibre.android.style.layers.PropertyFactory.symbolSortKey
+import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
+import org.maplibre.android.style.layers.PropertyFactory.iconOffset
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.example.myfirstapp.core.model.ShotMode
 import android.graphics.RectF
@@ -721,7 +724,7 @@ private fun PlanSummary(plan: RoutePlan, planMs: Long, params: FlightParams) {
 private fun fmt(v: Double) = String.format(Locale.ROOT, "%.1f", v)
 
 /** 지도 위에 그릴 계획 요소. */
-private data class Overlay(
+internal data class Overlay(
     val vertices: List<GeoPoint>, val plan: RoutePlan?, val excluded: List<GeoPoint>, val params: FlightParams,
     /** 오른쪽 패널에 연 전주. 노란 고리로 표시한다(Pilot 2 선택한 웨이포인트). */
     val selected: GeoPoint?,
@@ -734,7 +737,7 @@ private data class Overlay(
  * ponytail: 글리프(폰트) 파일이 없어 지도 위 글자(전주번호)는 그리지 않는다. 전주번호는 탭하면 카드로 보여 준다.
  */
 @Composable
-private fun PoleMap(
+internal fun PoleMap(
     poles: List<PoleEntity>,
     mapFiles: List<File>,
     background: MapBackground,
@@ -778,8 +781,12 @@ private fun PoleMap(
     LaunchedEffect(poles, mapFiles, background) {
         mapView.getMapAsync { map ->
             map.setStyle(Style.Builder().fromJson(styleJson(mapFiles, background))) { style ->
+                // 라벨(선로번호 + 기호 글자, 10.5.8)은 글자 그림으로 넣는다(글리프 파일 없음)
                 val features = poles.map {
-                    Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply { addStringProperty("poleId", it.poleId) }
+                    Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat)).apply {
+                        addStringProperty("poleId", it.poleId)
+                        addStringProperty("label", style.labelImage(poleMapLabel(it), dark = true))
+                    }
                 }
                 // 전주는 묶지 않고 하나하나 점으로 그린다(N-04). 1,000개 수준의 원 레이어는 MapLibre가 무리 없이 그린다.
                 style.addSource(GeoJsonSource("poles", FeatureCollection.fromFeatures(features)))
@@ -838,6 +845,12 @@ private fun PoleMap(
                     CircleLayer("selected-ring", "selected").withProperties(
                         circleColor("#00000000"), circleRadius(14f), circleStrokeColor(MAP_HOME), circleStrokeWidth(4f),
                     ),
+                )
+                // 전주 라벨: 점 오른쪽 위, 확대 [AppConfig.Map.LABEL_MIN_ZOOM] 이상, 구간 거리보다 먼저 놓고 라벨끼리 겹치면 숨김(비행 지도 라벨과 같은 규칙)
+                style.addLayer(
+                    SymbolLayer("poles-label", "poles").withProperties(
+                        iconImage(get("label")), iconAnchor(Property.ICON_ANCHOR_BOTTOM_LEFT), iconOffset(arrayOf(6f, -4f)),
+                    ).apply { minZoom = AppConfig.Map.LABEL_MIN_ZOOM.toFloat() },
                 )
                 // 주석, 그 위에 이륙 지점 H·기체·조종기(Pilot 2 표지)
                 style.addAnnotationLayers()
@@ -968,6 +981,10 @@ internal fun rememberMapView(): MapView {
 }
 
 internal fun GeoPoint.toPoint(): Point = Point.fromLngLat(lon, lat)
+
+/** 지도 전주 라벨: 선로번호(없으면 전산화번호 끝 4자리)와 기호 글자(고·저·고저·변·개·피). */
+private fun poleMapLabel(p: PoleEntity) =
+    (listOf(poleLabel(p.toPole())) + poleSymbols(p.voltage, p.equipment).map { it.short }).joinToString(" ")
 
 /** 그리는 중인 영역: 꼭짓점 3개 이상이면 다각형, 2개면 선, 그리고 꼭짓점 점들. */
 private fun drawFeatures(vertices: List<GeoPoint>): FeatureCollection {
