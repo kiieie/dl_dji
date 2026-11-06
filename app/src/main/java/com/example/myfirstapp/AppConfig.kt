@@ -424,6 +424,10 @@ object AppConfig {
         /** 인터벌 촬영 장수. ponytail: 255 = 멈출 때까지(MSDK V4 규칙)로 본다. 실기에서 255장 뒤 멈추면 다시 시작하게 바꾼다. */
         const val INTERVAL_COUNT_CONTINUOUS = 255
 
+        /** 타이머를 멈춘 뒤 사진 모드로 되돌리기 시도 횟수·간격(ms): 찍던 사진 저장 중에는 거절된다(2026-11-06, 마지막 사진은 약 2초 뒤 저장). */
+        const val LEAVE_INTERVAL_TRIES = 8
+        const val LEAVE_INTERVAL_RETRY_MS = 500L
+
         /** ☀ 노출 손잡이: 한 단계(1/3 EV)와 범위(Pilot 2 ±3 EV). 끄는 거리는 [com.example.myfirstapp.ui.theme.Dimens.ZoomDragStep]마다 한 단계. */
         const val EV_STEP = 1.0 / 3
         const val EV_MAX = 3.0

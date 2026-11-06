@@ -328,13 +328,13 @@ class FlightViewModel(
         viewModelScope.watchObstacles(drone, notifier) { w -> _state.update { it.copy(obstacles = w) } }
         viewModelScope.launch {
             drone.cameraStatus.collect { c ->
-                _state.update { it.copy(camera = c) }
+                _state.update { it.copy(camera = c, zoomRatio = c.zoomRatio ?: it.zoomRatio) }
                 camera.adoptShootMode(c.shootMode)
             }
         }
         _state.update {
             it.copy(
-                loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = params.zoomRatio,
+                loading = false, home = home, poles = sorties.flatMap { s -> s.poles }, params = params, zoomRatio = it.camera.zoomRatio ?: params.zoomRatio,
                 simulated = drone is FakeDroneGateway,
                 missionPoles = all.size, finishedBefore = all.size - rows.size, photosBefore = dao.missionCaptures(missionId).size,
                 expectedPhotos = params.expectedPhotos(all.map { r -> r.toPole() }),

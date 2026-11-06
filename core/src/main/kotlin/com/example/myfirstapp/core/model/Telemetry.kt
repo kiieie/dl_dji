@@ -107,6 +107,8 @@ data class CameraStatus(
     val recordSecLeft: Int? = null,
     /** 기체 카메라의 사진 모드(`KeyCameraMode`). 영상·모름이면 null. 화면을 열 때 촬영 모드 메뉴 값을 여기에 맞춘다(10.5.7). */
     val shootMode: ShootMode? = null,
+    /** 망원 줌 배율(`KeyCameraZoomRatios` 알림, RC 다이얼로 바꿔도 온다). 모르면 null(화면은 앱이 보낸 값). 2026-11-06: 화면 8.0X인데 기체 7.0이었음. */
+    val zoomRatio: Double? = null,
 )
 
 /** 계획 화면의 지금 위치(10.5.5): 기체(연결되고 위성이 충분할 때)와 기수, 조종기 GPS. 모르면 null. */

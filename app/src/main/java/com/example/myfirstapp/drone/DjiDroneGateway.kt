@@ -250,6 +250,11 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(CameraKey.KeySDCardAvailablePhotoCount, camera) { n -> _camera.update { it.copy(photosLeft = n) } }
         on(CameraKey.KeySDCardAvailableVideoDuration, camera) { n -> _camera.update { it.copy(recordSecLeft = n) } }
         on(CameraKey.KeyCameraMode, camera) { m -> cameraModeIs(m) }
+        // 망원 배율: 화면 줌 표시는 기체 값을 따른다(RC 다이얼 줌 포함)
+        KeyTools.createCameraKey(CameraKey.KeyCameraZoomRatios, camera, CameraLensType.CAMERA_LENS_ZOOM).let { k ->
+            keys.listen(k, holder) { _, r -> _camera.update { it.copy(zoomRatio = r) } }
+            _camera.update { it.copy(zoomRatio = keys.getValue(k)) }
+        }
         on(FlightControllerKey.KeyCompassHeading) { h -> _telemetry.update { it.copy(headingDeg = ((h ?: 0.0) + 360) % 360) } }
         // 조종기 위치(지도 파란 점, 10.5.4)
         on(RemoteControllerKey.KeyRcGPSInfo) { g ->
@@ -654,13 +659,21 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         }
     }
 
-    /** 타이머 끝: 촬영을 멈추고 사진 모드(단일·SMART)로 되돌린다. 모드 되돌림이 받아져야 성공(카메라가 인터벌을 벗어남). */
+    /**
+     * 타이머 끝: 촬영을 멈추고 사진 모드(단일·SMART)로 되돌린다. 모드 되돌림이 받아져야 성공(카메라가 인터벌을 벗어남).
+     * 멈춘 직후에는 찍던 사진을 저장하느라 모드 바꾸기를 `COMMAND_NOT_SUPPORT_NOW`로 거절한다(2026-11-06 실내 시험): 잠깐씩 기다려 다시 한다.
+     */
     private suspend fun leaveInterval(): Result<Unit> {
         val stopped = stopShooting()
-        val back = runCatching {
-            if (legacyInterval) djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyShootPhotoMode, camera), CameraShootPhotoMode.NORMAL, it) }
-            legacyInterval = false
-            setCameraMode(photoModeOf(shootMode), stopFirst = false)
+        var back: Result<Unit> = Result.failure(IllegalStateException("모드 되돌림 안 함"))
+        for (i in 0 until AppConfig.CameraView.LEAVE_INTERVAL_TRIES) {
+            if (i > 0) delay(AppConfig.CameraView.LEAVE_INTERVAL_RETRY_MS)
+            back = runCatching {
+                if (legacyInterval) djiDone(AppConfig.Timeouts.CAMERA_CMD_MS) { keys.setValue(KeyTools.createKey(CameraKey.KeyShootPhotoMode, camera), CameraShootPhotoMode.NORMAL, it) }
+                legacyInterval = false
+                setCameraMode(photoModeOf(shootMode), stopFirst = false)
+            }
+            if (back.isSuccess) break
         }
         OpLog.log("camera", "intervalStop", mapOf("stop" to stopped.exceptionOrNull()?.djiDetail(), "mode" to back.exceptionOrNull()?.djiDetail()))
         return back

@@ -131,7 +131,7 @@ class ManualFlightViewModel(
         drone?.let { d ->
             viewModelScope.launch {
                 d.cameraStatus.collect { c ->
-                    _state.update { it.copy(flight = it.flight.copy(camera = c)) }
+                    _state.update { it.copy(flight = it.flight.copy(camera = c, zoomRatio = c.zoomRatio ?: it.flight.zoomRatio)) }
                     camera.adoptShootMode(c.shootMode)
                 }
             }
