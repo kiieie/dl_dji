@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import androidx.core.graphics.createBitmap
 import com.example.myfirstapp.AppConfig
@@ -46,7 +47,7 @@ class MapThumbs(private val mapsDir: File, private val dir: File, private val se
         val files = baseMapFiles(listMbtiles(mapsDir), source.cacheName)
         if (files.isEmpty()) return null
         // 받기가 끝나면 캐시 파일 크기·시각이 바뀌어 새 이름이 된다
-        val tag = listOf(source.name, view, files.map { "${it.name}:${it.length()}:${it.lastModified()}" }).hashCode()
+        val tag = listOf(RENDER_VERSION, source.name, view, files.map { "${it.name}:${it.length()}:${it.lastModified()}" }).hashCode()
         val out = File(dir, "$prefix${Integer.toHexString(tag)}.jpg")
         if (out.isFile) BitmapFactory.decodeFile(out.path)?.let { return it }
         val bmp = render(files, view, w, h) ?: return null
@@ -58,36 +59,54 @@ class MapThumbs(private val mapsDir: File, private val dir: File, private val se
         return bmp
     }
 
-    /** 확대 차례([TileMath.ThumbView.zoomOrder])대로 해 보고 타일이 하나라도 그려진 첫 확대의 그림. MBTiles는 이름 순서로 위에 겹친다. */
+    /**
+     * 확대 차례([TileMath.ThumbView.zoomOrder])대로 해 보고 타일이 하나라도 그려진 첫 확대의 그림. 칸마다 그 확대 타일이 없으면(미리 받은 영역 밖)
+     * [AppConfig.Map.THUMB_ANCESTOR_STEPS]단계 아래까지 조상 타일의 그 칸을 늘려 그린다([TileMath.fallbacks], 11-06 RC: 카드 왼쪽이 빈 색).
+     * 같은 확대면 이름 순서로 뒤 MBTiles가 이긴다(지도 화면처럼 위에 겹침).
+     */
     private fun render(files: List<File>, view: TileMath.ThumbView, w: Int, h: Int): Bitmap? {
-        val zooms = view.zoomOrder(w, h, AppConfig.Map.THUMB_ZOOM_STEPS, AppConfig.Map.PREFETCH_MAX_ZOOM, AppConfig.Map.THUMB_MAX_TILES)
-        for (z in zooms) {
-            val bmp = createBitmap(w, h)
-            val canvas = Canvas(bmp).apply { drawColor(fill) }
-            val (xs, ys) = view.tiles(z, w, h)
-            val size = view.tileSize(z).toFloat()
-            var drawn = 0
-            files.forEach { f ->
-                // 받는 중이라 잠겼거나 MBTiles가 아니면 그 파일만 건너뛴다
-                runCatching {
-                    SQLiteDatabase.openDatabase(f.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-                        for (x in xs) for (y in ys) {
-                            val data = db.rawQuery(
-                                "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", arrayOf("$z", "$x", "${TileMath.tmsRow(y, z)}"),
-                            ).use { if (it.moveToFirst()) it.getBlob(0) else null } ?: continue
-                            val tile = BitmapFactory.decodeByteArray(data, 0, data.size) ?: continue // 벡터(pbf) 등
-                            val l = view.tileLeft(x, z).toFloat()
-                            val t = view.tileTop(y, z).toFloat()
-                            canvas.drawBitmap(tile, null, RectF(l, t, l + size, t + size), paint)
-                            tile.recycle()
-                            drawn++
-                        }
-                    }
+        // 받는 중이라 잠겼거나 MBTiles가 아니면 그 파일만 건너뛴다
+        val dbs = files.mapNotNull { f -> runCatching { SQLiteDatabase.openDatabase(f.path, null, SQLiteDatabase.OPEN_READONLY) }.getOrNull() }.asReversed()
+        try {
+            val zooms = view.zoomOrder(w, h, AppConfig.Map.THUMB_ZOOM_STEPS, AppConfig.Map.PREFETCH_MAX_ZOOM, AppConfig.Map.THUMB_MAX_TILES)
+            for (z in zooms) {
+                val bmp = createBitmap(w, h)
+                val canvas = Canvas(bmp).apply { drawColor(fill) }
+                val (xs, ys) = view.tiles(z, w, h)
+                val size = view.tileSize(z).toFloat()
+                var drawn = 0
+                for (x in xs) for (y in ys) {
+                    val (c, data) = TileMath.fallbacks(x, y, z, z - AppConfig.Map.THUMB_ANCESTOR_STEPS)
+                        .firstNotNullOfOrNull { c -> dbs.firstNotNullOfOrNull { tile(it, c) }?.let { c to it } } ?: continue
+                    val tile = BitmapFactory.decodeByteArray(data, 0, data.size) ?: continue // 벡터(pbf) 등
+                    val src = Rect(
+                        (c.left * tile.width).toInt(), (c.top * tile.height).toInt(),
+                        ((c.left + c.size) * tile.width).toInt(), ((c.top + c.size) * tile.height).toInt(),
+                    )
+                    val l = view.tileLeft(x, z).toFloat()
+                    val t = view.tileTop(y, z).toFloat()
+                    canvas.drawBitmap(tile, src, RectF(l, t, l + size, t + size), paint)
+                    tile.recycle()
+                    drawn++
                 }
+                if (drawn > 0) return bmp
+                bmp.recycle()
             }
-            if (drawn > 0) return bmp
-            bmp.recycle()
+            return null
+        } finally {
+            dbs.forEach { it.close() }
         }
-        return null
+    }
+
+    /** MBTiles [db]의 타일 [c] 그림 바이트. 없거나 읽지 못하면 null. */
+    private fun tile(db: SQLiteDatabase, c: TileMath.TileCrop): ByteArray? = runCatching {
+        db.rawQuery(
+            "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", arrayOf("${c.z}", "${c.x}", "${TileMath.tmsRow(c.y, c.z)}"),
+        ).use { if (it.moveToFirst()) it.getBlob(0) else null }
+    }.getOrNull()
+
+    private companion object {
+        /** 그리는 방식이 바뀌면 올린다: 캐시 JPEG 이름이 바뀌어 옛 그림을 다시 만든다(2: 조상 타일로 빈칸 메우기). */
+        const val RENDER_VERSION = 2
     }
 }

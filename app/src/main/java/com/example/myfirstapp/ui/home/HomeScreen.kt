@@ -91,6 +91,8 @@ import com.example.myfirstapp.ui.mission.STATUS_TITLE
 import com.example.myfirstapp.ui.mission.statusColor
 import com.example.myfirstapp.ui.theme.DarkButton
 import com.example.myfirstapp.ui.theme.HomeTileFallback
+import com.example.myfirstapp.ui.theme.ImageScrim
+import com.example.myfirstapp.ui.theme.TextSoft
 import com.example.myfirstapp.ui.theme.Warning
 import androidx.compose.ui.draw.alpha
 import com.example.myfirstapp.ui.theme.numberStyle
@@ -133,6 +135,7 @@ fun HomeScreen(
     val vm: HomeViewModel = viewModel(
         factory = HomeViewModel.factory(
             dao, ::djiAircraftStatus, { djiHmsIssues(context.applicationContext) }, ::djiGeoSummary, (context.applicationContext as InspectionApp).mapThumbs,
+            context.getExternalFilesDir(null),
         ) { clearCacheAndLogs(context.applicationContext) },
     )
     val s by vm.state.collectAsStateWithLifecycle()
@@ -313,7 +316,18 @@ private fun MissionCard(
     Surface(modifier, shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
         Box {
             if (m != null) {
-                RoutePreview(m.route, m.home, Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(start = 10.dp, end = 10.dp, top = 34.dp).clip(RoundedCornerShape(4.dp)), mapThumb = mapThumb)
+                Box(Modifier.fillMaxWidth().fillMaxHeight(0.62f).padding(start = 10.dp, end = 10.dp, top = 34.dp).clip(RoundedCornerShape(4.dp))) {
+                    RoutePreview(m.route, m.home, Modifier.fillMaxSize(), mapThumb = mapThumb)
+                    // 이름은 그림 아래쪽 위에(Pilot 2 카드): 어두운 그러데이션에 흰 이름 · 밝은 회색 번호(11-06 RC: 위성 위 회색 "#18"이 안 읽힘)
+                    Text(
+                        buildAnnotatedString {
+                            append(m.projectName)
+                            withStyle(SpanStyle(fontWeight = FontWeight.Medium, color = TextSoft)) { append(" #${m.missionId}") }
+                        },
+                        Modifier.align(Alignment.BottomStart).fillMaxWidth().imageScrim(top = false).padding(start = 10.dp, end = 10.dp, top = 24.dp, bottom = 6.dp),
+                        color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -326,13 +340,6 @@ private fun MissionCard(
                     Text("비행경로에서 전주 파일을 가져오고 계획을 세우세요.", fontSize = FontSize.Caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     MainButton("비행경로 열기", onRoutes)
                 } else {
-                    Text(
-                        buildAnnotatedString {
-                            append(m.projectName)
-                            withStyle(SpanStyle(fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)) { append(" #${m.missionId}") }
-                        },
-                        fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.Bottom) {
                         Figure("전주", "${m.done}", "/${m.total}")
                         // 소티 지금/전체(10.5.11, 라이브러리·상단 바와 같은 정의)
@@ -410,18 +417,26 @@ private fun Figure(label: String, value: String, suffix: String = "") {
 
 /**
  * 타일(Pilot 2 홈 p2s_1): [background] 그림(최근 경로·최근 사진, 없으면 회색)을 꽉 채우고 왼쪽 위에 흰 제목.
- * 밝은 그림 위에서도 읽히게 위쪽에 어두운 그러데이션을 깐다.
+ * 밝은 그림(위성·지도 색) 위에서도 읽히게 제목 밑에 어두운 그러데이션([imageScrim])을 깐다.
  */
 @Composable
 private fun HomeTile(title: String, modifier: Modifier, onClick: () -> Unit, background: @Composable () -> Unit) {
     Surface(onClick = onClick, modifier = modifier.fillMaxHeight(), shape = RoundedCornerShape(6.dp), color = HomeTileFallback) {
         Box {
             background()
-            Box(Modifier.fillMaxWidth().height(40.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent))))
-            Text(title, Modifier.padding(horizontal = 12.dp, vertical = 8.dp), fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(
+                title, Modifier.fillMaxWidth().imageScrim(top = true).padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 20.dp),
+                fontSize = FontSize.Title, fontWeight = FontWeight.Bold, color = Color.White,
+            )
         }
     }
 }
+
+/** 그림 위 글자 밑 그러데이션(10.4.10): 글자 쪽([top]이면 위) 40%는 [ImageScrim] 그대로, 나머지는 투명으로 옅어진다. */
+private fun Modifier.imageScrim(top: Boolean) = background(
+    if (top) Brush.verticalGradient(0f to ImageScrim, 0.4f to ImageScrim, 1f to Color.Transparent)
+    else Brush.verticalGradient(0f to Color.Transparent, 0.6f to ImageScrim, 1f to ImageScrim),
+)
 
 @Composable
 private fun statusOf(a: AircraftStatus) = when (a.level) {

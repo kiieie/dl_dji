@@ -43,6 +43,21 @@ object TileMath {
     fun expandUrl(template: String, x: Int, y: Int, z: Int): String =
         template.replace("{quadkey}", quadkey(x, y, z)).replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y")
 
+    /**
+     * 다른 확대의 타일 한 장에서 잘라 쓸 자리(경로 그림 빈칸 메우기, 10.4.10): 확대 [z]의 타일 ([x], [y]), 그 타일 안 왼쪽·위·한 변(타일 한 변 = 1).
+     * 자기 자신이면 (0, 0, 1).
+     */
+    data class TileCrop(val z: Int, val x: Int, val y: Int, val left: Double, val top: Double, val size: Double)
+
+    /**
+     * 확대 [z]의 타일 ([x], [y])을 대신할 차례: 자기 자신, 그다음 한 단계씩 아래 확대의 조상 타일 중 이 타일이 차지하는 1/2·1/4·… 칸(늘려 그림),
+     * 확대 [minZ]까지. 미리 받은 영역 밖이라 그 확대에 타일이 없을 때 넓은 조상 타일로 덮는다.
+     */
+    fun fallbacks(x: Int, y: Int, z: Int, minZ: Int): List<TileCrop> = (0..(z - minZ.coerceAtLeast(0)).coerceAtLeast(0)).map { d ->
+        val n = 1 shl d
+        TileCrop(z - d, x shr d, y shr d, (x and (n - 1)).toDouble() / n, (y and (n - 1)).toDouble() / n, 1.0 / n)
+    }
+
     /** 영역(남·북·서·동)의 타일 수(확대 [minZ]~[maxZ]). */
     fun count(south: Double, north: Double, west: Double, east: Double, minZ: Int, maxZ: Int): Long = (minZ..maxZ).sumOf { z ->
         (tileX(east, z) - tileX(west, z) + 1).toLong() * (tileY(south, z) - tileY(north, z) + 1)

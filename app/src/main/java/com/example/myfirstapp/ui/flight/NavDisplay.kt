@@ -70,7 +70,7 @@ data class NextWaypoint(val number: Int, val distanceM: Double, val at: GeoPoint
  * 장애물: 앞·오른쪽·뒤·왼쪽 부채꼴(감지 범위 안 초록, 경고 주황, 제동 빨강), 오른쪽 세로 막대 위·아래, 감지 꺼짐 "OFF"·값 없음 "NA".
  * 원판 왼쪽 세로 막대는 짐벌 피치(파란 표지, 위 +35° ~ 아래 -90°, 30°마다 눈금, 긴 흰 눈금 0°).
  * 왼쪽 열: WS 풍속·풍향 화살표, 짐벌 각(0°면 노랑), 작은 "SPD m/s"와 속도. 오른쪽 열: VS, 고도와 작은 "ALT m", ASL(모르면 "--").
- * 아래: 홈까지 거리와 오른쪽 위 작은 노란 H. 왼쪽 위: 다음 웨이포인트 거리(위)와 번호▽(아래).
+ * 아래: 홈까지 거리와 오른쪽 위 작은 노란 H(홈이 있을 때만). 왼쪽 위: 다음 웨이포인트 거리(위)와 번호▽(아래).
  */
 @Composable
 fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = ObstacleWarning(), next: NextWaypoint? = null, modifier: Modifier = Modifier) {
@@ -212,8 +212,8 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = Obsta
             homeDist?.let { "%.0fm".format(it) } ?: "--", Modifier.align(Alignment.BottomCenter).semantics { contentDescription = "홈까지 거리" },
             style = numberStyle(FontSize.Micro), color = Color.White,
         )
-        // 홈 거리 표지: 원판 오른쪽 아래 작은 노란 H(Pilot 2 p2_mission2)
-        Box(
+        // 홈 거리 표지: 원판 오른쪽 아래 작은 노란 H(Pilot 2 p2_mission2). 홈이 없으면(기록 전) 그리지 않는다(Pilot 2, 11-06 RC)
+        if (home != null) Box(
             Modifier.align(Alignment.BottomCenter).offset(x = 24.dp, y = (-8).dp).size(11.dp).clip(CircleShape).background(Caution),
             contentAlignment = Alignment.Center,
         ) { Text("H", style = numberStyle(8.sp, FontWeight.Bold), color = Color.Black, maxLines = 1) }

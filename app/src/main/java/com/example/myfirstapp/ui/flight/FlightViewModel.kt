@@ -163,7 +163,7 @@ data class FlightUiState(
     val capturing: Boolean = false,
     /** Pilot 2 안내문(10.5.7). */
     val notice: CameraNotice? = null,
-    /** 땅 위·타이머 수동 사진(수동 사진 경로)을 저장한 곳 또는 실패(미션 화면 안내 줄). */
+    /** 땅 위·타이머 수동 사진(수동 사진 경로) 저장·실패, 홈포인트 지정 안내(미션 화면 안내 줄, [AppConfig.CameraView.MESSAGE_MS] 뒤 지움). */
     val shotMessage: String? = null,
     /** 카메라 뷰 AR 표시(10.5.2, 왼쪽 열 AR, [SettingsStore.arEnabled]에 남김). */
     val ar: Boolean = true,
@@ -208,6 +208,8 @@ class FlightViewModel(
         saveScope = appScope ?: viewModelScope,
     )
 
+    /** 안내 줄(수동 사진 저장·실패, 홈포인트 지정)은 잠깐 보이고 지운다. */
+    private val shotFlash = TimedMessage(viewModelScope) { m -> _state.update { it.copy(shotMessage = m) } }
     private val notifier = ToneNotifier()
     /** 비행 중 최근 1장 탐지(9.6). 실행기는 사진을 저장만 하고, 저장한 사진을 여기에 넘긴다. */
     private val live = LiveDetection(viewModelScope, File(appFilesDir, "models"), settings, precise?.gpuCache, precise?.thermal) { p ->
@@ -509,10 +511,11 @@ class FlightViewModel(
     }
 
     /** 수동 사진 경로 결과: 안내 줄, 위치가 없으면 Pilot 2 "위치 레코딩 실패". */
-    private fun manualSaved(info: CaptureInfo?, result: Result<String>) {
-        OpLog.log("flight", "manualSaved", mapOf("ok" to result.isSuccess, "saved" to result.getOrNull(), "error" to result.exceptionOrNull()?.message))
+    private fun manualSaved(info: CaptureInfo?, result: Result<SavedPhoto>) {
+        val s = result.getOrNull()
+        OpLog.log("flight", "manualSaved", mapOf("ok" to result.isSuccess, "pole" to s?.poleId, "file" to s?.path, "error" to result.exceptionOrNull()?.message))
         if (info != null && info.position == null) camera.noPosition()
-        _state.update { it.copy(shotMessage = result.fold({ w -> "저장했습니다: $w" }, { e -> "촬영 실패: ${e.message}" })) }
+        shotFlash.show(s?.message ?: "촬영 실패: ${result.exceptionOrNull()?.message}")
     }
     fun skip() = send(Command.Skip())
     /** 지형 추적 시작 거절 창(5.6): [이륙 기준으로 시작] / [취소]. */
@@ -543,7 +546,7 @@ class FlightViewModel(
         val d = drone ?: return
         viewModelScope.launch {
             val r = d.setHome(toRc)
-            _state.update { it.copy(shotMessage = r.fold({ homeSetMessage(toRc) }, { e -> "홈포인트 지정 실패: ${e.message}" })) }
+            shotFlash.show(r.fold({ homeSetMessage(toRc) }, { e -> "홈포인트 지정 실패: ${e.message}" }))
         }
     }
 

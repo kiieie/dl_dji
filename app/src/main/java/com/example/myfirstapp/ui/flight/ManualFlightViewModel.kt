@@ -79,6 +79,8 @@ class ManualFlightViewModel(
         onTimerPhoto = { info -> drone?.let { d -> saved(info, photos.keep(d, info, _state.value.flight.lens)) } },
         saveScope = appScope ?: viewModelScope,
     )
+    /** 안내 줄(사진 저장됨·실패·홈포인트 지정)은 잠깐 보이고 지운다. "기체가 연결되지 않았습니다"는 그대로 둔다. */
+    private val flash = TimedMessage(viewModelScope) { m -> _state.update { it.copy(message = m) } }
     private val tone = ToneNotifier()
     /** 셔터 사진의 마지막 사진 썸네일(9.6). 모델 설정이 없으면(시험) 만들지 않는다. */
     private val live = settings?.let {
@@ -194,15 +196,12 @@ class ManualFlightViewModel(
     }
 
     /** 사진 하나의 결과(셔터·타이머): 장수·안내 줄, 위치가 없으면 Pilot 2 "위치 레코딩 실패". */
-    private fun saved(info: CaptureInfo?, result: Result<String>) {
-        OpLog.log("manual", "shoot", mapOf("ok" to result.isSuccess, "saved" to result.getOrNull(), "error" to result.exceptionOrNull()?.message))
+    private fun saved(info: CaptureInfo?, result: Result<SavedPhoto>) {
+        val s = result.getOrNull()
+        OpLog.log("manual", "shoot", mapOf("ok" to result.isSuccess, "pole" to s?.poleId, "file" to s?.path, "error" to result.exceptionOrNull()?.message))
         if (info != null && info.position == null) camera.noPosition()
-        _state.update {
-            it.copy(
-                shots = it.shots + if (result.isSuccess) 1 else 0,
-                message = result.fold({ s -> "저장했습니다: $s" }, { e -> "촬영 실패: ${e.message}" }),
-            )
-        }
+        if (s != null) _state.update { it.copy(shots = it.shots + 1) }
+        flash.show(s?.message ?: "촬영 실패: ${result.exceptionOrNull()?.message}")
     }
 
 
@@ -215,7 +214,7 @@ class ManualFlightViewModel(
         viewModelScope.launch {
             val r = d.setHome(toRc)
             OpLog.log("manual", "setHome", mapOf("rc" to toRc, "ok" to r.isSuccess, "error" to r.exceptionOrNull()?.message))
-            _state.update { it.copy(message = r.fold({ homeSetMessage(toRc) }, { e -> "홈포인트 지정 실패: ${e.message}" })) }
+            flash.show(r.fold({ homeSetMessage(toRc) }, { e -> "홈포인트 지정 실패: ${e.message}" }))
         }
     }
 
@@ -243,7 +242,7 @@ class ManualFlightViewModel(
     /** 짐벌 메뉴(10.5.7): 짐벌 중앙 / 아래(-90°). */
     fun setGimbal(down: Boolean) {
         OpLog.log("manual", "gimbal", mapOf("down" to down))
-        drone?.let { d -> viewModelScope.launch { d.setGimbal(down).onFailure { e -> _state.update { it.copy(message = "짐벌 실패: ${e.message}") } } } }
+        drone?.let { d -> viewModelScope.launch { d.setGimbal(down).onFailure { e -> flash.show("짐벌 실패: ${e.message}") } } }
     }
 
     /** RC C1·왼쪽 열 ZOOM/WIDE: 광각 ↔ 망원 보기. */

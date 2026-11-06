@@ -28,6 +28,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /** 홈 카드 경로 미리보기의 전주 한 점. [label]은 선로번호(없으면 전산화번호 끝 4자리). */
 data class RoutePoint(val lat: Double, val lon: Double, val done: Boolean, val label: String = "")
@@ -76,7 +79,19 @@ suspend fun loadLatestMission(dao: ProjectDao): LatestMission? {
     )
 }
 
-/** [latestPhoto]: 가장 최근 사진 파일(앨범 타일 바탕). [hms]는 기체 판 HMS 칸, [geo]는 GEO 구역 카드(없으면 "로컬 데이터 없음"). */
+/**
+ * 홈 앨범 타일 바탕(10.5.5, Pilot 2 앨범 카드): 가장 최근 사진 파일. 전주에 붙은 사진(DB 최근 [dbPaths] 중 파일이 남은 첫 것)과
+ * 붙지 않은 사진(`manual/<날짜>/`: 수동 비행·기체 앨범에서 받은 것, 앨범과 같은 자리) 중 파일 시각이 늦은 것. 없으면 null.
+ */
+internal fun newestPhoto(dbPaths: List<String>, appFilesDir: File?): File? {
+    val db = dbPaths.asSequence().map(::File).firstOrNull { it.isFile }
+    val manual = appFilesDir?.let { File(it, "manual") }?.listFiles { f -> f.isDirectory && f.name.all(Char::isDigit) }.orEmpty()
+        .sortedByDescending { it.name }
+        .firstNotNullOfOrNull { d -> d.listFiles { f -> f.isFile && f.extension.equals("jpg", true) }?.maxByOrNull { it.lastModified() } }
+    return listOfNotNull(db, manual).maxByOrNull { it.lastModified() }
+}
+
+/** [latestPhoto]: 가장 최근 사진 파일(앨범 타일 바탕, [newestPhoto]). [hms]는 기체 판 HMS 칸, [geo]는 GEO 구역 카드(없으면 "로컬 데이터 없음"). */
 data class HomeUiState(
     val aircraft: AircraftStatus = AircraftStatus(),
     val latest: LatestMission? = null,
@@ -95,6 +110,8 @@ class HomeViewModel(
     private val readHms: () -> List<HmsIssue> = { emptyList() },
     private val readGeo: suspend () -> GeoSummary? = { null },
     private val mapThumbs: MapThumbs? = null,
+    /** 앱 폴더: 앨범 타일이 전주에 붙지 않은 사진(`manual/`)도 본다. */
+    private val appFilesDir: File? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
@@ -121,7 +138,8 @@ class HomeViewModel(
     fun refresh() {
         viewModelScope.launch {
             val latest = loadLatestMission(dao)
-            val photo = dao.latestPhotoPath()
+            val paths = dao.recentPhotoPaths(AppConfig.Album.HOME_RECENT_DB_PHOTOS)
+            val photo = withContext(Dispatchers.IO) { newestPhoto(paths, appFilesDir)?.path }
             _state.update { it.copy(latest = latest, latestPhoto = photo) }
         }
     }
@@ -146,7 +164,7 @@ class HomeViewModel(
     companion object {
         fun factory(
             dao: ProjectDao, readAircraft: suspend () -> AircraftStatus, readHms: () -> List<HmsIssue>, readGeo: suspend () -> GeoSummary?,
-            mapThumbs: MapThumbs?, clearCaches: suspend () -> Int,
-        ) = viewModelFactory { initializer { HomeViewModel(dao, readAircraft, clearCaches, readHms, readGeo, mapThumbs) } }
+            mapThumbs: MapThumbs?, appFilesDir: File?, clearCaches: suspend () -> Int,
+        ) = viewModelFactory { initializer { HomeViewModel(dao, readAircraft, clearCaches, readHms, readGeo, mapThumbs, appFilesDir) } }
     }
 }

@@ -29,6 +29,23 @@ enum class NoticeKind { CENTER, SMALL, PINPOINT }
 data class CameraNotice(val text: String, val kind: NoticeKind)
 
 /**
+ * 카메라 뷰 안내 줄(사진 저장됨·촬영 실패·홈포인트 지정 등)을 [AppConfig.CameraView.MESSAGE_MS] 동안 보이고 지운다([set]에 null).
+ * 그 사이 새 안내가 오면 그것으로 바꾸고 다시 센다(11-06 RC: 저장 안내가 3분 넘게 남음).
+ */
+internal class TimedMessage(private val scope: CoroutineScope, private val set: (String?) -> Unit) {
+    private var job: Job? = null
+
+    fun show(text: String) {
+        job?.cancel()
+        set(text)
+        job = scope.launch {
+            delay(AppConfig.CameraView.MESSAGE_MS)
+            set(null)
+        }
+    }
+}
+
+/**
  * 카메라 뷰 공통 카메라 조작(10.4.3): 렌즈, 줌 +/−, 사진/영상, 녹화, 촬영 모드 메뉴(단일·타이머·SMART), ☀ 노출 보정, 안내문. 자동·수동 비행 ViewModel이 같이 쓴다.
  * 상태는 각 ViewModel의 [FlightUiState]에 둔다([get]·[set]). 화면 값은 누른 대로 바로 바꾸고, 기체가 거절하거나 응답이 없으면 되돌린다
  * (그 사이 다음 누름으로 값이 바뀌었으면 그대로 둔다). 렌즈·줌은 명령 뒤 기체 값을 다시 읽어 실제 값을 보인다(2026-11-03 현장: 화면만 바뀌고 사진은 광각).
@@ -205,8 +222,16 @@ internal class CameraControl(
 
     private var modesRead = false
 
-    /** 촬영 모드 메뉴(10.5.7) 열기: 촬영 중이면 안내문만. 처음 열 때 기체가 받는 모드·간격을 읽는다. */
+    /** 메뉴를 바깥 누름으로 닫은 시각(ms). */
+    private var menuClosedAt = 0L
+
+    /**
+     * 촬영 모드 메뉴(10.5.7) 열기: 촬영 중이면 안내문만. 처음 열 때 기체가 받는 모드·간격을 읽는다.
+     * 메뉴는 포커스 없는 팝업이라 바깥 누름이 아래 화면에도 간다: 열린 메뉴를 닫으려 모드 아이콘을 누르면 팝업이 먼저 닫고 이 누름이 다시 열므로,
+     * 막 닫혔으면([AppConfig.CameraView.MENU_REOPEN_GUARD_MS] 안) 열지 않는다.
+     */
     fun openShootMenu() {
+        if (System.currentTimeMillis() - menuClosedAt < AppConfig.CameraView.MENU_REOPEN_GUARD_MS) return
         if (busy()) return
         set { it.copy(shootMenu = true) }
         val d = drone() ?: return
@@ -215,7 +240,10 @@ internal class CameraControl(
         scope.launch { d.photoModes()?.let { m -> set { it.copy(photoModes = m) } } }
     }
 
-    fun closeShootMenu() = set { it.copy(shootMenu = false) }
+    fun closeShootMenu() {
+        menuClosedAt = System.currentTimeMillis()
+        set { it.copy(shootMenu = false) }
+    }
 
     /**
      * 촬영 모드 메뉴의 단일·타이머·파노라마·SMART. 고를 수 없으면([shootModeBlock]: 파노라마, 기체가 모르는 모드) 안내문만 띄우고 거짓.

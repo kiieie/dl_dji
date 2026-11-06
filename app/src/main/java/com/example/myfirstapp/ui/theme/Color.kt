@@ -65,6 +65,8 @@ val HomeTileFallback = Color(0xFF8E949B)
 val MapThumbBg = Color(0xFFF1ECE2)
 /** 경로 그림에 지도 바탕(10.4.10)이 있을 때 녹색 경로 밑에 까는 어두운 테두리(밝은 길·논 위에서도 보이게). */
 val MapThumbCasing = Color(0x99000000)
+/** 그림(위성 지도·사진) 위 글자 밑 그러데이션의 짙은 끝(Pilot 2 카드, 10.4.10). 글자는 흰색, 보조는 [TextSoft]. */
+val ImageScrim = Color(0xB3000000)
 
 /** 우리 앱 표지 고유색(왼쪽 위 `KEPCO 점검` 테두리, 10.5.1). Pilot 2와 구별하는 유일한 색. */
 val Brand = Color(0xFF8B5CF6)

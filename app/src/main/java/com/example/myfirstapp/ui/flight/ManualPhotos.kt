@@ -33,16 +33,16 @@ internal class ManualPhotos(
     private val live: LiveDetection?,
     private val precise: PreciseDetection?,
 ) {
-    /** [info]를 받아 저장하고 저장한 곳 안내("전주 X" 또는 파일 이름)를 돌려준다. */
-    suspend fun keep(d: DroneGateway, info: CaptureInfo, lens: Lens): Result<String> = runCatching {
+    /** [info]를 받아 저장하고 저장한 곳(붙인 전주, 파일)을 돌려준다. */
+    suspend fun keep(d: DroneGateway, info: CaptureInfo, lens: Lens): Result<SavedPhoto> = runCatching {
         val bytes = d.download(info, DownloadMode.ORIGINAL).getOrThrow()
-        val (where, path) = store(info, bytes, lens)
-        live?.offer(bytes, path)
+        val saved = store(info, bytes, lens)
+        live?.offer(bytes, saved.path)
         precise?.kick()
-        where
+        saved
     }
 
-    private suspend fun store(info: CaptureInfo, bytes: ByteArray, lens: Lens): Pair<String, String?> {
+    private suspend fun store(info: CaptureInfo, bytes: ByteArray, lens: Lens): SavedPhoto {
         val m = mission()
         val v = if (m == null) null else shutterLinkTarget(info.position, dao.missionVisits(m.id)) { GeoPoint(it.lat, it.lon) }
         if (m != null && v != null) {
@@ -52,11 +52,17 @@ internal class ManualPhotos(
             )
             val id = rec.saveCapture(0, 0, info.copy(lens = lens, viewpoint = null), CaptureSource.MANUAL)
             rec.saveImage(id, bytes)
-            return "전주 ${v.poleId}" to dao.capture(id)?.filePath
+            return SavedPhoto(v.poleId, dao.capture(id)?.filePath)
         }
         val day = SimpleDateFormat("yyyyMMdd", Locale.ROOT).format(Date())
         val file = File(appFilesDir, "manual/$day/manual_${info.takenAtMs}_${info.mediaId}_${lens}.jpg")
         withContext(Dispatchers.IO) { file.parentFile?.mkdirs(); file.writeBytes(bytes) }
-        return file.name to file.path
+        return SavedPhoto(null, file.path)
     }
+}
+
+/** 저장한 수동 사진: 붙인 전주([poleId], 기타 `manual/`이면 null)와 파일 경로. */
+internal data class SavedPhoto(val poleId: String?, val path: String?) {
+    /** 카메라 뷰 안내 줄: Pilot 2처럼 파일 이름 없이 짧게(11-06 RC). */
+    val message get() = if (poleId == null) "사진 저장됨" else "사진 저장됨 · 전주 $poleId"
 }
