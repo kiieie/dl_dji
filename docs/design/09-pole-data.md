@@ -34,7 +34,7 @@
 
 ## 4.5.4 저장(Room 4.2)
 
-`POLE`에 `lineNo TEXT`, `lengthM REAL`, `equipment TEXT`, `guy INTEGER`, `installedYm TEXT`(마이그레이션 2→3), `voltage TEXT`(고/저압, 3→4)를 더한다(모두 null 허용). 3→4 전에 가져온 프로젝트는 기호를 보려면 엑셀을 다시 가져온다. 기존 프로젝트는 그대로 동작한다(표시 이름은 전산화번호, 조준 높이는 기본값 17.5m).
+`POLE`에 `lineNo TEXT`, `lengthM REAL`, `equipment TEXT`, `guy INTEGER`, `installedYm TEXT`(마이그레이션 2→3), `voltage TEXT`(고/저압, 3→4)를 더한다(모두 null 허용). 3→4 전에 가져온 프로젝트는 기호를 보려면 엑셀을 다시 가져온다. 기존 프로젝트는 그대로 동작한다(표시 이름은 전산화번호, 조준 높이는 설정값, 기본 16m).
 
 ## 4.5.5 단계
 

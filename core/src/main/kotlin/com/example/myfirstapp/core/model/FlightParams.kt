@@ -39,7 +39,7 @@ data class FlightParams(
     /** 4방향 사선(5.6): 비행 고도(이륙 지점 기준, 2026-11-06 27 → 30m: 지형 추적 최저 고도), 전주까지 수평거리, 조준 높이(지상 기준). */
     val diagonalAltitudeM: Double = 30.0,
     val diagonalDistanceM: Double = 10.0,
-    val aimHeightM: Double = 17.5,
+    val aimHeightM: Double = 16.0,
     /** 방식 A(5.6): 다른 전주의 촬영 지점 사이(또는 이륙·복귀 구간)가 이보다 길면 이동 고도로 올라갔다 내려온다. 저장하지 않는 조정값(2026-11-04 60 → 150m: 이웃 전주 62m에서도 오르내림). */
     val transitLegThresholdM: Double = 150.0,
     /** 실시간 지형 추적(5.6, 2026-10-30 기본 켬): 켜면 KMZ 고도가 지면 기준(`realTimeFollowSurface`), 끄면 이륙 지점 기준. */

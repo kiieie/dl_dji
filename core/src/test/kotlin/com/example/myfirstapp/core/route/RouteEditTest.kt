@@ -58,9 +58,9 @@ class RouteEditTest {
         val p = diagonal.withOverride("P1", PoleOverride(altitudeM = 35.0, gimbalPitchDeg = -60.0)).withOverride("P2", PoleOverride(altitudeM = 30.0))
         val v = Viewpoints.expand(poles, p, home)
         v.filter { it.pole.poleId == "P1" }.forEach { assertEquals(35.0, it.altitudeM, 1e-9); assertEquals(-60.0, it.gimbalPitchDeg, 1e-9) }
-        // 피치를 따로 정하지 않으면 바뀐 고도로 다시 겨눈다: atan((30 − 17.5) / 10)
-        v.filter { it.pole.poleId == "P2" }.forEach { assertEquals(-51.3, it.gimbalPitchDeg, 0.1) }
-        v.filter { it.pole.poleId == "P0" }.forEach { assertEquals(27.0, it.altitudeM, 1e-9); assertEquals(-43.5, it.gimbalPitchDeg, 0.1) }
+        // 피치를 따로 정하지 않으면 바뀐 고도로 다시 겨눈다: atan((30 − 16) / 10)
+        v.filter { it.pole.poleId == "P2" }.forEach { assertEquals(-54.5, it.gimbalPitchDeg, 0.1) }
+        v.filter { it.pole.poleId == "P0" }.forEach { assertEquals(27.0, it.altitudeM, 1e-9); assertEquals(-47.7, it.gimbalPitchDeg, 0.1) }
         val wpml = ByteArrayOutputStream().also { WpmlWriter.write(v, p, it, nowMs = 0) }.toByteArray().let { b ->
             ZipInputStream(b.inputStream()).use { z -> generateSequence { z.nextEntry }.first { it.name.endsWith("waylines.wpml") }; z.readBytes().decodeToString() }
         }

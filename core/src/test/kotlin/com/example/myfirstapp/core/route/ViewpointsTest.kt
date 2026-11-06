@@ -39,8 +39,8 @@ class ViewpointsTest {
                 assertEquals(10.0 * Math.sqrt(0.5), abs(LocalProjection(pole.position).toEnu(p.position).y), 0.01)
             }
         }
-        // 고도 27m, 거리 10m, 조준 17.5m → atan(9.5/10)
-        assertEquals(-43.5, v[0].gimbalPitchDeg, 0.1)
+        // 고도 27m, 거리 10m, 조준 16m → atan(11/10)
+        assertEquals(-47.7, v[0].gimbalPitchDeg, 0.1)
     }
 
     @Test
