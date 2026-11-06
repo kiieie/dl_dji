@@ -53,6 +53,50 @@ object DjiKeyProbe {
         OpLog.log("keyProbe", "capture/done")
     }
 
+    /**
+     * 장애물 센서 원시 값(실내 시험 1.12, `--es bench obstacle`): [seconds]초 동안 `ObstacleDataListener`를 받아 2초마다 한 줄
+     * (받은 횟수, 수평 최소 mm와 그 방향, 위·아래 mm, 감지 켬, 시뮬레이터 여부). 앱 경고 로직을 거치지 않는다.
+     */
+    suspend fun obstacleRaw(seconds: Int = 20) {
+        val pm = dji.v5.manager.aircraft.perception.PerceptionManager.getInstance()
+        var count = 0
+        var last: dji.v5.manager.aircraft.perception.data.ObstacleData? = null
+        var info: dji.v5.manager.aircraft.perception.data.PerceptionInfo? = null
+        val l = dji.v5.manager.aircraft.perception.listener.ObstacleDataListener { d -> count++; last = d }
+        val p = dji.v5.manager.aircraft.perception.listener.PerceptionInformationListener { i -> info = i }
+        pm.addObstacleDataListener(l)
+        pm.addPerceptionInformationListener(p)
+        try {
+            repeat(seconds / 2) {
+                kotlinx.coroutines.delay(2_000)
+                val d = last
+                val h = d?.horizontalObstacleDistance.orEmpty()
+                val min = h.withIndex().filter { it.value > 0 }.minByOrNull { it.value }
+                OpLog.log(
+                    "keyProbe", "obstacleRaw",
+                    mapOf(
+                        "count" to count, "sectors" to h.size, "interval" to d?.horizontalAngleInterval,
+                        "minMm" to min?.value, "minDeg" to min?.let { it.index * (d?.horizontalAngleInterval ?: 0) },
+                        // 방향별 최솟값(기수 0°부터 시계 방향, 칸마다 ±45°): 앞·오른쪽·뒤·왼쪽
+                        "front" to sector(h, d?.horizontalAngleInterval, 0), "right" to sector(h, d?.horizontalAngleInterval, 90),
+                        "back" to sector(h, d?.horizontalAngleInterval, 180), "left" to sector(h, d?.horizontalAngleInterval, 270),
+                        "upMm" to d?.upwardObstacleDistance, "downMm" to d?.downwardObstacleDistance,
+                        "horizOn" to info?.isHorizontalObstacleAvoidanceEnabled, "sim" to djiSimulatorOn(),
+                    ),
+                )
+            }
+        } finally {
+            pm.removeObstacleDataListener(l)
+            pm.removePerceptionInformationListener(p)
+        }
+    }
+
+    /** [center]° ±45° 칸의 0보다 큰 최솟값(mm). */
+    private fun sector(h: List<Int>, interval: Int?, center: Int): Int? {
+        val step = (interval ?: 0).takeIf { it > 0 } ?: return null
+        return h.withIndex().filter { (i, v) -> v > 0 && ((i * step - center + 540) % 360 - 180).let { kotlin.math.abs(it) <= 45 } }.minOfOrNull { it.value }
+    }
+
     private suspend fun probe(block: suspend () -> Any?): String =
         runCatching { withTimeout(PROBE_MS) { block() } }.fold({ it.toString() }, { "ERR " + it.djiDetail() })
 

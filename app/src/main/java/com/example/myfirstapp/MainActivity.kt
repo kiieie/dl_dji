@@ -131,7 +131,7 @@ class MainActivity : ComponentActivity() {
         val arg = intent?.getStringExtra("bench") ?: return
         val photo = intent.getStringExtra("benchPhoto")
         OpLog.log("bench", "adb", mapOf("arg" to arg, "photo" to photo))
-        if (arg == "keys") lifecycleScope.launch { DjiKeyProbe.run() } else if (arg == "capture") lifecycleScope.launch { DjiKeyProbe.captureLenses() } else (application as InspectionApp).startBench(full = arg == "full", photo = photo, only = intent.getStringExtra("benchOnly"))
+        if (arg == "keys") lifecycleScope.launch { DjiKeyProbe.run() } else if (arg == "capture") lifecycleScope.launch { DjiKeyProbe.captureLenses() } else if (arg == "obstacle") lifecycleScope.launch { DjiKeyProbe.obstacleRaw() } else (application as InspectionApp).startBench(full = arg == "full", photo = photo, only = intent.getStringExtra("benchOnly"))
     }
 
     /**
