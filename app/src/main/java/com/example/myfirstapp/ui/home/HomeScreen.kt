@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.home
 
+import com.example.myfirstapp.core.executor.sdStateLabel
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -436,7 +437,7 @@ private fun AircraftDialog(a: AircraftStatus, onClose: () -> Unit) {
                 Text(label, color = color, fontWeight = FontWeight.Bold)
                 Item("배터리", a.batteryPct?.let { "$it%" })
                 Item("GNSS 위성", a.satellites?.let { "${it}개" })
-                Item("SD 카드", a.sdFreeMb?.let { if (a.sdState == "NORMAL") sdFreeLabel(it.toLong()) else a.sdState })
+                Item("SD 카드", a.sdFreeMb?.let { if (a.sdState == "NORMAL") sdFreeLabel(it.toLong()) else a.sdState?.let(::sdStateLabel) })
                 Item("LDM(로컬 데이터 모드)", if (a.ldm) "켜짐" else "꺼짐")
                 Item("시뮬레이터", if (a.simulator) "켜짐" else "꺼짐")
                 Text("기체 설정은 [기체 점검]에서 바꿉니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)

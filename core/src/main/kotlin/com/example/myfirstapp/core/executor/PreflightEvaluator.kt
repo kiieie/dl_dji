@@ -13,10 +13,24 @@ import kotlin.math.ceil
  */
 data class PreflightCheck(val label: String, val value: String, val ok: Boolean, val problem: String, val blocking: Boolean = false)
 
-/** 비행 전 점검 판정(6.7). */
 /** SD 남은 용량 글(Pilot 2 "211.4G", 10.5.5): 모든 화면(비행 전 점검·체크리스트·홈·기체 점검)이 같은 꼴을 쓴다. */
 fun sdFreeLabel(mb: Long): String = String.format(java.util.Locale.ROOT, "%.1fG", mb / 1024.0)
 
+/** SD 카드 상태(`CameraSDCardState` 이름)의 한국어 글. 모르는 값은 이름을 괄호에 둔다(2026-11-06 실내 시험: 홈에 `NOT_INSERTED`가 그대로 보였음). */
+fun sdStateLabel(state: String): String = when (state) {
+    "NORMAL" -> "정상"
+    "NOT_INSERTED" -> "없음"
+    "FULL", "NO_REMAINING_FILE_INDICES" -> "가득 참"
+    "SLOW", "WRITING_SLOWLY" -> "느림"
+    "FORMAT_NEEDED", "INVALID_FILE_SYSTEM" -> "포맷 필요"
+    "FORMAT_RECOMMENDED" -> "포맷 권장"
+    "FORMATTING" -> "포맷 중"
+    "INITIALIZING", "RECOVERING_FILES", "BUSY" -> "준비 중"
+    "READ_ONLY" -> "읽기 전용"
+    else -> "오류($state)"
+}
+
+/** 비행 전 점검 판정(6.7). */
 object PreflightEvaluator {
     /** 배터리 항목 이름. 비행 전 점검 화면이 이 줄을 한 줄 전체로 크게 보인다. */
     const val BATTERY = "배터리"

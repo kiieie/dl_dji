@@ -347,6 +347,9 @@ object AppConfig {
         val SERIOUS_BATTERY_RANGE = 10..45
         val SELF_DISCHARGE_DAYS = 1..10
 
+        /** 배터리 셀 전압 차이(mV)가 이보다 크면 "확인 필요": M3E가 셀 판정 키를 주지 않아 셀 전압으로 본다(2026-11-06). */
+        const val CELL_SPREAD_WARN_MV = 100
+
         /** 짐벌 피치 평활도(Pilot 2 슬라이더 값 8), 피치 최대 속도(%, Pilot 2 50%). */
         val GIMBAL_SMOOTH_RANGE = 0..30
         val GIMBAL_SPEED_RANGE = 1..100

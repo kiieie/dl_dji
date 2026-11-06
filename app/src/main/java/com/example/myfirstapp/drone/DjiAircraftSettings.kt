@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.core.executor.sdStateLabel
 import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.model.bandwidthLabel
 import com.example.myfirstapp.core.model.signalWord
@@ -167,8 +168,7 @@ fun djiAircraftSettingTabs(fake: Boolean, general: List<AircraftSetting> = empty
         "이미지 전송 설정" to listOf(
             choice("작동 주파수", AirLinkKey.KeyFrequencyBand, listOf(FrequencyBand.BAND_2_DOT_4G to "2.4 GHz", FrequencyBand.BAND_5_DOT_8G to "5G", FrequencyBand.BAND_MULTI to "듀얼 밴드")),
             info("신호 강도") { read(AirLinkKey.KeySignalQuality)?.let { "${signalWord(it)} · $it%" } },
-            // ponytail: 조종기 안테나 두 개 중 센 쪽을 dBm으로 본다(MSDK 문서에 단위 없음). Pilot 2 "신호 강도: 0.0dBm"과 실기 대조
-            info("신호 강도(dBm)") { read(AirLinkKey.KeyRcAntennaRssi)?.let { r -> listOfNotNull(r.antenna1, r.antenna2).maxOrNull()?.let { "$it dBm" } } },
+            pilot2("신호 강도(dBm)", "M3E에서 SDK 키(KeyRcAntennaRssi)가 읽기·알림 모두 응답하지 않음(2026-11-06 실내 시험). Pilot 2에서"),
             info("다운링크 대역폭") { read(AirLinkKey.KeyBandwidth)?.name?.let(::bandwidthLabel) },
             // ponytail: Mbps로 본다(MSDK 문서에 단위 없음). Pilot 2 "49.21Mbps"와 실기 대조
             info("이미지 전송 비트 전송률") { read(AirLinkKey.KeyDynamicDataRate)?.let { "%.2fMbps".format(it) } },
@@ -182,8 +182,15 @@ fun djiAircraftSettingTabs(fake: Boolean, general: List<AircraftSetting> = empty
             // ponytail: 초로 본다(키 이름). 실기 Pilot 2 "비행시간 00:00"과 대조
             info("비행시간") { read(FlightControllerKey.KeyFlightTimeInSeconds)?.let { "%02d:%02d".format(it / 60, it % 60) } },
             info("배터리") {
-                val cells = listOf(read(BatteryKey.KeyIsLowCellVoltageDetected), read(BatteryKey.KeyIsVoltageDifferenceDetected))
-                if (cells.all { it == null }) null else if (cells.any { it == true }) "확인 필요(셀 전압)" else "정상"
+                // M3E는 KeyIsLowCellVoltageDetected가 REQUEST_HANDLER_NOT_FOUND(2026-11-06 실내 시험): 키마다 따로 읽어 되는 것만 본다
+                // 둘 다 못 읽으면(11-06 M3E) 셀 전압 차이로 본다
+                val cells = listOf(BatteryKey.KeyIsLowCellVoltageDetected, BatteryKey.KeyIsVoltageDifferenceDetected).map { runCatching { read(it) }.getOrNull() }
+                val spread = runCatching { read(BatteryKey.KeyCellVoltages) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { it.max() - it.min() }
+                when {
+                    cells.any { it == true } || (spread ?: 0) > cfg.CELL_SPREAD_WARN_MV -> "확인 필요(셀 전압)"
+                    cells.all { it == null } && spread == null -> null
+                    else -> "정상"
+                }
             },
             info("배터리 잔량") { read(BatteryKey.KeyChargeRemainingInPercent)?.let { "$it%" } },
             info("온도") { read(BatteryKey.KeyBatteryTemperature)?.let { "%.1f℃".format(it) } },
@@ -214,7 +221,7 @@ fun djiAircraftSettingTabs(fake: Boolean, general: List<AircraftSetting> = empty
             info("SD 카드") {
                 val state = read(CameraKey.KeyCameraSDCardState, camera)
                 val free = read(CameraKey.KeySDCardRemainSpace, camera)
-                "${state ?: "--"} · ${free?.let { "${it / 1024}GB 남음" } ?: "--"}"
+                "${state?.name?.let(::sdStateLabel) ?: "--"} · ${free?.let { "${it / 1024}GB 남음" } ?: "--"}"
             },
             AircraftSetting(
                 "SD 카드 포맷", AircraftSetting.Kind.Action("SD 카드의 사진이 모두 지워지고 되돌릴 수 없습니다. 비행 후 원본을 받았는지 확인하세요. 포맷할까요?"),

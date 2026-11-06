@@ -1,5 +1,6 @@
 package com.example.myfirstapp.drone
 
+import com.example.myfirstapp.core.executor.sdStateLabel
 import com.example.myfirstapp.AppConfig
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.CameraKey
@@ -37,7 +38,7 @@ data class AircraftStatus(
     /** 주의·문제 이유(Pilot 2 HMS처럼 무엇을 확인할지). */
     val issues: List<String>
         get() = buildList {
-            if (sdState != null && sdState != CameraSDCardState.NORMAL.name) add("SD 카드 $sdState")
+            if (sdState != null && sdState != CameraSDCardState.NORMAL.name) add("SD 카드 ${sdStateLabel(sdState)}")
             if ((batteryPct ?: 100) < AppConfig.Checks.BATTERY_MIN_PCT) add("배터리 낮음")
             if ((satellites ?: 0) < AppConfig.Checks.MIN_SATELLITES) add("GNSS 위성 부족")
             if (!ldm) add("LDM 꺼짐")

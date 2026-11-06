@@ -1,7 +1,10 @@
 package com.example.myfirstapp.drone
 
+import dji.sdk.keyvalue.key.DJIKey
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
+import dji.v5.manager.KeyManager
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -43,4 +46,16 @@ suspend fun <T> djiValue(timeoutMs: Long? = null, call: (CommonCallbacks.Complet
             override fun onFailure(error: IDJIError) = c.resumeWithException(DjiException(error))
         })
     }
+}
+
+/**
+ * 값이 바뀔 때만 알리는 키(`getValue`가 응답하지 않음, 예: `AirLinkKey.KeyRcAntennaRssi` 2026-11-06 실내 시험)의 첫 알림.
+ * 시간 제한은 부르는 쪽에서 건다.
+ */
+suspend fun <T> djiFirst(key: DJIKey<T>): T = suspendCancellableCoroutine { c ->
+    val holder = Any()
+    val keys = KeyManager.getInstance()
+    val done = AtomicBoolean(false)
+    keys.listen(key, holder) { _, v -> if (v != null && done.compareAndSet(false, true)) { keys.cancelListen(holder); c.resume(v) } }
+    c.invokeOnCancellation { keys.cancelListen(holder) }
 }
