@@ -114,7 +114,7 @@ fun ManualFlightScreen(
             ExposureStrip(f.camera, f.videoMode, focusEnabled = s.connected, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
             CameraLeftColumn(f.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), f.telemetry, f.ar, vm::toggleAr)
             CameraColumn(
-                s = f, shutterEnabled = s.connected && !s.shooting, onShutter = vm::shutter,
+                s = f, shutterEnabled = s.connected && !f.capturing, onShutter = vm::shutter,
                 cameraEnabled = s.connected, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 6.dp),
                 onAlbum = onAlbum, shotsLabel = "${s.shots}장",

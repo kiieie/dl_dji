@@ -42,13 +42,14 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /** 수동 비행 카메라 뷰 상태. 지도·상단 바는 비행 화면과 같은 [FlightUiState]를 쓴다. */
 data class ManualFlightUiState(
     val flight: FlightUiState = FlightUiState(loading = false),
     val connected: Boolean = false,
-    val shooting: Boolean = false,
     val shots: Int = 0,
     val message: String? = null,
     /** 왼쪽 위 경로 알약(Pilot 2 55쪽)이 이어서 열 최근 미션. 없으면 알약을 숨긴다. */
@@ -187,20 +188,25 @@ class ManualFlightViewModel(
         }
     }
 
-    /** 사진 한 장(단일·SMART): 찍고 원본을 받는다. 찍는 동안([FlightUiState.capturing]) 다른 카메라 조작은 "촬영 중" 안내문. */
+    /**
+     * 사진 한 장(단일·SMART): 찍고 원본을 받는다. 찍는 동안([FlightUiState.capturing], 기체가 파일을 만들 때까지 약 1.7초)만 다른 카메라 조작을 막는다.
+     * 원본 받기·저장(약 2.3초)은 뒤에서 찍은 차례대로: 다음 셔터를 기다리게 하지 않는다(2026-11-06 사용자 "사진 찍는 게 느리다", 미션 화면과 같음).
+     */
     fun shoot() {
         val d = drone ?: return
-        if (_state.value.shooting) return
+        if (_state.value.flight.capturing) return
         val lens = _state.value.flight.lens
-        _state.update { it.copy(shooting = true, flight = it.flight.copy(capturing = true)) }
+        _state.update { it.copy(flight = it.flight.copy(capturing = true)) }
         viewModelScope.launch {
             val shot = d.capture(lens, 0.0, 1.0)
             _state.update { it.copy(flight = it.flight.copy(capturing = false)) }
             val info = shot.getOrNull()
-            saved(info, if (info == null) Result.failure(shot.exceptionOrNull() ?: IllegalStateException("촬영 실패")) else photos.keep(d, info, lens))
-            _state.update { it.copy(shooting = false) }
+            saves.withLock { saved(info, if (info == null) Result.failure(shot.exceptionOrNull() ?: IllegalStateException("촬영 실패")) else photos.keep(d, info, lens)) }
         }
     }
+
+    /** 수동 사진 저장 차례(찍은 순서대로 받는다). */
+    private val saves = Mutex()
 
     /** 사진 하나의 결과(셔터·타이머): 장수·안내 줄, 위치가 없으면 Pilot 2 "위치 레코딩 실패". */
     private fun saved(info: CaptureInfo?, result: Result<SavedPhoto>) {
