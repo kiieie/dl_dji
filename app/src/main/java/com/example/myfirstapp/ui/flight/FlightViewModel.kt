@@ -177,6 +177,13 @@ data class FlightUiState(
     val cameraFree get() = exec.state == ExecState.Paused || !exec.state.airborne
 
     /** 화면 셔터를 누를 수 있는 때: 자동 비행 중이 아닐 때(일시정지·땅·RTH, [shutterRoute]), 녹화·타이머 중(멈추기). */
+    /** 기체 녹화 알림([recording])으로 녹화 표시를 맞춘다: 켜지면 지금부터(이미 켜 있으면 그대로), 꺼지면 끔, 모르면 그대로. */
+    fun withRecording(recording: Boolean?): FlightUiState = when (recording) {
+        true -> if (recordingSinceMs == null) copy(recordingSinceMs = System.currentTimeMillis(), videoMode = true) else this
+        false -> if (recordingSinceMs != null) copy(recordingSinceMs = null) else this
+        null -> this
+    }
+
     val shutterFree get() = recordingSinceMs != null || timerRunning || shutterRoute(exec.state, telemetry?.isFlying == true) != ShutterRoute.BLOCKED
 }
 
@@ -329,8 +336,11 @@ class FlightViewModel(
         }
         viewModelScope.watchObstacles(drone, notifier) { w -> _state.update { it.copy(obstacles = w) } }
         viewModelScope.launch {
+            var recording: Boolean? = null
             drone.cameraStatus.collect { c ->
-                _state.update { it.copy(camera = c, zoomRatio = c.zoomRatio ?: it.zoomRatio) }
+                val recChanged = c.recording != recording
+                recording = c.recording
+                _state.update { it.copy(camera = c, zoomRatio = c.zoomRatio ?: it.zoomRatio).let { s -> if (recChanged) s.withRecording(c.recording) else s } }
                 camera.adoptShootMode(c.shootMode)
             }
         }

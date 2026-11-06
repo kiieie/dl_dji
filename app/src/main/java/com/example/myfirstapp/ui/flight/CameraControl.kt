@@ -68,6 +68,8 @@ internal class CameraControl(
 
     fun setLens(lens: Lens) {
         if (busy()) return
+        // 녹화 중 렌즈 바꾸기는 기체가 거절하고(LiveViewCameraSource -480) 녹화가 끊긴다(2026-11-06 실내 시험)
+        if (get().recordingSinceMs != null) return notice(RECORDING_LENS, NoticeKind.SMALL)
         OpLog.log(tag, "lens", mapOf("lens" to lens.name))
         val was = get().lens
         set { it.copy(lens = lens) }
@@ -318,6 +320,7 @@ internal class CameraControl(
     companion object {
         /** Pilot 2 안내문 문구(11-04 녹화). */
         const val BUSY = "촬영 중 기체 또는 카메라 작동 금지"
+        const val RECORDING_LENS = "녹화 중에는 렌즈를 바꿀 수 없습니다"
         const val NO_POSITION = "이용 가능한 위성이 충분하지 않습니다. 위치 레코딩 실패"
         const val TIMER_STOP_FAILED = "타이머를 멈추지 못했습니다. 셔터를 다시 눌러 멈추세요"
         const val MISSION_PHOTOS = "미션 사진을 받는 중입니다. 잠시 뒤 촬영하세요"

@@ -132,8 +132,14 @@ class ManualFlightViewModel(
         drone?.let { d -> viewModelScope.watchObstacles(d, tone) { w -> _state.update { it.copy(flight = it.flight.copy(obstacles = w)) } } }
         drone?.let { d ->
             viewModelScope.launch {
+                var recording: Boolean? = null
                 d.cameraStatus.collect { c ->
-                    _state.update { it.copy(flight = it.flight.copy(camera = c, zoomRatio = c.zoomRatio ?: it.flight.zoomRatio)) }
+                    val recChanged = c.recording != recording
+                    recording = c.recording
+                    _state.update { s ->
+                        val f = s.flight.copy(camera = c, zoomRatio = c.zoomRatio ?: s.flight.zoomRatio)
+                        s.copy(flight = if (recChanged) f.withRecording(c.recording) else f)
+                    }
                     camera.adoptShootMode(c.shootMode)
                 }
             }

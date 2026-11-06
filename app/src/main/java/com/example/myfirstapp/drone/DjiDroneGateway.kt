@@ -262,6 +262,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         on(CameraKey.KeySDCardAvailablePhotoCount, camera) { n -> _camera.update { it.copy(photosLeft = n) } }
         on(CameraKey.KeySDCardAvailableVideoDuration, camera) { n -> _camera.update { it.copy(recordSecLeft = n) } }
         on(CameraKey.KeyCameraMode, camera) { m -> cameraModeIs(m) }
+        on(CameraKey.KeyIsRecording, camera) { r ->
+            if (r != _camera.value.recording) OpLog.log("camera", "recording", mapOf("on" to r))
+            _camera.update { it.copy(recording = r) }
+        }
         // 망원 배율: 화면 줌 표시는 기체 값을 따른다(RC 다이얼 줌 포함)
         KeyTools.createCameraKey(CameraKey.KeyCameraZoomRatios, camera, CameraLensType.CAMERA_LENS_ZOOM).let { k ->
             keys.listen(k, holder) { _, r -> _camera.update { it.copy(zoomRatio = r) } }
