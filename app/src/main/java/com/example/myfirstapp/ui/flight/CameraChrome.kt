@@ -485,7 +485,9 @@ private fun SunHandle(mark: Offset, now: Double, onEv: (Double) -> Unit, onTouch
                     while (acc <= -stepPx || acc >= stepPx) {
                         val up = acc < 0
                         acc += if (up) stepPx else -stepPx
-                        val next = ((dragEv ?: ev) + if (up) AppConfig.CameraView.EV_STEP else -AppConfig.CameraView.EV_STEP)
+                        // 시작값은 화면 글자(+0.7)라 1/3 눈금에 맞춘 뒤 한 단계(0.7 − 1/3 = 0.37이 되지 않게, 2026-11-06)
+                        val from = Math.round((dragEv ?: ev) / AppConfig.CameraView.EV_STEP) * AppConfig.CameraView.EV_STEP
+                        val next = (from + if (up) AppConfig.CameraView.EV_STEP else -AppConfig.CameraView.EV_STEP)
                             .coerceIn(-AppConfig.CameraView.EV_MAX, AppConfig.CameraView.EV_MAX)
                         dragEv = next
                         emit(next)
