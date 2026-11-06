@@ -37,7 +37,9 @@ class RoomRecorder(
         dao.insertEvent(FlightEventEntity(0, sortie.sortieId, from, to, reason, visitId, now))
         when (to) {
             "PreflightCheck" -> dao.setMissionStatus(missionId, "IN_PROGRESS")
-            "Takeoff" -> dao.startSortie(sortie.sortieId, now)
+            // 방식 A는 "Takeoff"가 미션 시작 명령 전이라 거절돼도 남는다(2026-11-06: 날지 않은 소티가 재시작 복구에서 "소티 완료"로 닫힘).
+            // 기체가 미션을 받아 날기 시작한 때 연다(재개·남은 전주도 같은 소티를 다시 연다)
+            "FlyingLeg" -> dao.startSortie(sortie.sortieId, now)
             "Arrived" -> visitId?.let { dao.setArrived(it, now) }
             "SortieDone" -> dao.endSortie(sortie.sortieId, now)
             // 남은 전주가 있으면 부분 완료(홈·이어하기에 남음, 2026-10-30 사용자 결정)

@@ -287,7 +287,10 @@ internal fun DecimalField(
 ) {
     val shown = String.format(Locale.ROOT, "%.${decimals}f", value)
     var text by remember(shown) { mutableStateOf(shown) }
+    // 화면에 붙을 때 onFocusChanged가 "포커스 없음"으로 한 번 불린다: 그때·글자를 안 바꿨을 때 쓰면 기체 값 13.8000002를 13.8로 덮어쓴다(2026-11-06 실내 시험)
+    var focused by remember { mutableStateOf(false) }
     fun commit() {
+        if (text == shown) return
         val v = text.replace(',', '.').toDoubleOrNull()
         val fixed = v?.let { (Math.round(it / step) * step).coerceIn(range) }
         if (fixed != null && fixed != value) onSet(fixed) else text = shown
@@ -299,7 +302,7 @@ internal fun DecimalField(
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { commit() }),
-        modifier = Modifier.width(width).onFocusChanged { if (!it.isFocused) commit() }.semantics { contentDescription = "값 $shown" },
+        modifier = Modifier.width(width).onFocusChanged { if (focused && !it.isFocused) commit(); focused = it.isFocused }.semantics { contentDescription = "값 $shown" },
         decorationBox = { inner ->
             Box(Modifier.fillMaxWidth().height(Dimens.TouchMedium).background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(3.dp)), contentAlignment = Alignment.Center) { inner() }
         },

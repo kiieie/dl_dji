@@ -179,8 +179,8 @@ fun djiAircraftSettingTabs(fake: Boolean, general: List<AircraftSetting> = empty
         ).orFake(),
         "인텔리전트 배터리 정보" to listOf(
             info("배터리 용량") { read(BatteryKey.KeyChargeRemainingInPercent)?.let { "$it%" } },
-            // ponytail: 초로 본다(키 이름). 실기 Pilot 2 "비행시간 00:00"과 대조
-            info("비행시간") { read(FlightControllerKey.KeyFlightTimeInSeconds)?.let { "%02d:%02d".format(it / 60, it % 60) } },
+            // 키 이름은 초지만 값은 0.1초(2026-11-06 실내 시험: 시뮬레이터 비행 약 15분 뒤 9074)
+            info("비행시간") { read(FlightControllerKey.KeyFlightTimeInSeconds)?.let { (it / 10).let { s -> "%02d:%02d".format(s / 60, s % 60) } } },
             info("배터리") {
                 // M3E는 KeyIsLowCellVoltageDetected가 REQUEST_HANDLER_NOT_FOUND(2026-11-06 실내 시험): 키마다 따로 읽어 되는 것만 본다
                 // 둘 다 못 읽으면(11-06 M3E) 셀 전압 차이로 본다
