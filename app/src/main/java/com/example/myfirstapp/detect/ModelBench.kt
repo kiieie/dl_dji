@@ -42,13 +42,14 @@ object ModelBench {
     val status: StateFlow<String> = _status.asStateFlow()
     private var job: Job? = null
 
-    fun start(context: Context, scope: CoroutineScope, settings: SettingsStore, precise: PreciseDetection, full: Boolean = false, photo: String? = null) {
+    /** [only]가 있으면 폴더 이름에 그 글이 든 모델만 잰다(예: 새 모델만). */
+    fun start(context: Context, scope: CoroutineScope, settings: SettingsStore, precise: PreciseDetection, full: Boolean = false, photo: String? = null, only: String? = null) {
         if (job?.isActive == true) return
         job = scope.launch {
             precise.benchRunning.value = true
             try {
                 _status.value = "모델 속도 측정 중…"
-                val file = run(context, settings, precise.gpuCache, full, photo)
+                val file = run(context, settings, precise.gpuCache, full, photo, only)
                 _status.value = "✅ 모델 속도 측정 끝: ${file.path}"
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -60,13 +61,13 @@ object ModelBench {
         }
     }
 
-    private suspend fun run(context: Context, settings: SettingsStore, gpuCache: File, full: Boolean, photoPath: String?): File {
+    private suspend fun run(context: Context, settings: SettingsStore, gpuCache: File, full: Boolean, photoPath: String?, only: String?): File {
         val root = context.getExternalFilesDir(null)
         val modelsDir = File(root, "models")
         val photo = withContext(Dispatchers.IO) {
             photoPath?.let { p -> File(p).also { require(it.isFile) { "사진이 없습니다: $p" } } } ?: benchPhoto(root)
         } ?: error("측정할 사진이 없습니다(projects/**/images/ 또는 fake_photos/)")
-        val specs = withContext(Dispatchers.IO) { readModelSpecs(modelsDir) }
+        val specs = withContext(Dispatchers.IO) { readModelSpecs(modelsDir) }.filterKeys { only == null || only in it }
         require(specs.isNotEmpty()) { "models/에 모델이 없습니다" }
         val out = StringBuilder()
         fun line(text: String, detail: Map<String, Any?> = emptyMap()) {

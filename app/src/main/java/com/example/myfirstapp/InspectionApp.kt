@@ -94,7 +94,7 @@ class InspectionApp : Application() {
      * 모델 속도 측정(9.6): 검증 화면 버튼, 또는 `adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`.
      * [full]이면 지속 성능 캐시가 없을 때 만들어 잰다(수 분, `--es bench full`). [photo]는 잴 사진의 절대 경로(`--es benchPhoto`).
      */
-    fun startBench(full: Boolean = false, photo: String? = null) = ModelBench.start(this, appScope, settings, precise, full, photo)
+    fun startBench(full: Boolean = false, photo: String? = null, only: String? = null) = ModelBench.start(this, appScope, settings, precise, full, photo, only)
 
     override fun onCreate() {
         super.onCreate()

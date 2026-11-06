@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
     /**
      * 모델 속도 측정(9.6)을 adb로 시작: `adb shell am start -n kr.co.dl_dji/com.example.myfirstapp.MainActivity --es bench all`.
      * 기체가 꺼져 있어도 된다. 결과는 `files/logs/bench-<시각>.txt`와 운용 로그(`bench`), 진행은 검증 화면에 보인다.
+     * `--es benchOnly <글>`이면 폴더 이름에 그 글이 든 모델만 잰다.
      * `--es bench keys`면 기체 키 값을 읽어 운용 로그(`keyProbe`)에 남긴다(실내 시험 4장, [DjiKeyProbe]).
      * `--es bench full`이면 지속 성능 GPU 캐시가 없을 때 만들어 잰다(모델마다 수 분), `--es benchPhoto <절대 경로>`로 사진을 고른다.
      */
@@ -130,7 +131,7 @@ class MainActivity : ComponentActivity() {
         val arg = intent?.getStringExtra("bench") ?: return
         val photo = intent.getStringExtra("benchPhoto")
         OpLog.log("bench", "adb", mapOf("arg" to arg, "photo" to photo))
-        if (arg == "keys") lifecycleScope.launch { DjiKeyProbe.run() } else (application as InspectionApp).startBench(full = arg == "full", photo = photo)
+        if (arg == "keys") lifecycleScope.launch { DjiKeyProbe.run() } else (application as InspectionApp).startBench(full = arg == "full", photo = photo, only = intent.getStringExtra("benchOnly"))
     }
 
     /**
