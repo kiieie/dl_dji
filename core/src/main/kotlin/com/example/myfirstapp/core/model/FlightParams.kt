@@ -110,6 +110,7 @@ data class FlightParams(
         if (offsetDistanceM < 0.0) add("오프셋 거리는 0m 이상이어야 합니다.")
         if (gimbalPitchDeg !in Tuning.Safety.GIMBAL_PITCH_RANGE_DEG) add("짐벌 피치는 -90~0°여야 합니다.")
         if (lenses.isEmpty()) add("촬영 렌즈를 하나 이상 선택해야 합니다.")
+        if (Lens.ZOOM in lenses && zoomRatio !in Tuning.Photo.ZOOM_RATIO_RANGE) add("망원 배율은 ${Tuning.Photo.ZOOM_RATIO_RANGE.start.toInt()}~${Tuning.Photo.ZOOM_RATIO_RANGE.endInclusive.toInt()}배여야 합니다.")
         if (waitSec < 0) add("대기 시간은 0초 이상이어야 합니다.")
         if (batteryReservePct < Tuning.Safety.MIN_RESERVE_PCT) add("배터리 예비율은 20% 이상이어야 합니다.")
         if (vlosRadiusM <= 0.0) add("가시권 반경은 0m보다 커야 합니다.")

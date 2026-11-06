@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import com.example.myfirstapp.core.input.fiveD
+import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.ParamItem
 import com.example.myfirstapp.core.model.step
 import com.example.myfirstapp.ui.mission.FiveDHints
@@ -620,6 +621,11 @@ private fun ParamRows(p: FlightParams, pole: PoleEntity?, enabled: Boolean, focu
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         } else {
             ParamRow("점검 고도", "${p.inspectAltitudeM.toInt()}", "m", enabled, focus == ParamItem.INSPECT_ALTITUDE, step(ParamItem.INSPECT_ALTITUDE))
+        }
+        if (Lens.ZOOM in p.lenses) {
+            ParamRow("망원 배율", "${p.zoomRatio.roundToInt()}", "배", enabled, focus == ParamItem.ZOOM_RATIO, step(ParamItem.ZOOM_RATIO))
+            // 7배 미만은 망원 렌즈가 아니라 광각을 잘라 늘린 사진(2026-11-06 실내 시험)
+            if (p.zoomRatio < Tuning.Photo.TELE_OPTICAL_MIN) Text("${Tuning.Photo.TELE_OPTICAL_MIN.toInt()}배 미만은 광각 사진을 잘라 늘린 것(망원 렌즈 아님)", fontSize = FontSize.Micro, color = Warning, modifier = Modifier.padding(bottom = 4.dp))
         }
         ParamRow("속도", "${p.speedMps.toInt()}", "m/s", enabled, focus == ParamItem.SPEED, step(ParamItem.SPEED))
         ParamRow("이동 고도", "${p.transitAltitudeM.toInt()}", "m", enabled, focus == ParamItem.TRANSIT_ALTITUDE, step(ParamItem.TRANSIT_ALTITUDE))
