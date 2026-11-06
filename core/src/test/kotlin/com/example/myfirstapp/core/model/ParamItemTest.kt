@@ -29,7 +29,7 @@ class ParamItemTest {
     @Test
     fun `좌우는 화면 버튼과 같은 단계로 바꾼다`() {
         val p = FlightParams()
-        assertEquals(28.0, p.step(ParamItem.DIAGONAL_ALTITUDE, 1).diagonalAltitudeM, 0.0)
+        assertEquals(31.0, p.step(ParamItem.DIAGONAL_ALTITUDE, 1).diagonalAltitudeM, 0.0)
         assertEquals(45.0, p.step(ParamItem.TRANSIT_ALTITUDE, -1).transitAltitudeM, 0.0)
         assertEquals(35.0, p.step(ParamItem.INSPECT_ALTITUDE, 1).inspectAltitudeM, 0.0)
         assertEquals(ShotMode.OVERHEAD, p.step(ParamItem.SHOT_MODE, -1).shotMode)

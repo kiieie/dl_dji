@@ -13,8 +13,8 @@ class EnergyModelTest {
 
     @Test
     fun `복귀 필요량은 수평 이동에 RTH 고도까지 오르기와 내려앉기를 더한다`() {
-        // 이동 50m → RTH 60m, 사선 촬영 27m: (60 − 27 + 60)m / 3m/s를 호버로
-        val vertical = (60.0 - 27.0 + 60.0) / 3.0 * (100.0 / (31 * 60))
+        // 이동 50m → RTH 60m, 사선 촬영 30m: (60 − 30 + 60)m / 3m/s를 호버로
+        val vertical = (60.0 - 30.0 + 60.0) / 3.0 * (100.0 / (31 * 60))
         assertEquals(diagonal.move(500.0) + vertical, diagonal.returnPct(500.0), 1e-9)
     }
 

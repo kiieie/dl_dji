@@ -16,7 +16,7 @@ class ViewpointsTest {
 
     /** 정동쪽으로 50m 간격 전주 3개. */
     private val poles = (0..2).map { i -> Pole("P$i", LocalProjection(home).toGeo(Enu(100.0 + 50.0 * i, 0.0))) }
-    private val diagonal = FlightParams(shotMode = ShotMode.DIAGONAL4)
+    private val diagonal = FlightParams(shotMode = ShotMode.DIAGONAL4, diagonalAltitudeM = 27.0)
 
     @Test
     fun `전주 위는 전주마다 1곳이고 다음 전주를 바라본다`() {
@@ -66,8 +66,8 @@ class ViewpointsTest {
 
     @Test
     fun `4방향 사선 고도가 전선에 가까우면 검증에서 막는다`() {
-        assertTrue(diagonal.validate().isEmpty())
-        assertTrue(diagonal.copy(diagonalAltitudeM = 20.0).validate().any { "27m" in it }) // 지형 추적이어도 27m(현장 PoC 전)
+        assertTrue(diagonal.copy(diagonalAltitudeM = 30.0).validate().isEmpty())
+        assertTrue(diagonal.copy(diagonalAltitudeM = 20.0).validate().any { "27m" in it }) // 지형 추적이어도 27m
         assertTrue(diagonal.copy(diagonalAltitudeM = 20.0, terrainFollow = false).validate().any { "27m" in it })
     }
 

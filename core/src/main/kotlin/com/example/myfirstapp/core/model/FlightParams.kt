@@ -29,14 +29,15 @@ data class FlightParams(
     val offsetBearingDeg: Double = 0.0,
     val gimbalPitchDeg: Double = -90.0,
     val lenses: List<Lens> = listOf(Lens.WIDE, Lens.ZOOM),
-    val zoomRatio: Double = 7.0,
+    /** 망원 배율(광각 대비). 2026-11-06 7 → 8배: 사선 고도 30m에서 조준점까지 1.16배 멀어져 같은 구도로(5.6). 7배 위는 망원 디지털 확대. */
+    val zoomRatio: Double = 8.0,
     val waitSec: Int = 5,
     val batteryReservePct: Double = 30.0,
     val vlosRadiusM: Double = 2000.0,
     val downloadMode: DownloadMode = DownloadMode.ORIGINAL,
     val shotMode: ShotMode = ShotMode.DIAGONAL4,
-    /** 4방향 사선(5.6): 비행 고도(이륙 지점 기준), 전주까지 수평거리, 조준 높이(지상 기준). */
-    val diagonalAltitudeM: Double = 27.0,
+    /** 4방향 사선(5.6): 비행 고도(이륙 지점 기준, 2026-11-06 27 → 30m: 지형 추적 최저 고도), 전주까지 수평거리, 조준 높이(지상 기준). */
+    val diagonalAltitudeM: Double = 30.0,
     val diagonalDistanceM: Double = 10.0,
     val aimHeightM: Double = 17.5,
     /** 방식 A(5.6): 다른 전주의 촬영 지점 사이(또는 이륙·복귀 구간)가 이보다 길면 이동 고도로 올라갔다 내려온다. 저장하지 않는 조정값(2026-11-04 60 → 150m: 이웃 전주 62m에서도 오르내림). */
@@ -62,9 +63,15 @@ data class FlightParams(
     /** 촬영 고도: 4방향 사선은 사선 고도, 전주 위는 점검 고도(5.6). */
     val shotAltitudeM: Double get() = if (shotMode == ShotMode.DIAGONAL4) diagonalAltitudeM else inspectAltitudeM
 
-    /** 촬영 고도로 고를 수 있는 범위(전주별 설정의 [−][+] 끝값, [validate]와 같음): 사선은 전선 위 10m ~ 이동 고도, 전주 위는 1m ~ 이동 고도. */
+    /**
+     * 촬영 고도로 고를 수 있는 범위(전주별 설정의 [−][+] 끝값, [validate]와 같음): 사선은 전선 위 10m ~ 이동 고도, 전주 위는 1m ~ 이동 고도.
+     * 지형 추적이면 아래 끝이 [Tuning.Safety.TERRAIN_FOLLOW_MIN_M](DJI 비전 감지 30m부터).
+     */
     val shotAltitudeRangeM: ClosedFloatingPointRange<Double>
-        get() = (if (shotMode == ShotMode.DIAGONAL4) Tuning.Safety.WIRE_HEIGHT_M + Tuning.Safety.WIRE_CLEARANCE_M else 1.0)..transitAltitudeM
+        get() {
+            val low = if (shotMode == ShotMode.DIAGONAL4) Tuning.Safety.WIRE_HEIGHT_M + Tuning.Safety.WIRE_CLEARANCE_M else 1.0
+            return (if (terrainFollow) maxOf(low, Tuning.Safety.TERRAIN_FOLLOW_MIN_M) else low)..transitAltitudeM
+        }
 
     /** 전주 [poleId]의 전주별 설정을 [o]로 바꾼다. 비면(모두 경로 팔로우) 지운다. */
     fun withOverride(poleId: String, o: PoleOverride) =
@@ -94,6 +101,8 @@ data class FlightParams(
     fun validate(): List<String> = buildList {
         if (transitAltitudeM !in 30.0..120.0) add("이동 고도는 30~120m여야 합니다.")
         if (inspectAltitudeM <= 0.0 || inspectAltitudeM > transitAltitudeM) add("점검 고도는 0m 초과, 이동 고도 이하여야 합니다.")
+        // 실시간 지형 추적은 30m 아래에서 시작이 거절된다(5.6, DJI 매뉴얼 72쪽, 11-03 현장 #19)
+        if (terrainFollow && shotAltitudeM < Tuning.Safety.TERRAIN_FOLLOW_MIN_M) add("지형 추적은 촬영 고도 ${Tuning.Safety.TERRAIN_FOLLOW_MIN_M.toInt()}m 이상에서만 됩니다(DJI 비전 감지 30~200m).")
         if (transitAltitudeM + Tuning.Safety.RTH_MARGIN_M > Tuning.Safety.MAX_ALTITUDE_M) add("RTH 고도가 150m를 넘습니다.")
         if (speedMps !in Tuning.Safety.SPEED_RANGE_MPS) add("비행 속도는 1.0~15.0m/s여야 합니다.")
         if (offsetDistanceM < 0.0) add("오프셋 거리는 0m 이상이어야 합니다.")
@@ -104,8 +113,7 @@ data class FlightParams(
         if (vlosRadiusM <= 0.0) add("가시권 반경은 0m보다 커야 합니다.")
         takeoffSecurityM?.let { if (it !in Tuning.Safety.TAKEOFF_SECURITY_RANGE_M) add("안전한 이륙 고도는 ${Tuning.Safety.TAKEOFF_SECURITY_RANGE_M.start.toInt()}~${Tuning.Safety.TAKEOFF_SECURITY_RANGE_M.endInclusive.toInt()}m여야 합니다.") }
         if (shotMode == ShotMode.DIAGONAL4) {
-            // 지형 추적이면 지면 기준이라 경사지에서 여유가 줄지 않아 전선 위 7.5m(대각 10m 배치)까지 허용한다(5.6)
-            // 지형 추적은 기체 아래 땅 기준이라 비탈 아래쪽 사선 지점에서는 전선 여유가 줄어든다. 현장 PoC 전까지 지형 추적이어도 27m(2026-10-30 사용자 결정)
+            // 지형 추적은 기체 아래 땅 기준이라 비탈 아래쪽 사선 지점에서는 전선 여유가 줄어든다. 지형 추적이어도 27m 아래로 내리지 않는다(2026-10-30 사용자 결정)
             if (diagonalAltitudeM < Tuning.Safety.WIRE_HEIGHT_M + Tuning.Safety.WIRE_CLEARANCE_M) add("4방향 사선 고도는 전선(약 17m)보다 10m 이상 높아야 합니다(27m 이상).")
             if (diagonalAltitudeM > transitAltitudeM) add("4방향 사선 고도는 이동 고도 이하여야 합니다.")
             if (diagonalAltitudeM + Tuning.Safety.RTH_MARGIN_M > Tuning.Safety.MAX_ALTITUDE_M) add("4방향 사선 고도가 너무 높습니다.")

@@ -195,6 +195,11 @@ object Tuning {
         /** 사선 촬영 때 전선과 지킬 최소 간격(5.6). */
         const val WIRE_CLEARANCE_M = 10.0
 
+        /**
+         * 실시간 지형 추적의 최저 고도(m): DJI 매뉴얼 72쪽 "비전 시스템 장거리 감지 범위 30~200m". 11-03 현장 27m 미션은 시작 거절, 30m는 비행(5.6).
+         */
+        const val TERRAIN_FOLLOW_MIN_M = 30.0
+
         /** 이동 고도 지점을 끼우는 최소 높이 차(m). 같은 자리·같은 높이 지점이 겹치면 기체가 거절할 수 있다. */
         const val MIN_CLIMB_M = 2.0
 

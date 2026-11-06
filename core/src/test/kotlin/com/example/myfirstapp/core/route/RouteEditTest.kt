@@ -23,7 +23,8 @@ class RouteEditTest {
 
     /** 정동쪽으로 50m 간격 전주 4개. */
     private val poles = (0..3).map { pole("P$it", 100.0 + 50.0 * it) }
-    private val diagonal = FlightParams(shotMode = ShotMode.DIAGONAL4)
+    // 고도 값을 확인하는 테스트라 옛 기본값(27m, 이륙 지점 기준)으로 고정한다. 지형 추적 30m 하한은 FlightParamsTest
+    private val diagonal = FlightParams(shotMode = ShotMode.DIAGONAL4, diagonalAltitudeM = 27.0, terrainFollow = false)
     private val energy = EnergyModel(EnergyParams(), diagonal)
 
     @Test
@@ -74,7 +75,8 @@ class RouteEditTest {
         assertTrue(diagonal.withOverride("P1", PoleOverride(altitudeM = 27.0, gimbalPitchDeg = -90.0)).validate().isEmpty())
         assertTrue(diagonal.withOverride("P1", PoleOverride(altitudeM = 20.0)).validate().any { "P1" in it && "27~50m" in it })
         assertTrue(diagonal.withOverride("P1", PoleOverride(gimbalPitchDeg = 10.0)).validate().any { "P1" in it })
-        assertEquals(1.0..50.0, FlightParams(shotMode = ShotMode.OVERHEAD).shotAltitudeRangeM)
+        assertEquals(1.0..50.0, FlightParams(shotMode = ShotMode.OVERHEAD, terrainFollow = false).shotAltitudeRangeM)
+        assertEquals(30.0..50.0, FlightParams(shotMode = ShotMode.OVERHEAD).shotAltitudeRangeM)
     }
 
     @Test
