@@ -1,0 +1,2 @@
+replay before-debug: Total frames rendered: 1765;Janky frames: 4 (0.23%);50th percentile: 5ms;90th percentile: 8ms;95th percentile: 10ms;99th percentile: 13ms;  Native Heap 207926 207692 0 0 274440 266019 8420; Java Heap: 20408; Native Heap: 207692; Graphics: 294788; TOTAL: 763500 TOTAL SWAP (KB): 0;
+replay before-debug: cpu%avg=115(n=6) Total frames rendered: 1468;Janky frames: 4 (0.27%);50th percentile: 5ms;90th percentile: 8ms;95th percentile: 11ms;99th percentile: 13ms;

@@ -1,0 +1,2 @@
+replay after-release: Total frames rendered: 1791;Janky frames: 1 (0.06%);50th percentile: 5ms;90th percentile: 6ms;95th percentile: 7ms;99th percentile: 9ms;  Native Heap 227923 227820 0 0 275328 267219 8108; Java Heap: 13028; Native Heap: 227820; Graphics: 295708; TOTAL: 778681 TOTAL SWAP (KB): 0;
+replay after-release: cpu%avg=111(n=6) Total frames rendered: 1505;Janky frames: 1 (0.07%);50th percentile: 5ms;90th percentile: 6ms;95th percentile: 7ms;99th percentile: 10ms;

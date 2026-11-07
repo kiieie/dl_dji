@@ -8,7 +8,7 @@
 - **2026-10-30**: PoC ①③④⑥ 완료(시뮬레이터), 6.1 방식 A(소티 KMZ 하나로 계속 비행, 사진마다 뒤에서 다운로드·탐지) 확정, `drone/DjiDroneGateway.kt`로 실제 기체 연결, FPV(`drone/DjiFpv.kt`), Room 2(촬영 지점·비행 궤적), 촬영 방식 옵션(전주 위/4방향 사선, 5.6, `core/route/Viewpoints.kt`·`WpmlWriter.kt`), Pilot 2식 홈·카메라 뷰·비행 전 점검·기체 설정(`ui/home`, `ui/flight`, `ui/settings/SettingsHub.kt`). 현장 시험 자료 `docs/drone_dl_test`(.zip)는 실제 전주 좌표라 git 제외. 같은 날 저녁: 배전 설비 엑셀(.xlsx) 직접 가져오기와 선로번호 활용(4.5, `core/csv/XlsxReader.kt`, `core/route/LineNumbers.kt`), 4방향 사선 기본·전주마다 4점(5.6), Claude Design 시안 확정(10.4, `docs/design/10-ui-pilot2.md`)과 테마(Barlow 글꼴). 같은 날 밤: 시안 8화면(홈·비행경로·계획·자동/수동 카메라 뷰·판독·앨범 `ui/album`·기체 점검 `drone/DjiCheck.kt`) 다시 그리기 완료, 카메라 뷰 공통 틀 `ui/flight/CameraChrome.kt`, 줌 +/−·사진/영상 녹화(`CameraControl.kt`, 실기체 줌 확인), RC 셔터·수동 비행 사진을 가까운 전주 `MANUAL`로(20m). 실시간 지형 추적 기본(`realTimeFollowSurface`)·먼 구간 이동 고도는 진행 중, 현장 PoC 필요.
 - **2026-10-31**(계획 `docs/plan/2026-10-31.md`, 기체 꺼 둔 채 RC·모의 기체로): 조작(5D 확대 `core/input` `fiveD()`, RTH 1초, ⋯ 메뉴 비포커스 팝업 `MENU_PROPERTIES`), 지형 추적 시작 거절 → 이륙 기준 확인 창, 광각+망원 동시·설비 조준 사진(`_E`), 사진 순서(`MediaClassifier` 늦은 파일), 재시작 복구 보강, 미션 상태 `PARTIAL`(남은 전주 있음)·`REPLACED`(새 계획으로 대체), LDM 꺼지면 시작 막음, 충돌 경고(`core/model/Obstacles.kt`), 속성 갱신(4.5.7), lint 0, 데이터 주권 점검(`docs/evidence/2026-10-31-sovereignty`). Room 7. 같은 날 시뮬레이터 회귀(`docs/evidence/2026-10-31-sim`): 복구·옛 미션 정리·촬영 동작 구분 고침, 위성 배경 배포 사용·미션 영역 MBTiles 미리 받기(7.4), 비행 지도 전주번호·기호, 운용 로그 비행 궤적. 오후: 배경 지도 선택(Bing/VWorld 위성·일반, 7.4), 비행 지도 전주 라벨(선로번호·설비 기호), 위쪽 바 RC 배터리, 땅에서 미션 시작 실패는 대기로, 조정값·화면 규격 정리(`Tuning`·`AppConfig`·`Dimens`·`PoleCodes`, RC 화면 픽셀 비교 차이 0%). **남은 현장 확인**: 광각+망원 동시 촬영(시뮬레이터는 촬영마다 파일 1개 `_V`), 앱 강제 종료 복구, 장애물 거리 단위, 지형 추적.
 - **2026-11-06 실내 기체 시험**(`docs/evidence/2026-11-06-bench`, 시뮬레이터, 프로펠러 제거): 망원 사진은 KMZ 촬영 앞 `zoom` 동작으로만 찍힘(M3E는 지금 보기 렌즈 1장 `_V`, `payloadLensIndex`·`KeyCaptureCameraStreamSettings` 안 됨) → 5.6 확정. 사선 고도 기본 30m·망원 8배, 지형 추적은 30m 이상(DJI 비전 감지 30~200m). 표지는 KEPCO CI만. 하드웨어 키·일시정지 중 타이머 뒤 재개(4.3b)·다시 보기 확인. 기체 키 일괄 읽기 `--es bench keys`, 저장 렌즈 시험 `--es bench capture`, 모델 이름 필터 `--es benchOnly`.
-- **2026-11-07 성능 최적화**(`docs/evidence/2026-11-07-perf`): 비행 화면 텔레메트리 샘플링(`AppConfig.Polling.UI_FRAME_MS`), 사진 저장을 실행기 메시지 루프 밖으로, 타일 배치 커밋, 썸네일 캐시(`PhotoThumbs`), TSP 한도 공유, Gradle 빌드 캐시. RC 실측(시작·프레임·release 빌드)은 대기.
+- **2026-11-07 성능 최적화**(`docs/evidence/2026-11-07-perf`): 비행 화면 텔레메트리 샘플링(`AppConfig.Polling.UI_FRAME_MS`), 사진 저장을 실행기 메시지 루프 밖으로, 타일 배치 커밋, 썸네일 캐시(`PhotoThumbs`), TSP 한도 공유, Gradle 빌드 캐시. RC 실측: 앨범 스크롤 CPU 294→159%·끊김 1.65→0.17%, release 빌드 시작 1.47→0.43초 → 현장은 `installRelease`. 같은 날 3c41d2c 회귀(SDK 초기화를 미뤄 DJI 매니저 클래스 초기화 실패로 켤 때마다 죽음) 고침: 기록 삭제 뒤 SDK 초기화를 바로.
 - **RC Pro Enterprise 실기기를 쓰고 있고 M3E 기체도 확보할 수 있습니다**(2026-10-28). RC Pro에서 DJI SDK 등록, PoC ⑤(TFLite 약 0.4초/장)·⑦(adb) 완료, ⑥ 하드웨어 버튼은 기체 없이 감지까지 확인했습니다(`docs/evidence/2026-10-28-rcpro`). 다음은 기체를 연결해 PoC ④ LDM, ⑥ 미션 중 일시정지·C1 재개(프로펠러 제거, 시뮬레이터), ①~③입니다. 기체가 필요한 항목(6.1 방식 B 등)은 PoC 전까지 가정으로 둡니다.
 - 1차 MVP 범위는 `docs/DESIGN.md` 2.4를 따르고, 범위 밖 기능은 만들지 않습니다.
 - 설계와 다른 구현이 필요하면 코드를 바꾸기 전에 설계서를 먼저 수정합니다.
@@ -66,7 +66,8 @@
 ```bash
 ./gradlew :core:test              # 도메인 단위 테스트 (기체·에뮬레이터 불필요)
 ./gradlew assembleDebug           # 디버그 APK 빌드
-./gradlew installDebug            # 연결된 기기에 설치
+./gradlew installDebug            # 연결된 기기에 설치(개발용, run-as 됨)
+./gradlew installRelease          # 현장 배포용(시작 1.47→0.43초, debug 키 서명·R8 끔, 2026-11-07)
 ./gradlew test                    # 로컬 단위 테스트 (app/src/test)
 ./gradlew connectedAndroidTest    # 기기 계측 테스트 (app/src/androidTest)
 ./gradlew lint                    # Android Lint

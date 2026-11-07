@@ -47,6 +47,8 @@ android {
 
     buildTypes {
         release {
+            // 내부 배포용: debug 키로 서명해 debug 빌드 위에 데이터를 지우지 않고 덮어 설치한다(성능 측정 2026-11-07)
+            signingConfig = signingConfigs.getByName("debug")
             // 원본 설정을 유지하되, 필요에 따라 minifyEnabled 등 추가 조절 가능
             optimization {
                 enable = false

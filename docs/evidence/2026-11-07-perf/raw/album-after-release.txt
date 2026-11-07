@@ -1,0 +1,1 @@
+album after-release: cpu%avg=143 Total frames rendered: 1176;Janky frames: 1 (0.09%);50th percentile: 5ms;90th percentile: 5ms;95th percentile: 5ms;99th percentile: 7ms;  Native Heap 220622 220440 0 0 247900 241300 6599; Java Heap: 12792; Native Heap: 220440; Graphics: 278312; TOTAL: 734233 TOTAL SWAP (KB): 0;

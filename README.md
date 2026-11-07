@@ -186,7 +186,8 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"  
 ```bash
 ./gradlew :core:test        # 도메인 단위 테스트(기기 불필요)
 ./gradlew assembleDebug     # 디버그 APK: app/build/outputs/apk/debug/
-./gradlew installDebug      # 연결된 기기·에뮬레이터에 설치
+./gradlew installDebug      # 연결된 기기·에뮬레이터에 설치(개발용, run-as로 DB를 볼 수 있음)
+./gradlew installRelease    # 현장용: 시작 약 3배 빠름(debug 키 서명이라 debug 위에 덮어 설치, run-as 안 됨)
 ```
 
 Windows에서는 `./gradlew` 대신 `gradlew.bat`을 씁니다.
