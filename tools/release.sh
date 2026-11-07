@@ -35,7 +35,7 @@ mkcol() { curl -s --netrc -o /dev/null -X MKCOL "$(enc "$1")/" || true; }  # 이
 put() { # 있으면 건너뜀(덮어쓰지 않음)
   local url; url=$(enc "$2")
   if [ "$(curl -s --netrc -o /dev/null -w '%{http_code}' -I "$url")" = 200 ]; then echo "이미 있음(건너뜀): $2"; return; fi
-  curl -sf --netrc -T "$1" "$url" && echo "올림: $2"
+  curl -sf --netrc -o /dev/null -T "$1" "$url" && echo "올림: $2"
 }
 if [ $upload = 1 ] || [ $backup = 1 ]; then
   grep -q <NAS> ~/.netrc 2>/dev/null || { echo "~/.netrc에 NAS 계정이 없습니다"; exit 1; }
