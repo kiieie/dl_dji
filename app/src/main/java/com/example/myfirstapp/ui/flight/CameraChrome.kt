@@ -586,12 +586,12 @@ private fun LockGlyph(locked: Boolean) {
 
 /**
  * 왼쪽 열(Pilot 2, 10.5.7): 핀포인트(누름 = 기체 위치, 길게 = 설정, 10.4.7 [PinpointButton]) · 짐벌 메뉴(짐벌 중앙 / 짐벌 아래 -90°) ·
- * AR(누르면 켬·끔 [onAr], 켜면 화살촉 위 초록 시야, 10.5.2 [ArOverlay]) · ZOOM/WIDE 전환.
+ * AR(누르면 켬·끔 [onAr], 켜면 화살촉 위 초록 시야, 10.5.2 [ArOverlay]). ZOOM/WIDE 전환은 미니맵 바로 위([LensToggle], 11-07).
  * 미션 칸·[미션 이어서 비행]은 화면이 핀포인트 오른쪽(x 48dp)에 따로 둔다.
  */
 @Composable
 internal fun CameraLeftColumn(
-    lens: Lens, onLens: (Lens) -> Unit, onGimbal: (Boolean) -> Unit, modifier: Modifier, telemetry: Telemetry?, ar: Boolean, onAr: () -> Unit,
+    onGimbal: (Boolean) -> Unit, modifier: Modifier, telemetry: Telemetry?, ar: Boolean, onAr: () -> Unit,
 ) {
     Box(modifier) {
         PinpointButton(telemetry, Modifier.offset(y = 4.dp))
@@ -621,13 +621,18 @@ internal fun CameraLeftColumn(
             val p = Path().apply { moveTo(w / 2, h * 0.3f); lineTo(w * 0.85f, h); lineTo(w / 2, h * 0.82f); lineTo(w * 0.15f, h); close() }
             drawPath(p, Color.White.copy(alpha = if (ar) 1f else DISABLED_ALPHA))
         }
-        val other = if (lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE
-        Box(
-            Modifier.offset(x = 42.dp, y = 112.dp).size(40.dp, 38.dp).clip(RoundedCornerShape(4.dp)).background(ControlBg)
-                .clickable(onClickLabel = if (other == Lens.ZOOM) "망원으로" else "광각으로") { onLens(other) },
-            contentAlignment = Alignment.Center,
-        ) { Text(if (other == Lens.ZOOM) "ZOOM" else "WIDE", fontSize = FontSize.Caption, fontWeight = FontWeight.Bold, color = Color.White) }
     }
+}
+
+/** ZOOM/WIDE 전환(Pilot 2 10.5.7): 미니맵 바로 위 왼쪽(11-07 사용자 결정). */
+@Composable
+internal fun LensToggle(lens: Lens, onLens: (Lens) -> Unit, modifier: Modifier) {
+    val other = if (lens == Lens.WIDE) Lens.ZOOM else Lens.WIDE
+    Box(
+        modifier.size(40.dp, 38.dp).clip(RoundedCornerShape(4.dp)).background(ControlBg)
+            .clickable(onClickLabel = if (other == Lens.ZOOM) "망원으로" else "광각으로") { onLens(other) },
+        contentAlignment = Alignment.Center,
+    ) { Text(if (other == Lens.ZOOM) "ZOOM" else "WIDE", fontSize = FontSize.Caption, fontWeight = FontWeight.Bold, color = Color.White) }
 }
 
 /**

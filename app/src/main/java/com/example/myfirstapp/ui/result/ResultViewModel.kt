@@ -171,6 +171,12 @@ class ResultViewModel(
         }
     }
 
+    /** [탐지](9.6, 11-07): 이 미션 사진 중 정밀 결과가 없는 것을 정밀 탐지한다. 비행 중에도 막지 않는다. */
+    fun detect() {
+        val p = precise ?: return _state.update { it.copy(message = "탐지기를 쓸 수 없습니다") }
+        p.request(missionId)
+    }
+
     fun messageShown() = _state.update { it.copy(message = null) }
 
     /** 필터를 바꾸면, 고른 전주가 새 목록에 없을 때 목록의 첫 전주를 고른다. */

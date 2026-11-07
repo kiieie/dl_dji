@@ -16,9 +16,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
-/** 카메라 뷰의 "마지막 사진"(9.6 실시간 1단계). 상자는 원본 대비 0~1 비율 좌표다. DB에는 남기지 않는다. */
+/** 카메라 뷰의 "마지막 사진"(9.6). 상자는 원본 대비 0~1 비율 좌표다. DB에는 남기지 않는다. */
 data class LastPhoto(
     val path: String?,
     val detections: List<Detection>,
@@ -28,13 +29,14 @@ data class LastPhoto(
     val summary: String,
     /** 라벨 → 화면 이름(model.json `displayNames`). */
     val names: Map<String, String>,
+    /** 아직 탐지하지 않음(누르면 탐지). */
+    val pending: Boolean = false,
 )
 
 /**
- * 비행 중 최근 1장 탐지(9.6): 저장한 사진 중 가장 최근 것만 비행 중 모델(`role: live`, 입력이 가장 작은 것)로 가운데를 잘라 탐지한다.
- * 처리하는 동안 온 사진은 마지막 것만 남긴다([LatestOnly]). [offer]는 기다리지 않아 실행기를 막지 않는다. 신호음은 내지 않는다.
- * 모델이 없으면 모의 탐지기로 한다(모의 기체에서도 썸네일이 보이게).
- * 모델은 만들 때(카메라 뷰를 열 때, 땅 위) 미리 열고 한 번 돌려 둔다(9.7 A). 조종기가 뜨거우면([thermal]) 탐지를 쉰다(9.7 C).
+ * 마지막 사진 탐지(9.6, 11-07 누를 때만): [offer]는 썸네일만 바꾸고, 사용자가 썸네일을 누르면([detect]) 그 1장만 비행 중 모델
+ * (`role: live`, 입력이 가장 작은 것)로 가운데를 잘라 탐지한다. 비행 중 자동 탐지는 하지 않는다(비행 안전, 사용자 결정 11-07).
+ * 모델은 처음 누를 때 연다. 탐지하는 동안 새 사진이 오면 옛 결과는 버린다. 모델이 없으면 모의 탐지기로 한다. 조종기가 뜨거우면([thermal]) 쉰다(9.7 C).
  */
 class LiveDetection(
     scope: CoroutineScope,
@@ -48,16 +50,27 @@ class LiveDetection(
 ) {
     /** 화면 수명과 따로 끝까지 연다: 여는 도중 화면을 닫아도 GPU 자원이 새지 않게 [close]가 받아 닫는다. */
     private val loader = CoroutineScope(Dispatchers.IO)
-    private val model: Deferred<Detector> = loader.async { open() }
-    private val worker = LatestOnly<Pair<ByteArray, String?>>(scope) { (bytes, path) -> onResult(run(bytes, path)) }
+    private var model: Deferred<Detector>? = null
+    private val worker = LatestOnly<String>(scope) { path -> run(path).takeIf { path == last }?.let(onResult) }
+    @Volatile private var last: String? = null
 
     /** 발열로 쉬는 중(바뀔 때만 로그). */
     private var hot = false
 
-    /** 막 저장한 사진(원본 JPEG와 저장 경로). */
-    fun offer(bytes: ByteArray, path: String?) = worker.offer(bytes to path)
+    /** 막 저장한 사진의 경로. 탐지는 하지 않는다. */
+    fun offer(path: String?) {
+        last = path
+        onResult(LastPhoto(path, emptyList(), 1f, "누르면 탐지", emptyMap(), pending = true))
+    }
 
-    private suspend fun run(bytes: ByteArray, path: String?): LastPhoto {
+    /** 썸네일을 눌렀다: 마지막 사진 1장을 탐지한다. */
+    fun detect() {
+        val path = last ?: return
+        onResult(LastPhoto(path, emptyList(), 1f, "탐지 중…", emptyMap(), pending = true))
+        worker.offer(path)
+    }
+
+    private suspend fun run(path: String): LastPhoto {
         val status = thermal?.value ?: 0
         if ((status >= AppConfig.Precise.THERMAL_PAUSE_STATUS) != hot) {
             hot = !hot
@@ -66,7 +79,8 @@ class LiveDetection(
         if (hot) return LastPhoto(path, emptyList(), 1f, "발열로 탐지 쉼", emptyMap())
         var names = emptyMap<String, String>()
         return try {
-            val det = model.await()
+            val det = (model ?: loader.async { open() }.also { model = it }).await()
+            val bytes = withContext(Dispatchers.IO) { File(path).readBytes() }
             val tflite = det as? TfliteYoloDetector
             names = tflite?.spec?.displayNames.orEmpty()
             val crop = if (tflite != null) AppConfig.Detector.LIVE_CROP_FRACTION else 1f
@@ -86,7 +100,7 @@ class LiveDetection(
         }
     }
 
-    /** 모델을 열고 회색 입력으로 한 번 돌린다(9.7 A: GPU 준비 수 초를 비행 중 첫 사진에서 하지 않게). */
+    /** 모델을 열고 회색 입력으로 한 번 돌린다(처음 누를 때). */
     private suspend fun open(): Detector {
         val t0 = System.nanoTime()
         val specs = readModelSpecs(modelsDir)
@@ -103,6 +117,7 @@ class LiveDetection(
     }
 
     fun close() {
-        loader.launch { (runCatching { model.await() }.getOrNull() as? TfliteYoloDetector)?.close() }
+        val m = model ?: return
+        loader.launch { (runCatching { m.await() }.getOrNull() as? TfliteYoloDetector)?.close() }
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,6 +35,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.myfirstapp.R
+import com.example.myfirstapp.detect.LastPhoto
+import com.example.myfirstapp.ui.flight.PhotoWithBoxes
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.theme.Accent
 import com.example.myfirstapp.ui.theme.CardBg
@@ -52,6 +55,8 @@ import com.example.myfirstapp.ui.theme.numberStyle
 internal fun PhotoViewer(
     key: Any, title: String, info: List<Pair<String, String>>, chip: String?, load: suspend () -> ImageBitmap?,
     onBack: () -> Unit, deleteText: String, onDelete: () -> Unit, onDownload: (() -> Unit)? = null, downloadLabel: String = "받기",
+    /** [탐지](9.6, 11-07): 앱에 받은 사진만. 결과([detect])는 상자로 겹쳐 보인다. */
+    onDetect: (() -> Unit)? = null, detect: LastPhoto? = null, detecting: Boolean = false,
 ) {
     BackHandler(onBack = onBack)
     var showInfo by remember { mutableStateOf(false) }
@@ -61,6 +66,7 @@ internal fun PhotoViewer(
     Box(Modifier.fillMaxSize().background(Color.Black).clickable(interactionSource = null, indication = null) {}) {
         image?.let { Image(it, contentDescription = null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
             ?: CircularProgressIndicator(Modifier.align(Alignment.Center).size(32.dp), color = Color.White)
+        detect?.let { PhotoWithBoxes(it, longSidePx = 1280, labels = true, Modifier.fillMaxSize()) }
         Row(Modifier.align(Alignment.TopCenter).padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = numberStyle(FontSize.Label), color = Color.White)
             Text(
@@ -73,6 +79,11 @@ internal fun PhotoViewer(
         }
         IconButton(onClick = { askDelete = true }, modifier = Modifier.align(Alignment.BottomStart).padding(6.dp).size(Dimens.TouchMedium)) {
             Icon(painterResource(R.drawable.ic_delete), contentDescription = "삭제", tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+        onDetect?.let { d ->
+            Button(onClick = d, enabled = !detecting, modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp)) {
+                Text(if (detecting) "탐지 중…" else detect?.summary ?: "탐지", fontSize = FontSize.Body)
+            }
         }
         onDownload?.let { d ->
             IconButton(onClick = d, modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).size(Dimens.TouchMedium)) {

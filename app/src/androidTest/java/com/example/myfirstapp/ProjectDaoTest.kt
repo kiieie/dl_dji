@@ -150,12 +150,12 @@ class ProjectDaoTest {
         dao.insertCapture(CaptureEntity(0, v, "m3", null, "WIDE", "AUTO", 37.5, 127.0, 30.0, -10.0, 0.0, 3)) // 이미지 없음
         dao.insertDetections(listOf(DetectionEntity(0, a, "bird_nest", 0.9f, 0f, 0f, 0.1f, 0.1f, alert = true))) // 비행 중 옛 결과
 
-        assertEquals(listOf(a, b), dao.capturesWithoutDetection("full-1", 0))
-        assertTrue(dao.capturesWithoutDetection("full-1", 101).isEmpty()) // 오래된 미션은 하지 않음
+        assertEquals(listOf(a, b), dao.capturesWithoutDetection("full-1", listOf(missionId)))
+        assertTrue(dao.capturesWithoutDetection("full-1", listOf(missionId + 1)).isEmpty()) // 요청하지 않은 미션은 하지 않음
         dao.savePreciseDetections(a, "full-1", listOf(DetectionEntity(0, a, "LP", 0.8f, 0f, 0f, 0.1f, 0.1f, alert = false)))
         dao.savePreciseDetections(b, "full-1", emptyList()) // 0개도 끝낸 것으로
-        assertTrue(dao.capturesWithoutDetection("full-1", 0).isEmpty())
-        assertEquals(listOf(a, b), dao.capturesWithoutDetection("full-2", 0)) // 모델을 바꾸면 다시
+        assertTrue(dao.capturesWithoutDetection("full-1", listOf(missionId)).isEmpty())
+        assertEquals(listOf(a, b), dao.capturesWithoutDetection("full-2", listOf(missionId))) // 모델을 바꾸면 다시
         assertEquals("full-1", dao.mission(missionId)?.modelVersion)
         assertEquals(listOf("LP"), dao.missionDetections(missionId).map { it.label }) // 옛 결과는 바뀜
         assertEquals(0 to 1, dao.resultRows(missionId).single().let { it.detectCount to it.facilityCount })

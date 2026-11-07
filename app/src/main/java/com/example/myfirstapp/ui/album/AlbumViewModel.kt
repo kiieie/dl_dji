@@ -11,6 +11,8 @@ import com.example.myfirstapp.data.AlbumPhoto
 import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.SettingsStore
+import com.example.myfirstapp.detect.LastPhoto
+import com.example.myfirstapp.detect.PreciseDetection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,6 +46,9 @@ data class AlbumUiState(
     val nodeKey: String? = null,
     /** 크게 보는 파일 사진(전주에 붙지 않은 수동 사진·SD에서 받은 사진)과 정보. 없으면 null. */
     val viewer: PhotoInfo? = null,
+    /** 뷰어 [탐지] 결과(9.6, 11-07, 저장 안 함)와 진행. 사진을 바꾸면 지운다. */
+    val viewerDetect: LastPhoto? = null,
+    val detecting: Boolean = false,
     /** 조종기(앱 폴더) 남은 공간(바이트, 다운로드 완료 탭 저장소). 모르면 null. */
     val freeBytes: Long? = null,
 ) {
@@ -71,7 +76,9 @@ data class AlbumUiState(
  * 선로별 보기는 모든 미션 사진을 한 번에 읽어 나무로 묶는다.
  */
 // ponytail: 모든 사진 줄을 메모리에 올림(수만 장이면 느려짐). 그때는 나무를 SQL GROUP BY로, 사진은 고른 칸만 읽기
-class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?, private val settings: SettingsStore) : ViewModel() {
+class AlbumViewModel(
+    private val dao: ProjectDao, private val appFilesDir: File?, private val settings: SettingsStore, private val precise: PreciseDetection? = null,
+) : ViewModel() {
     private val _state = MutableStateFlow(AlbumUiState())
     val state: StateFlow<AlbumUiState> = _state.asStateFlow()
 
@@ -113,14 +120,26 @@ class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?
      * EXIF가 없으면 파일 시각.
      */
     fun open(f: File) {
-        _state.update { it.copy(viewer = PhotoInfo(f, f.lastModified(), emptyList())) }
+        _state.update { it.copy(viewer = PhotoInfo(f, f.lastModified(), emptyList()), viewerDetect = null) }
         viewModelScope.launch {
             val info = photoInfo(f, dao.allPoles())
             _state.update { if (it.viewer?.file == f) it.copy(viewer = info) else it }
         }
     }
 
-    fun closeViewer() = _state.update { it.copy(viewer = null) }
+    fun closeViewer() = _state.update { it.copy(viewer = null, viewerDetect = null) }
+
+    /** 뷰어 [탐지]: 보고 있는 사진 1장을 정밀 모델로 탐지해 상자를 겹쳐 보인다(저장 안 함). */
+    fun detectViewing() {
+        val f = _state.value.viewer?.file ?: return
+        val p = precise ?: return
+        if (_state.value.detecting) return
+        _state.update { it.copy(detecting = true) }
+        viewModelScope.launch {
+            val r = runCatching { p.detectOne(f) }.getOrElse { e -> LastPhoto(f.path, emptyList(), 1f, "탐지 실패: ${e.message}", emptyMap()) }
+            _state.update { if (it.viewer?.file == f) it.copy(viewerDetect = r, detecting = false) else it.copy(detecting = false) }
+        }
+    }
 
     /** 뷰어 [삭제](확인 뒤): 앱 사본만 지운다. 기체 SD 사진은 기체 앨범 탭에서만 지운다. */
     fun deleteViewing() {
@@ -169,7 +188,7 @@ class AlbumViewModel(private val dao: ProjectDao, private val appFilesDir: File?
     }
 
     companion object {
-        fun factory(dao: ProjectDao, appFilesDir: File?, settings: SettingsStore) =
-            viewModelFactory { initializer { AlbumViewModel(dao, appFilesDir, settings) } }
+        fun factory(dao: ProjectDao, appFilesDir: File?, settings: SettingsStore, precise: PreciseDetection) =
+            viewModelFactory { initializer { AlbumViewModel(dao, appFilesDir, settings, precise) } }
     }
 }

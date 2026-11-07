@@ -70,7 +70,7 @@ class ManualFlightViewModel(
     rcButtons: Flow<RcButton> = emptyFlow(),
     /** 배경 지도 선택(7.4). 없으면 VWorld 위성. */
     private val settings: SettingsStore? = null,
-    /** 착륙 뒤 정밀 탐지(9.6): 떠 있는 동안 쉬게 알린다. */
+    /** 정밀 탐지(9.6): GPU 캐시·발열 상태를 마지막 사진 탐지와 나눈다. */
     private val precise: PreciseDetection? = null,
     /** 앱 수명 작업(타이머 사진 저장). 없으면 [viewModelScope]. */
     appScope: CoroutineScope? = null,
@@ -86,14 +86,14 @@ class ManualFlightViewModel(
     /** 안내 줄(사진 저장됨·실패·홈포인트 지정)은 잠깐 보이고 지운다. "기체가 연결되지 않았습니다"는 그대로 둔다. */
     private val flash = TimedMessage(viewModelScope) { m -> _state.update { it.copy(message = m) } }
     private val tone = ToneNotifier()
-    /** 셔터 사진의 마지막 사진 썸네일(9.6). 모델 설정이 없으면(시험) 만들지 않는다. */
+    /** 셔터 사진의 마지막 사진 썸네일(9.6, 누르면 탐지). 모델 설정이 없으면(시험) 만들지 않는다. */
     private val live = settings?.let {
         LiveDetection(viewModelScope, File(appFilesDir, "models"), it, precise?.gpuCache, precise?.thermal) { p ->
             _state.update { s -> s.copy(flight = s.flight.copy(lastPhoto = p)) }
         }
     }
     /** 셔터·타이머 사진: 남은 전주가 있는 최근 미션의 전주가 20m 안이면 그 전주, 아니면 기타(6.4). */
-    private val photos = ManualPhotos(dao, appFilesDir, { dao.latestOpenMission() }, live, precise)
+    private val photos = ManualPhotos(dao, appFilesDir, { dao.latestOpenMission() }, live)
 
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))
@@ -105,7 +105,6 @@ class ManualFlightViewModel(
         drone?.let { d ->
             viewModelScope.launch {
                 d.telemetry.sample(AppConfig.Polling.UI_FRAME_MS).collect { t ->
-                    precise?.setFlying("manual", t.isFlying)
                     _state.update { it.copy(flight = it.flight.copy(telemetry = t, home = t.home).withTrack(t)) }
                 }
             }
@@ -222,6 +221,13 @@ class ManualFlightViewModel(
 
 
     /** 지도 지우개(10.5.4): 비행 궤적을 지운다. */
+    /** 마지막 사진 썸네일을 눌렀다: 그 1장만 탐지한다(9.6). */
+    fun detectLast() { live?.detect() }
+
+    init {
+        precise?.setCameraView("manual", true)
+    }
+
     fun clearTrack() = _state.update { it.copy(flight = it.flight.copy(track = emptyList())) }
 
     /** 지도 기체·조종기 카드 [H 지정](10.5.7): 홈포인트를 기체([toRc]면 조종기) 위치로. */
@@ -291,7 +297,7 @@ class ManualFlightViewModel(
         (drone as? DjiDroneGateway)?.close()
         tone.release()
         live?.close()
-        precise?.setFlying("manual", false)
+        precise?.setCameraView("manual", false)
     }
 
     companion object {

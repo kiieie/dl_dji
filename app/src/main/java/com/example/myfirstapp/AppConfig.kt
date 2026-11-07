@@ -312,11 +312,8 @@ object AppConfig {
         const val GPU_BUILD_SETTLE_MS = 30_000L
     }
 
-    /** 착륙 뒤 정밀 탐지(9.6, `PreciseDetection`). */
+    /** 정밀 탐지(9.6, `PreciseDetection`, 판독 화면 [탐지]). */
     object Precise {
-        /** 이 일수 안에 계획한 미션의 사진만 처리한다(오래된 미션까지 돌리지 않게). */
-        const val RECENT_DAYS = 7
-
         /** 조종기 배터리가 이보다 낮으면 쉰다(%). */
         const val MIN_RC_BATTERY_PCT = 20
 

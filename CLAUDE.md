@@ -32,7 +32,7 @@
 - **오프라인 우선**: 현장에서는 인터넷 없이 동작해야 합니다. 지도는 MBTiles로 미리 내려받습니다.
 - **대상 기체**: 1차는 Mavic 3 Enterprise 계열만 지원합니다(Matrice 4E/4T는 추후 확장). 조종 장치는 RC Pro Enterprise(가로 1920×1080)입니다.
 - **개발 장비**: M3E 기본 구성에 RC Pro Enterprise가 포함되어 있습니다. 기체가 없어도 지도, 경로 계획, 상태머신은 에뮬레이터와 `FakeDroneGateway`로 개발할 수 있습니다. 실제 기체가 필요한 작업은 PoC와 비행 연동 단계입니다(`docs/design/07-test-roadmap.md` 13.1).
-- **탐지 모델**: 사용자가 학습한 설비 탐지 모델(YOLO11l, COS·LP·SUS·LA, 2026-11-04)이 있습니다. 원본 가중치는 `models_src/`(AGPL·사내 데이터라 저장소 제외), 변환은 `tools/export_facility_model.py`(fp16 tflite 640·960·1280, `build/models/`)입니다. 설비는 이상이 아니라 표시만 합니다(`alertLabels: []`, 회색 상자). 탐지는 두 단계입니다(9.6): 비행 중 최근 1장(640+가운데 50%, `detect/LiveDetection`), 착륙 뒤 정밀(1280, `detect/PreciseDetection`, `InspectionApp` 수명). 앱은 `docs/design/05-detection.md` 9.1의 모델 규격(model.tflite + labels.txt + model.json, `role`·`displayNames`)만 따르고, 모델은 교체할 수 있게 설계합니다.
+- **탐지 모델**: 사용자가 학습한 설비 탐지 모델(YOLO11l, COS·LP·SUS·LA, 2026-11-04)이 있습니다. 원본 가중치는 `models_src/`(AGPL·사내 데이터라 저장소 제외), 변환은 `tools/export_facility_model.py`(fp16 tflite 640·960·1280, `build/models/`)입니다. 설비는 이상이 아니라 표시만 합니다(`alertLabels: []`, 회색 상자). 탐지는 누를 때만 합니다(9.6, 2026-11-07 사용자 결정, 비행 중 자동 탐지 없음): 카메라 뷰 오른쪽 아래 마지막 사진을 누르면 그 1장(640+가운데 50%, `detect/LiveDetection`), 판독 화면 [탐지]는 미션 전체 정밀(1280, `detect/PreciseDetection`), 앨범 뷰어 [탐지]는 그 1장 정밀(저장 안 함). 앱은 `docs/design/05-detection.md` 9.1의 모델 규격(model.tflite + labels.txt + model.json, `role`·`displayNames`)만 따르고, 모델은 교체할 수 있게 설계합니다.
 
 ## 참고 자료
 

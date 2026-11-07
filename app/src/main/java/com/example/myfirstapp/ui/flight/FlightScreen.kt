@@ -215,8 +215,7 @@ private fun FlightContent(
             if (s.ar) ArOverlay(s, stream, Modifier.fillMaxSize())
         }
         Column(Modifier.align(Alignment.BottomStart)) {
-            // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
-            s.lastPhoto?.let { LastPhotoThumb(it, Modifier) }
+            if (!mapMain) LensToggle(s.lens, vm::setLens, Modifier.padding(start = 8.dp, bottom = 6.dp))
             MiniMap(mapMain, onSwap = vm::swapView, Modifier) { m ->
                 if (mapMain) fpv(m) else FlightMap(s, interactive = false, pad = List(4) { 8.dp }, m)
             }
@@ -227,7 +226,7 @@ private fun FlightContent(
         if (!mapMain) {
             ZoomBox(s.lens, s.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
             ExposureStrip(s.camera, s.videoMode, focusEnabled = s.cameraFree, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
-            CameraLeftColumn(s.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), s.telemetry, s.ar, vm::toggleAr)
+            CameraLeftColumn(vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), s.telemetry, s.ar, vm::toggleAr)
             CameraColumn(
                 s = s, shutterEnabled = s.shutterFree, onShutter = vm::shutter,
                 cameraEnabled = s.cameraFree, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
@@ -240,10 +239,14 @@ private fun FlightContent(
         if (ui.state != ExecState.SortieDone) {
             val summary = remember(ui.state, ui.sortieIndex, s.params) { vm.checklistSummary() }
             MissionChip(s, summary, vm, onShowResult, Modifier.align(Alignment.TopStart).padding(start = 48.dp, top = Dimens.TopBar + 19.dp))
-            // 모의 RC 줄은 오른쪽 아래(왼쪽 아래 마지막 사진·미니맵, 왼쪽 열 ZOOM과 겹치지 않게). 큰 지도면 [라이브러리] 위
+            // 모의 RC 줄은 오른쪽 아래(마지막 사진 아래, 왼쪽 아래 ZOOM·미니맵과 겹치지 않게). 큰 지도면 [라이브러리] 위
             if (s.simulated) MockRcControls(
                 vm, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = if (mapMain) 8.dp + Dimens.ButtonStd + 6.dp else 8.dp),
             )
+        }
+        // 마지막 사진(9.6, 11-07): 오른쪽 아래, 누르면 그 1장만 탐지. 모의 기체면 모의 RC 줄 위
+        if (!mapMain) s.lastPhoto?.let {
+            LastPhotoThumb(it, vm::detectLast, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = if (s.simulated) 8.dp + Dimens.ButtonStd + 6.dp else 8.dp))
         }
 
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {

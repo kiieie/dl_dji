@@ -101,7 +101,7 @@ private val Detected = Color(0xFFFF3B30)
 fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long, missionId: Long) -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
-    val vm: AlbumViewModel = viewModel(factory = AlbumViewModel.factory(dao, context.getExternalFilesDir(null), app.settings))
+    val vm: AlbumViewModel = viewModel(factory = AlbumViewModel.factory(dao, context.getExternalFilesDir(null), app.settings, app.precise))
     val s by vm.state.collectAsStateWithLifecycle()
     val sdVm: SdAlbumViewModel = viewModel(factory = SdAlbumViewModel.factory(dao, context.getExternalFilesDir(null)))
     val sd by sdVm.state.collectAsStateWithLifecycle()
@@ -248,6 +248,7 @@ fun AlbumScreen(dao: ProjectDao, onBack: () -> Unit, onReview: (projectId: Long,
             v.file.path, viewerTime(v.takenAtMs), v.rows, lensTitle(lensOfAppFile(v.file.name)) + " · 단일 촬영",
             load = { withContext(Dispatchers.IO) { BitmapFactory.decodeFile(v.file.path, BitmapFactory.Options().apply { inSampleSize = 2 })?.asImageBitmap() } },
             onBack = vm::closeViewer, deleteText = "조종기에 받은 이 사진(${v.file.name})을 지웁니다. 기체 SD의 원본은 그대로 남습니다.", onDelete = vm::deleteViewing,
+            onDetect = vm::detectViewing, detect = s.viewerDetect, detecting = s.detecting,
         )
     }
     sd.viewing?.let { p ->

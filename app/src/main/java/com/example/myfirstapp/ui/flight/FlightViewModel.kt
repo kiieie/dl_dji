@@ -205,7 +205,7 @@ class FlightViewModel(
     private val droneFactory: suspend (CoroutineScope, GeoPoint, File?, GeoPoint?) -> DroneGateway = { s, h, d, a -> fakeDrone(s, h, d, a) },
     /** RC 하드웨어 버튼 누름. 화면 버튼과 같은 동작에 매핑한다(10장). */
     private val rcButtons: Flow<RcButton> = emptyFlow(),
-    /** 착륙 뒤 정밀 탐지(9.6): 떠 있는 동안 쉬게 알리고, 사진을 저장하면 깨운다. */
+    /** 정밀 탐지(9.6): GPU 캐시·발열 상태를 마지막 사진 탐지와 나눈다. */
     private val precise: PreciseDetection? = null,
     /** 앱 수명 작업(타이머 사진 저장). 없으면 [viewModelScope]. */
     appScope: CoroutineScope? = null,
@@ -221,12 +221,12 @@ class FlightViewModel(
     /** 안내 줄(수동 사진 저장·실패, 홈포인트 지정)은 잠깐 보이고 지운다. */
     private val shotFlash = TimedMessage(viewModelScope) { m -> _state.update { it.copy(shotMessage = m) } }
     private val notifier = ToneNotifier()
-    /** 비행 중 최근 1장 탐지(9.6). 실행기는 사진을 저장만 하고, 저장한 사진을 여기에 넘긴다. */
+    /** 마지막 사진(9.6): 실행기는 사진을 저장만 하고 여기에 넘긴다. 탐지는 썸네일을 누를 때만. */
     private val live = LiveDetection(viewModelScope, File(appFilesDir, "models"), settings, precise?.gpuCache, precise?.thermal) { p ->
         _state.update { it.copy(lastPhoto = p) }
     }
     /** 땅 위 셔터·타이머 사진(수동 사진 경로, 10.4.3): 이 미션의 전주가 20m 안이면 그 전주, 아니면 기타. 실행기를 거치지 않는다. */
-    private val photos = ManualPhotos(dao, appFilesDir, { dao.mission(missionId) }, live, precise)
+    private val photos = ManualPhotos(dao, appFilesDir, { dao.mission(missionId) }, live)
     private var executor: InspectionExecutor? = null
     private var drone: DroneGateway? = null
     private var energy: EnergyModel? = null
@@ -304,12 +304,11 @@ class FlightViewModel(
             File(appFilesDir, "projects/$projectId/missions/$missionId/images"),
             params.downloadMode,
         )
-        // 저장한 사진은 비행 중 최근 1장 탐지와 착륙 뒤 정밀 탐지로 넘긴다(9.6). 실행기를 기다리게 하지 않는다
+        // 저장한 사진은 카메라 뷰 마지막 사진으로 넘긴다(9.6, 누르면 탐지). 실행기를 기다리게 하지 않는다
         val recorder = object : InspectionRecorder by room {
             override suspend fun saveImage(captureId: Long, bytes: ByteArray) {
                 room.saveImage(captureId, bytes)
-                viewModelScope.launch { live.offer(bytes, dao.capture(captureId)?.filePath) }
-                precise?.kick()
+                viewModelScope.launch { live.offer(dao.capture(captureId)?.filePath) }
             }
         }
         val storage = StorageMonitor { (appFilesDir?.usableSpace ?: 0L) >= AppConfig.Storage.MIN_FREE_BYTES }
@@ -362,7 +361,6 @@ class FlightViewModel(
         combine(executor.uiState, drone.telemetry.sample(AppConfig.Polling.UI_FRAME_MS)) { ui, t -> ui to t }.collect { (ui, t) ->
             val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, t.home ?: home) } ?: 0.0).toInt()
             val wasPaused = paused
-            precise?.setFlying("auto", ui.state.airborne || t.isFlying)
             DjiSdAlbum.missionPhotosPending = ui.state.airborne || ui.photosInProgress > 0
             _state.update {
                 it.copy(exec = ui, telemetry = t, returnNeedPct = need, nextWaypoint = nextWaypoint(ui, t)).withTrack(t)
@@ -650,13 +648,20 @@ class FlightViewModel(
     /** 모의 HMS·GEO(10.5.5): 주의 항목 하나와 GEO 카드 값을 켜고 끈다(기체 연결 안 됨일 때만 보임). */
     fun toggleMockHealth() = com.example.myfirstapp.drone.MockHealth.toggle()
 
+    /** 마지막 사진 썸네일을 눌렀다: 그 1장만 탐지한다(9.6). */
+    fun detectLast() = live.detect()
+
+    init {
+        precise?.setCameraView("auto", true)
+    }
+
     private fun send(c: Command) = executor?.send(c).also { OpLog.log("flight", c.toString(), mapOf("mission" to missionId)) }
 
     override fun onCleared() {
         (drone as? DjiDroneGateway)?.close()
         notifier.release()
         live.close()
-        precise?.setFlying("auto", false)
+        precise?.setCameraView("auto", false)
         DjiSdAlbum.missionPhotosPending = false
     }
 

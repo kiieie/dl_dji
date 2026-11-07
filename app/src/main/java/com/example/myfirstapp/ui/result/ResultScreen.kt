@@ -185,8 +185,6 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
                     Text(
                         "미션 #${s.missionId} · 판독 ${s.reviews.size}/${s.statusCounts["완료"] ?: 0}", fontSize = FontSize.Body, color = TextSoft, maxLines = 1,
                     )
-                    // 착륙 뒤 정밀 탐지 진행(9.6). 끝나면 사라진다
-                    s.precise?.let { Text(it, fontSize = FontSize.Caption, color = Accent, maxLines = 1) }
                 }
                 Text("판독", Modifier.align(Alignment.Center), fontSize = FontSize.Title, fontWeight = FontWeight.Bold)
                 Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -227,6 +225,10 @@ private fun ResultContent(s: ResultUiState, vm: ResultViewModel, onBack: () -> U
                 }
             }
         }
+        // [탐지](9.6, 11-07): 사진 칸 오른쪽 아래(아래 판정 줄 위). 누르면 이 미션 사진을 정밀 탐지하고, 도는 동안 진행("정밀 탐지 37/120")을 보인다
+        if (!s.loading) Button(
+            onClick = vm::detect, enabled = s.precise == null, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 80.dp),
+        ) { Text(s.precise ?: "탐지", fontSize = FontSize.Body) }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
     if (memoOpen && s.selected != null) MemoDialog(s, vm) { memoOpen = false }

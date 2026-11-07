@@ -101,8 +101,7 @@ fun ManualFlightScreen(
             if (f.ar) ArOverlay(f, stream, Modifier.fillMaxSize())
         }
         Column(Modifier.align(Alignment.BottomStart)) {
-            // 마지막 사진(9.6): 미니맵 바로 위(미니맵을 키우면 그 위), 가장 최근 사진의 설비 상자
-            f.lastPhoto?.let { LastPhotoThumb(it, Modifier) }
+            if (!mapMain) LensToggle(f.lens, vm::setLens, Modifier.padding(start = 8.dp, bottom = 6.dp))
             MiniMap(mapMain, onSwap = vm::swapView, Modifier) { m ->
                 if (mapMain) fpv(m) else FlightMap(f, interactive = false, pad = List(4) { 8.dp }, m)
             }
@@ -112,7 +111,7 @@ fun ManualFlightScreen(
         if (!mapMain) {
             ZoomBox(f.lens, f.zoomRatio, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 9.dp))
             ExposureStrip(f.camera, f.videoMode, focusEnabled = s.connected, onFocusMode = vm::cycleFocus, Modifier.align(Alignment.TopEnd).padding(top = Dimens.TopBar + 8.dp, end = 48.dp))
-            CameraLeftColumn(f.lens, vm::setLens, vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), f.telemetry, f.ar, vm::toggleAr)
+            CameraLeftColumn(vm::setGimbal, Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = Dimens.TopBar + 19.dp), f.telemetry, f.ar, vm::toggleAr)
             CameraColumn(
                 s = f, shutterEnabled = s.connected && !f.capturing, onShutter = vm::shutter,
                 cameraEnabled = s.connected, onVideoMode = vm::setVideoMode, onZoom = vm::zoom, onCameraSettings = onCameraSettings,
@@ -127,6 +126,8 @@ fun ManualFlightScreen(
         }
         NoticeLines(listOfNotNull(s.message?.let { it to Color.White }), Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 48.dp).widthIn(max = 300.dp))
         if (!mapMain) CameraNoticeView(f.notice)
+        // 마지막 사진(9.6, 11-07): 오른쪽 아래, 누르면 그 1장만 탐지
+        if (!mapMain) f.lastPhoto?.let { LastPhotoThumb(it, vm::detectLast, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp)) }
 
         val t = f.telemetry
         Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {

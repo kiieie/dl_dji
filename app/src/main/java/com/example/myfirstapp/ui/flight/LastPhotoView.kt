@@ -50,15 +50,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 미니맵 위 "마지막 사진"(9.6 실시간 1단계, 10.5.2 추가 항목): 가장 최근 사진에 설비 상자(회색)·검출 상자(빨강), 탐지한 가운데 영역(흐린 테두리),
- * 아래에 클래스별 수("LP 2 · SUS 4"). 썸네일이 작아 이름은 누르면 여는 큰 보기에서 보인다.
+ * 오른쪽 아래 "마지막 사진"(9.6, 10.5.2 추가 항목, 11-07 사용자 결정): 가장 최근 사진만 보이고, 누르면([onDetect]) 그 1장을 탐지해 큰 보기에
+ * 설비 상자(회색)·검출 상자(빨강)·탐지한 가운데 영역(흐린 테두리)과 이름을 보인다. 아래 줄은 "누르면 탐지"·"탐지 중…"·클래스별 수("LP 2 · SUS 4").
  */
 @Composable
-internal fun LastPhotoThumb(p: LastPhoto, modifier: Modifier) {
+internal fun LastPhotoThumb(p: LastPhoto, onDetect: () -> Unit, modifier: Modifier) {
     var open by remember { mutableStateOf(false) }
     Column(
-        modifier.padding(start = 8.dp).width(Dimens.LastPhoto.width).clip(RoundedCornerShape(4.dp)).background(CardBg)
-            .clickable(onClickLabel = "마지막 사진 크게 보기") { open = true },
+        modifier.width(Dimens.LastPhoto.width).clip(RoundedCornerShape(4.dp)).background(CardBg)
+            .clickable(onClickLabel = "마지막 사진 탐지") { if (p.pending) onDetect(); open = true },
     ) {
         PhotoWithBoxes(p, longSidePx = 320, labels = false, Modifier.size(Dimens.LastPhoto))
         Text(
@@ -72,7 +72,7 @@ internal fun LastPhotoThumb(p: LastPhoto, modifier: Modifier) {
         text = {
             Column {
                 PhotoWithBoxes(p, longSidePx = 1280, labels = true, Modifier.fillMaxWidth().height(280.dp))
-                if (p.crop < 1f) Text("흰 테두리 안만 비행 중에 탐지했습니다. 전체 사진은 착륙 뒤 정밀 탐지합니다.", fontSize = FontSize.Caption, color = TextSoft)
+                if (p.crop < 1f) Text("흰 테두리 안만 탐지했습니다. 전체 사진은 판독 화면 [탐지]로 정밀 탐지합니다.", fontSize = FontSize.Caption, color = TextSoft)
             }
         },
         confirmButton = { TextButton(onClick = { open = false }) { Text("닫기") } },
@@ -81,7 +81,7 @@ internal fun LastPhotoThumb(p: LastPhoto, modifier: Modifier) {
 
 /** 사진(비율을 지켜 가운데, 긴 변이 [longSidePx] 이상 남게 줄여 읽음)과 상자. [labels]면 상자 위에 화면 이름(model.json `displayNames`)을 쓴다. */
 @Composable
-private fun PhotoWithBoxes(p: LastPhoto, longSidePx: Int, labels: Boolean, modifier: Modifier) {
+internal fun PhotoWithBoxes(p: LastPhoto, longSidePx: Int, labels: Boolean, modifier: Modifier) {
     val bitmap by produceState<ImageBitmap?>(null, p.path, longSidePx) {
         value = withContext(Dispatchers.IO) {
             p.path?.let { path ->

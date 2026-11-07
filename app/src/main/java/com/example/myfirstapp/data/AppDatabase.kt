@@ -650,15 +650,15 @@ interface ProjectDao {
     suspend fun insertDetections(detections: List<DetectionEntity>)
 
     /**
-     * 정밀 탐지(9.6)가 남은 사진: [since] 뒤에 계획한 미션의 이미지가 있는 사진 중 [version]으로 탐지하지 않은 것.
+     * 정밀 탐지(9.6)가 남은 사진: [missionIds] 미션의 이미지가 있는 사진 중 [version]으로 탐지하지 않은 것.
      * 최근 미션부터, 미션 안에서는 찍은 순서대로.
      */
     @Query(
         "SELECT c.id FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId JOIN mission m ON m.id = s.missionId " +
-            "WHERE c.filePath IS NOT NULL AND (c.detectModel IS NULL OR c.detectModel != :version) AND m.createdAt >= :since " +
+            "WHERE c.filePath IS NOT NULL AND (c.detectModel IS NULL OR c.detectModel != :version) AND m.id IN (:missionIds) " +
             "ORDER BY m.id DESC, c.id",
     )
-    suspend fun capturesWithoutDetection(version: String, since: Long): List<Long>
+    suspend fun capturesWithoutDetection(version: String, missionIds: List<Long>): List<Long>
 
     @Query("DELETE FROM detection WHERE captureId = :captureId")
     suspend fun deleteDetections(captureId: Long)

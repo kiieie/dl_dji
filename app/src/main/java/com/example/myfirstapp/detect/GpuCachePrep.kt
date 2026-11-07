@@ -28,8 +28,8 @@ import java.util.concurrent.Executors
 /**
  * 지속 성능(SUSTAINED) GPU 캐시를 뒤에서 만든다(9.7 두 단계 열기). 캐시가 없으면 탐지기는 기본(FAST)으로 바로 열리고([TfliteYoloDetector.open]),
  * 이 일꾼이 쓰는 모델(비행 중 → 정밀, [ModelPick.inUse])마다 SUSTAINED로 한 번 열어 캐시를 남긴다. 다음 열기부터 SUSTAINED(약 0.2초).
- * 정밀 탐지가 쉬는 이유(비행·발열·조종기 배터리·속도 측정)가 없고 열린 GPU 탐지기도 없는 채로 [AppConfig.Detector.GPU_BUILD_SETTLE_MS]가 지나면 시작한다.
- * 자기 스레드에서 열어 비행 중 1장·정밀 추론 스레드(`detector`)를 막지 않는다. 앱 수명 동안 하나([com.example.myfirstapp.InspectionApp]).
+ * 쉬는 이유(카메라 뷰 열림·발열·조종기 배터리·속도 측정, [PreciseDetection.gpuBuildPause])가 없고 열린 GPU 탐지기도 없는 채로 [AppConfig.Detector.GPU_BUILD_SETTLE_MS]가 지나면 시작한다.
+ * 자기 스레드에서 열어 마지막 사진·정밀 추론 스레드(`detector`)를 막지 않는다. 앱 수명 동안 하나([com.example.myfirstapp.InspectionApp]).
  */
 class GpuCachePrep(
     private val modelsDir: File,
@@ -49,7 +49,7 @@ class GpuCachePrep(
     private val failed = mutableSetOf<String>()
 
     // ponytail: 시작한 만들기는 멈출 수 없다(네이티브 열기, 640 60초·1280 7분). 그 사이 이륙하면 끝날 때까지 GPU를 함께 쓴다.
-    // 그래서 카메라 뷰가 열려 있으면(비행 중 모델이 열림) 시작하지 않는다. 문제가 되면 별도 프로세스로 옮겨 죽일 수 있게 한다
+    // 그래서 카메라 뷰가 열려 있으면 시작하지 않는다. 문제가 되면 별도 프로세스로 옮겨 죽일 수 있게 한다
     private val thread = Executors.newSingleThreadExecutor { Thread(it, "gpu-cache") }.asCoroutineDispatcher()
 
     /** 모델을 가져오거나 지웠다(⑥ 설정). 할 일을 다시 본다. */
