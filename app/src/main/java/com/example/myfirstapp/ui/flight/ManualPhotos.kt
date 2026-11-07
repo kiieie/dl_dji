@@ -8,6 +8,7 @@ import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.port.CaptureInfo
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.data.MissionEntity
+import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.RecorderSortie
 import com.example.myfirstapp.data.RoomRecorder
@@ -35,8 +36,12 @@ internal class ManualPhotos(
 ) {
     /** [info]를 받아 저장하고 저장한 곳(붙인 전주, 파일)을 돌려준다. */
     suspend fun keep(d: DroneGateway, info: CaptureInfo, lens: Lens): Result<SavedPhoto> = runCatching {
+        val t0 = System.currentTimeMillis()
         val bytes = d.download(info, DownloadMode.ORIGINAL).getOrThrow()
+        val t1 = System.currentTimeMillis()
         val saved = store(info, bytes, lens)
+        // 성능 리포트 B-SAVE: 받기·저장 시간(저장은 예전에 실행기 메시지 루프를 막던 부분)
+        OpLog.log("photo", "manualKept", mapOf("bytes" to bytes.size, "downloadMs" to t1 - t0, "saveMs" to System.currentTimeMillis() - t1))
         live?.offer(bytes, saved.path)
         precise?.kick()
         saved

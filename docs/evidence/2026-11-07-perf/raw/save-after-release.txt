@@ -1,0 +1,10 @@
+{"t":1794020338646,"type":"media","what":"download","media":6029337,"name":"DJI_20261107115855_0001_V.JPG","lens":"WIDE","same":1}
+{"t":1794020340827,"type":"photo","what":"manualKept","bytes":8605696,"downloadMs":2325,"saveMs":24}
+{"t":1794020346930,"type":"media","what":"download","media":6029353,"name":"DJI_20261107115905_0002_V.JPG","lens":"WIDE","same":1}
+{"t":1794020349082,"type":"photo","what":"manualKept","bytes":8568832,"downloadMs":2242,"saveMs":18}
+{"t":1794020357247,"type":"media","what":"download","media":6029369,"name":"DJI_20261107115915_0003_V.JPG","lens":"WIDE","same":1}
+{"t":1794020359546,"type":"photo","what":"manualKept","bytes":8560640,"downloadMs":2392,"saveMs":21}
+{"t":1794020367543,"type":"media","what":"download","media":6029385,"name":"DJI_20261107115926_0004_V.JPG","lens":"WIDE","same":1}
+{"t":1794020369833,"type":"photo","what":"manualKept","bytes":8577024,"downloadMs":2376,"saveMs":14}
+{"t":1794020377953,"type":"media","what":"download","media":6029401,"name":"DJI_20261107115936_0005_V.JPG","lens":"WIDE","same":1}
+{"t":1794020380248,"type":"photo","what":"manualKept","bytes":8564736,"downloadMs":2389,"saveMs":17}

@@ -61,11 +61,14 @@ class RoomRecorder(
         // 4.3 파일 이름 규칙: <poleId>_<viewpoint>_<timestamp>_<mediaId>_<lens>.jpg (수동 촬영은 지점 m, 사진 번호로 같은 초 겹침을 막음)
         // 설비 조준 사진은 지점 번호 뒤에 e
         val file = File(imagesDir, "${poleIdOfVisit[c.visitId]}_${c.viewpoint ?: "m"}${if (c.equipmentShot) "e" else ""}_${c.takenAt}_${c.mediaId}_${c.lens}.jpg")
+        val started = System.currentTimeMillis()
         withContext(Dispatchers.IO) {
             imagesDir.mkdirs()
             file.writeBytes(bytes)
         }
         dao.setCaptureFile(captureId, file.absolutePath, original = downloadMode == DownloadMode.ORIGINAL)
+        // 성능 리포트 B-SAVE: 다운로드 로그(media download)와의 간격 = 받기 시간
+        OpLog.log("photo", "saved", mapOf("capture" to captureId, "bytes" to bytes.size, "ms" to System.currentTimeMillis() - started))
     }
 
     override suspend fun recordHeightMode(terrainFollow: Boolean) {
