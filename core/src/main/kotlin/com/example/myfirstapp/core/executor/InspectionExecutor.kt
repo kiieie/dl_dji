@@ -53,6 +53,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.cos
 import kotlin.math.sin
@@ -120,7 +122,7 @@ class InspectionExecutor(
         data class Shutter(val capture: CaptureInfo?) : Msg
 
         /** 방식 A 사진 받기 결과(다운로드 실패면 [bytes]가 null). */
-        data class Photo(val captureId: Long, val bytes: ByteArray?) : Msg
+        data class Photo(val captureId: Long, val saved: Boolean) : Msg
     }
 
     private sealed interface StepResult {
@@ -191,7 +193,14 @@ class InspectionExecutor(
     fun start() {
         scope.launch { drone.events.collect { inbox.send(Msg.Drone(it)) } }
         // 사진 받기(방식 A, RC 셔터)는 상태와 무관하게 차례로 한다. 착륙한 뒤에도 남은 사진을 끝까지 받는다
-        scope.launch { for ((id, info) in photoQueue) inbox.send(Msg.Photo(id, drone.download(info, params.downloadMode).getOrNull())) }
+        // 저장(10MB 쓰기 + DB)도 여기서 한다: 메시지 루프에서 하면 일시정지·RTH 명령이 저장 뒤로 밀린다(성능 2026-11-07)
+        scope.launch {
+            for ((id, info) in photoQueue) {
+                val bytes = drone.download(info, params.downloadMode).getOrNull()
+                val saved = bytes != null && runCatching { recorder.saveImage(id, bytes) }.isSuccess
+                inbox.send(Msg.Photo(id, saved))
+            }
+        }
         scope.launch { drone.telemetry.collect { inbox.send(Msg.Tele(it)) } }
         recoverSortie?.let { inbox.trySend(Msg.Recover(it)) }
         scope.launch { for (m in inbox) handle(m) }
@@ -421,7 +430,6 @@ class InspectionExecutor(
             }
             is StepResult.Captured -> onCaptured(r.captures)
             is StepResult.Downloaded -> {
-                r.images.forEach { (id, bytes) -> recorder.saveImage(id, bytes) }
                 if (r.images.isEmpty()) {
                     message = "다운로드 실패 — 촬영 기록만 남깁니다(비행 후 원본 다운로드)."
                     afterArrivalStep(Waiting, "다운로드 실패")
@@ -596,9 +604,11 @@ class InspectionExecutor(
         afterArrivalStep(Downloading, "촬영 완료") {
             val list = captured
             launchStep {
-                StepResult.Downloaded(
-                    list.mapNotNull { (id, info) -> drone.download(info, params.downloadMode).getOrNull()?.let { id to it } },
-                )
+                // 저장도 단계 안에서(메시지 루프 밖): 저장 중에도 RTH 등 명령을 바로 처리한다.
+                // 받은 사진은 단계가 취소되어도(RTH 등) 끝까지 저장한다
+                val images = list.mapNotNull { (id, info) -> drone.download(info, params.downloadMode).getOrNull()?.let { id to it } }
+                withContext(NonCancellable) { images.forEach { (id, bytes) -> recorder.saveImage(id, bytes) } }
+                StepResult.Downloaded(images)
             }
         }
     }
@@ -723,13 +733,12 @@ class InspectionExecutor(
     }
 
     /**
-     * 받은 사진 저장. 실패는 비행을 막지 않는다(6.5). 탐지는 하지 않는다: 비행 중 최근 1장 표시와 착륙 뒤 정밀 탐지는
+     * 받은 사진 결과(저장은 사진 받기 코루틴이 이미 함). 실패는 비행을 막지 않는다(6.5). 탐지는 하지 않는다: 비행 중 최근 1장 표시와 착륙 뒤 정밀 탐지는
      * 앱이 저장한 이미지를 보고 따로 한다(9.6). 판독은 미션 뒤 결과 화면에서(10장).
      */
     private suspend fun onPhotoProcessed(m: Msg.Photo) {
         photosInProgress--
-        m.bytes?.let { recorder.saveImage(m.captureId, it) }
-        if (m.bytes == null) message = "사진 다운로드 실패 — 비행 후 원본을 받으세요."
+        if (!m.saved) message = "사진 다운로드 실패 — 비행 후 원본을 받으세요."
     }
 
     /** 지나온 전주 마무리: 사진이 있으면 완료, 진행 중이었는데 사진이 없으면 실패(6.4 사진 없는 완료 금지). */

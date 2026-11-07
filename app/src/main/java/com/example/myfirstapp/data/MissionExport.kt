@@ -13,6 +13,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -114,9 +115,12 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
             out.putNextEntry(ZipEntry("result.csv")); out.write(csv.toByteArray()); out.closeEntry()
             out.putNextEntry(ZipEntry("mission.json")); out.write(json.toString(2).toByteArray()); out.closeEntry()
             out.putNextEntry(ZipEntry("annotations.geojson")); out.write(annotationsGeoJson(notes).toString(2).toByteArray()); out.closeEntry()
+            // JPEG는 이미 압축되어 있어 다시 압축하지 않는다(CPU만 씀, 크기는 거의 같음)
+            out.setLevel(Deflater.NO_COMPRESSION)
             images.forEach { f ->
                 out.putNextEntry(ZipEntry("images/${f.name}")); f.inputStream().use { it.copyTo(out) }; out.closeEntry()
             }
+            out.setLevel(Deflater.DEFAULT_COMPRESSION)
             // 운용 로그(4.4): 미션을 만든 날부터의 조작 기록
             OpLog.files(mission.createdAt - DAY_MS).forEach { f ->
                 out.putNextEntry(ZipEntry("logs/${f.name}")); f.inputStream().use { it.copyTo(out) }; out.closeEntry()

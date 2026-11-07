@@ -88,6 +88,9 @@ object AppConfig {
         /** SD 대조(6.4 복구)에 받는 최신 SD 목록 개수. */
         const val LIST_MEDIA_COUNT = 100
 
+        /** 사진 다운로드 버퍼를 미리 잡는 상한(파일 크기가 이보다 크면 그만큼만 잡고 늘림). 20MP JPEG 약 20MB. */
+        const val DOWNLOAD_BUFFER_MAX = 64L * 1024 * 1024
+
         /** 미리보기 사진 JPEG 품질. */
         const val PREVIEW_JPEG_QUALITY = 90
 
@@ -96,6 +99,9 @@ object AppConfig {
 
         /** RC 스틱 로그: 가운데에서 이만큼 벗어나야 움직임으로 본다. */
         const val STICK_DEADBAND = 30
+
+        /** 비행 화면 텔레메트리·장애물 표시 갱신 간격. DJI 키 콜백(약 25개)마다 화면 전체를 다시 그리지 않게 묶는다(성능 2026-11-07). */
+        const val UI_FRAME_MS = 100L
 
         /** RC 스틱 로그: 움직이는 동안 남기는 간격. */
         const val STICK_LOG_MS = 500L
@@ -137,6 +143,12 @@ object AppConfig {
 
         /** 지도 비행 궤적 점 상한. 넘으면 오래된 점부터 버린다(2m 간격이면 약 6km). */
         const val TRACK_MAX_POINTS = 3_000
+
+        /** 지도 비행 궤적 다시 그리기 간격(점마다 3천 점을 다시 올리지 않게). 다시 보기 16배에서도 끝이 기체에서 크게 떨어지지 않을 만큼. */
+        const val TRACK_DRAW_MS = 300L
+
+        /** 배경 미리 받기에서 한 번에 커밋하는 타일 수(타일마다 커밋하면 2만 번 디스크 동기화). */
+        const val PREFETCH_COMMIT_TILES = 200
 
         /** 지도 검색(10.5.7) 결과 목록 개수. */
         const val SEARCH_LIMIT = 8
@@ -208,6 +220,12 @@ object AppConfig {
 
         /** 썸네일·미리보기 하나를 기다리는 시간. */
         const val SD_THUMB_MS = 8_000L
+
+        /** 앱 사진 썸네일 메모리 캐시(바이트). 1/16 썸네일(약 160KB) 100장 남짓. */
+        const val THUMB_CACHE_BYTES = 16 * 1024 * 1024
+
+        /** 앱 사진 썸네일을 동시에 푸는 수(20MP JPEG를 격자 칸 수만큼 한꺼번에 풀면 조종기가 버벅임). */
+        const val THUMB_DECODERS = 2
 
         /** 원본 하나를 받는 시간 상한(약 20MB JPEG). */
         const val SD_DOWNLOAD_MS = 120_000L
@@ -417,6 +435,9 @@ object AppConfig {
 
     /** 카메라 뷰(10.5.2). */
     object CameraView {
+        /** 내비 원판 글자 배치 캐시 개수(방위 12 + H·OFF 등). 기본 8개면 매번 다시 잰다. */
+        const val NAV_TEXT_CACHE = 16
+
         /** 탭 초점 노란 사각형을 보이는 시간(☀ 노출 손잡이를 끄는 동안은 다시 셈). */
         const val FOCUS_MARK_MS = 2_000L
 

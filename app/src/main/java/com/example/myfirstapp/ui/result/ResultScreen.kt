@@ -4,6 +4,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.TextButton
+import com.example.myfirstapp.ui.album.PhotoThumbs
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -408,11 +409,7 @@ private fun PhotoViewer(r: ResultRow, photos: List<PhotoUi>, index: Int, onPhoto
 /** 썸네일 한 칸: 작게 디코딩(1/16)한 사진, 고른 것은 흰 테두리, 검출은 빨간 점. */
 @Composable
 internal fun Thumbnail(p: PhotoUi, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val bitmap by produceState<ImageBitmap?>(null, p.capture.filePath) {
-        value = withContext(Dispatchers.IO) {
-            p.capture.filePath?.let { BitmapFactory.decodeFile(it, BitmapFactory.Options().apply { inSampleSize = 16 }) }?.asImageBitmap()
-        }
-    }
+    val bitmap by produceState<ImageBitmap?>(null, p.capture.filePath) { value = p.capture.filePath?.let { PhotoThumbs.load(it, 16) } }
     Box(modifier.clip(RoundedCornerShape(2.dp)).background(SurfaceContainerHighest).clickable(onClick = onClick)) {
         bitmap?.let { Image(it, contentDescription = null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
         if (selected) Box(Modifier.fillMaxSize().border(2.dp, Color.White, RoundedCornerShape(2.dp)))

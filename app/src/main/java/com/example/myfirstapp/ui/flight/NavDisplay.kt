@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.flight
 
+import com.example.myfirstapp.AppConfig
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -79,7 +80,7 @@ fun NavDisplay(t: Telemetry, home: GeoPoint?, obstacles: ObstacleWarning = Obsta
     val rcAt = navPoint(t.position, t.rcPosition, t.headingDeg)?.takeIf { showRcDot(t.position, t.rcPosition) }
     val nextAt = next?.let { navPoint(t.position, it.at, t.headingDeg) }
     val sensed = obstacles.sensed
-    val measurer = rememberTextMeasurer()
+    val measurer = rememberTextMeasurer(cacheSize = AppConfig.CameraView.NAV_TEXT_CACHE)
     val small = TextStyle(fontSize = FontSize.Micro, color = Color.White)
     Box(modifier.size(300.dp, 120.dp)) {
         Canvas(Modifier.fillMaxSize()) {

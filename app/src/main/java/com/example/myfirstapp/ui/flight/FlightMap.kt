@@ -51,6 +51,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.sample
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
@@ -139,6 +142,7 @@ private enum class MarkerCard { AIRCRAFT, RC }
  * 웨이포인트는 확대 [AppConfig.Map.WAYPOINT_MIN_ZOOM] 이상에서 보이고, 겹치는 라벨은 소티 순서로 앞의 것만 남긴다.
  * MapLibre 로고·ⓘ는 숨기고 배경 출처만 오른쪽 아래 작은 글자([MapAttribution]).
  */
+@OptIn(FlowPreview::class) // sample
 @Composable
 internal fun FlightMap(
     s: FlightUiState, interactive: Boolean, pad: List<Dp>, modifier: Modifier,
@@ -303,11 +307,12 @@ internal fun FlightMap(
             style.setMarkers(MapMarkers(home = home, aircraft = t?.position, headingDeg = t?.headingDeg ?: 0.0, rc = t?.rcPosition))
             val back = t?.position?.takeIf { rth }?.let { a -> home?.let { h -> LineString.fromLngLats(listOf(a.toPoint(), h.toPoint())) } }
             style.getSourceAs<GeoJsonSource>("rth")?.setGeoJson(FeatureCollection.fromFeatures(listOfNotNull(back?.let { Feature.fromGeometry(it) })))
-            val points = if (s.poles.isNotEmpty()) s.poles.map { it.position } + listOfNotNull(s.home)
-            else listOfNotNull(t?.position ?: s.home ?: t?.rcPosition ?: s.mapFallback)
-            if (points.isEmpty()) return@getMapAsync
+            // 전주 전체(수백 개) 목록은 처음 맞출 때만 만든다(매 틱 만들지 않게, 성능 2026-11-07)
+            val single = t?.position ?: s.home ?: t?.rcPosition ?: s.mapFallback
+            if (s.poles.isEmpty() && single == null) return@getMapAsync
             if (!fitted) {
                 fitted = true
+                val points = if (s.poles.isNotEmpty()) s.poles.map { it.position } + listOfNotNull(s.home) else listOfNotNull(single)
                 val latLngs = points.map { LatLng(it.lat, it.lon) }
                 val px = pad.map { with(density) { it.roundToPx() } }
                 map.moveCamera(
@@ -319,7 +324,7 @@ internal fun FlightMap(
             val bearing = if (northUp) 0.0 else t?.headingDeg ?: 0.0
             val follow = when {
                 panned -> null
-                s.poles.isEmpty() -> points.first()
+                s.poles.isEmpty() -> single
                 t?.isFlying == true -> t.position
                 else -> null
             }
@@ -355,11 +360,14 @@ internal fun FlightMap(
     // N 잠금으로 돌아오면 손으로 옮긴 뒤라도 북쪽을 위로
     LaunchedEffect(northUp) { if (northUp) mapView.getMapAsync { it.moveCamera(CameraUpdateFactory.bearingTo(0.0)) } }
 
-    LaunchedEffect(styleGen, s.track) {
-        mapView.getMapAsync { map ->
-            val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
-            val line = s.track.takeIf { it.size >= 2 }?.let { tr -> Feature.fromGeometry(LineString.fromLngLats(tr.map { it.toPoint() })) }
-            style.getSourceAs<GeoJsonSource>("track")?.setGeoJson(FeatureCollection.fromFeatures(listOfNotNull(line)))
+    // 궤적(최대 3천 점)은 점이 늘 때마다 통째로 다시 올리지 않고 [AppConfig.Map.TRACK_DRAW_MS]마다 한 번(다시 보기는 10Hz로 바뀜)
+    LaunchedEffect(styleGen) {
+        snapshotFlow { latest.track }.sample(AppConfig.Map.TRACK_DRAW_MS).collect { track ->
+            mapView.getMapAsync { map ->
+                val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
+                val line = track.takeIf { it.size >= 2 }?.let { tr -> Feature.fromGeometry(LineString.fromLngLats(tr.map { it.toPoint() })) }
+                style.getSourceAs<GeoJsonSource>("track")?.setGeoJson(FeatureCollection.fromFeatures(listOfNotNull(line)))
+            }
         }
     }
 

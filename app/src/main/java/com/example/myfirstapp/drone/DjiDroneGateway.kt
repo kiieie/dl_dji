@@ -752,7 +752,8 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
                 val bmp = djiValue<android.graphics.Bitmap> { f.pullPreviewFromCamera(it) }
                 ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, AppConfig.Polling.PREVIEW_JPEG_QUALITY, it) }.toByteArray()
             } else {
-                val out = ByteArrayOutputStream()
+                // 파일 크기만큼 미리 잡는다(32B부터 두 배씩 키우면 10MB 사진 1장에 쓰레기 약 20MB)
+                val out = ByteArrayOutputStream(f.fileSize.coerceIn(32L, AppConfig.Polling.DOWNLOAD_BUFFER_MAX).toInt())
                 suspendCancellableCoroutine { c ->
                     f.pullOriginalMediaFileFromCamera(0, object : MediaFileDownloadListener {
                         override fun onStart() {}

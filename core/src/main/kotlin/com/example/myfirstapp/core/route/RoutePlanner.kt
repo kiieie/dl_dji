@@ -36,6 +36,9 @@ class RoutePlanner(
         val proj = LocalProjection(home)
         val origin = Enu(0.0, 0.0)
         val budget = energy.budget(startBatteryPct)
+        // 전체 순회는 한도의 절반, 소티별 재최적화는 나머지를 나눠 쓴다(소티마다 따로 쓰면 최악 (1 + 소티 수) × 한도, 성능 2026-11-07)
+        val start = System.nanoTime()
+        val deadline = start + tsp.timeLimitMs * 1_000_000
 
         // 1) 도달 불가 전주 분류(5.4): 가시권 밖이거나 단독 소티도 예산을 넘는 전주. 단독 소티 비용은 분할(3)과 같은 셈이다
         //    (이륙 지점 왕복 + 사선 전주 둘레 + 설비 조준 촬영). 왕복만 보면 혼자서도 예산을 넘는 소티가 계획되었다(11-04 리뷰).
@@ -54,7 +57,7 @@ class RoutePlanner(
 
         // 2) 전체 순회 경로
         val points = listOf(origin) + reachable.map { proj.toEnu(it.position) }
-        val order = if (keepOrder) reachable.indices.toList() else tsp.solve(points).map { it - 1 }
+        val order = if (keepOrder) reachable.indices.toList() else tsp.solve(points, start + tsp.timeLimitMs * 500_000).map { it - 1 }
         val ordered = order.map { reachable[it] }
         val enu = order.map { points[it + 1] }
 
@@ -104,7 +107,7 @@ class RoutePlanner(
         for (back in from.asReversed()) {
             val i = back[j]
             val seg = (i - 1 until j).toList()
-            val (seq, dist) = if (keepOrder) seg to length(seg, enu, origin) else reoptimize(seg, enu, origin)
+            val (seq, dist) = if (keepOrder) seg to length(seg, enu, origin) else reoptimize(seg, enu, origin, deadline)
             val count = j - i + 1
             val jumps = energy.longJumps(seq.zipWithNext { a, b -> enu[a].distanceTo(enu[b]) })
             val shots = extra[j] - extra[i - 1]
@@ -132,8 +135,8 @@ class RoutePlanner(
      * 소티 재최적화(5.4): 이륙 지점 + 소티 전주로 TSP를 다시 풀어 더 짧으면 그 순서를 쓴다. (순서, 경로 길이)를 돌려준다.
      * 왕복 경로라 방향은 길이와 상관없으므로 이륙 지점에서 가까운 끝부터 돌게 맞춘다(전에는 사선 지점 펼치기가 했음, 5.7).
      */
-    private fun reoptimize(seg: List<Int>, enu: List<Enu>, origin: Enu): Pair<List<Int>, Double> {
-        val solved = tsp.solve(listOf(origin) + seg.map { enu[it] }).map { seg[it - 1] }
+    private fun reoptimize(seg: List<Int>, enu: List<Enu>, origin: Enu, deadline: Long): Pair<List<Int>, Double> {
+        val solved = tsp.solve(listOf(origin) + seg.map { enu[it] }, deadline).map { seg[it - 1] }
         val (best, dist) = listOf(seg, solved).map { it to length(it, enu, origin) }.minBy { it.second }
         return (if (enu[best.last()].distanceTo(origin) < enu[best.first()].distanceTo(origin)) best.reversed() else best) to dist
     }

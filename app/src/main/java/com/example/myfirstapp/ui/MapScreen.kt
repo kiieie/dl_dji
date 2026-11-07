@@ -895,10 +895,12 @@ internal fun PoleMap(
         mapView.getMapAsync { map ->
             val style = map.style?.takeIf { it.isFullyLoaded } ?: return@getMapAsync
             style.getSourceAs<GeoJsonSource>("draw")?.setGeoJson(drawFeatures(overlay.vertices))
-            style.getSourceAs<GeoJsonSource>("route")?.setGeoJson(routeFeatures(overlay.plan, overlay.params))
+            // 촬영 지점 펼치기(Viewpoints)는 한 번만(경로 선·구간 길이 둘 다 씀)
+            val lines = routeLines(overlay.plan, overlay.params)
+            style.getSourceAs<GeoJsonSource>("route")?.setGeoJson(routeFeatures(lines, overlay.plan))
             style.getSourceAs<GeoJsonSource>("route-length")?.setGeoJson(
                 FeatureCollection.fromFeatures(
-                    routeLines(overlay.plan, overlay.params).flatMap { it.zipWithNext() }.map { (a, b) ->
+                    lines.flatMap { it.zipWithNext() }.map { (a, b) ->
                         val m = LocalProjection.distanceM(a, b)
                         Feature.fromGeometry(GeoPoint((a.lat + b.lat) / 2, (a.lon + b.lon) / 2).toPoint()).apply {
                             addStringProperty("icon", style.labelImage(String.format(Locale.ROOT, "%.1fm", m), dark = false))
@@ -1006,8 +1008,8 @@ private fun routeLines(plan: RoutePlan?, params: FlightParams): List<List<GeoPoi
     if (plan == null) emptyList() else plan.sorties.map { s -> listOf(plan.home) + Viewpoints.expand(s.poles, params, plan.home).map { it.position } + plan.home }
 
 /** 소티마다 닫힌 선 하나([routeLines])와 방문 전주 점들. */
-private fun routeFeatures(plan: RoutePlan?, params: FlightParams): FeatureCollection = FeatureCollection.fromFeatures(
-    routeLines(plan, params).zip(plan?.sorties.orEmpty()).flatMapIndexed { i, (line, s) ->
+private fun routeFeatures(lines: List<List<GeoPoint>>, plan: RoutePlan?): FeatureCollection = FeatureCollection.fromFeatures(
+    lines.zip(plan?.sorties.orEmpty()).flatMapIndexed { i, (line, s) ->
         val color = SORTIE_COLORS[i % SORTIE_COLORS.size]
         (listOf(LineString.fromLngLats(line.map { it.toPoint() })) + s.poles.map { it.position.toPoint() })
             .map { g -> Feature.fromGeometry(g).apply { addStringProperty("color", color) } }

@@ -103,24 +103,46 @@ private fun download(
         var bytes = 0L
         var failed = 0
         var inARow = 0
-        for (z in AppConfig.Map.PREFETCH_MIN_ZOOM..maxZoom) {
-            for (x in TileMath.tileX(w, z)..TileMath.tileX(e, z)) for (y in TileMath.tileY(n, z)..TileMath.tileY(s, z)) {
-                val row = TileMath.tmsRow(y, z) // MBTiles는 TMS(아래부터)
-                val have = db.rawQuery("SELECT 1 FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", arrayOf("$z", "$x", "$row")).use { it.moveToFirst() }
-                if (have) continue
-                val url = TileMath.expandUrl(urls[(x + y) % urls.size], x, y, z)
-                val data = runCatching { get(url) }.getOrElse {
-                    failed++
-                    if (++inARow >= AppConfig.Map.PREFETCH_MAX_FAILS) throw it
-                    continue
+        val started = System.currentTimeMillis()
+        // 타일마다 커밋하지 않고 [AppConfig.Map.PREFETCH_COMMIT_TILES]장씩 묶어 커밋한다(끊겨도 그만큼만 다시 받음, 성능 2026-11-07)
+        db.beginTransaction()
+        try {
+            for (z in AppConfig.Map.PREFETCH_MIN_ZOOM..maxZoom) {
+                val x0 = TileMath.tileX(w, z)
+                val x1 = TileMath.tileX(e, z)
+                // 이미 있는 타일은 줌마다 한 번에 읽는다(타일마다 SELECT하지 않게)
+                val have = HashSet<Long>()
+                db.rawQuery("SELECT tile_column, tile_row FROM tiles WHERE zoom_level=? AND tile_column BETWEEN ? AND ?", arrayOf("$z", "$x0", "$x1")).use { c ->
+                    while (c.moveToNext()) have += (c.getLong(0) shl 32) or c.getLong(1)
                 }
-                inARow = 0
-                db.execSQL("INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)", arrayOf(z, x, row, data))
-                fetched++
-                bytes += data.size
+                for (x in x0..x1) for (y in TileMath.tileY(n, z)..TileMath.tileY(s, z)) {
+                    val row = TileMath.tmsRow(y, z) // MBTiles는 TMS(아래부터)
+                    if (((x.toLong() shl 32) or row.toLong()) in have) continue
+                    val url = TileMath.expandUrl(urls[(x + y) % urls.size], x, y, z)
+                    val data = runCatching { get(url) }.getOrElse {
+                        failed++
+                        if (++inARow >= AppConfig.Map.PREFETCH_MAX_FAILS) throw it
+                        continue
+                    }
+                    inARow = 0
+                    db.execSQL("INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)", arrayOf(z, x, row, data))
+                    fetched++
+                    bytes += data.size
+                    if (fetched % AppConfig.Map.PREFETCH_COMMIT_TILES == 0) {
+                        db.setTransactionSuccessful()
+                        db.endTransaction()
+                        db.beginTransaction()
+                    }
+                }
+            }
+        } finally {
+            // 끊겨 멈춰도 받은 타일은 남긴다(커밋 자체가 실패해 트랜잭션이 없으면 원래 예외를 그대로 둔다)
+            if (db.inTransaction()) {
+                db.setTransactionSuccessful()
+                db.endTransaction()
             }
         }
-        OpLog.log("map", "prefetchDone", mapOf("name" to name, "cache" to cache, "fetched" to fetched, "bytes" to bytes, "failed" to failed))
+        OpLog.log("map", "prefetchDone", mapOf("name" to name, "cache" to cache, "fetched" to fetched, "bytes" to bytes, "failed" to failed, "ms" to System.currentTimeMillis() - started))
         return failed == 0
     } finally {
         db.close()
@@ -131,10 +153,10 @@ private fun get(url: String): ByteArray {
     val c = URL(url).openConnection() as HttpURLConnection
     c.connectTimeout = AppConfig.Timeouts.HTTP_MS
     c.readTimeout = AppConfig.Timeouts.HTTP_MS
-    try {
-        check(c.responseCode == 200) { "HTTP ${c.responseCode}" }
-        return c.inputStream.use { it.readBytes() }
-    } finally {
-        c.disconnect()
+    // disconnect()는 하지 않는다: 스트림만 닫아야 같은 서버 연결을 다음 타일에 다시 쓴다(keep-alive)
+    if (c.responseCode != 200) {
+        c.disconnect() // 오류 응답은 본문을 읽지 않으므로 연결을 닫는다
+        error("HTTP ${c.responseCode}")
     }
+    return c.inputStream.use { it.readBytes() }
 }

@@ -84,6 +84,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -192,6 +194,7 @@ data class FlightUiState(
  * 실행기는 [viewModelScope]에서 돌아 설정 화면에 다녀와도 이어진다. 판독은 미션이 끝난 뒤 결과 화면에서 한다(10장).
  * 기체는 [droneFactory]로 받는다. 기체 연동 전에는 [FakeDroneGateway]이고, 연동하면 `DjiDroneGateway`로 바꾼다.
  */
+@OptIn(FlowPreview::class) // sample
 class FlightViewModel(
     private val dao: ProjectDao,
     private val projectId: Long,
@@ -356,7 +359,7 @@ class FlightViewModel(
                 routeName = "$projectName #$missionId",
             )
         }
-        combine(executor.uiState, drone.telemetry) { ui, t -> ui to t }.collect { (ui, t) ->
+        combine(executor.uiState, drone.telemetry.sample(AppConfig.Polling.UI_FRAME_MS)) { ui, t -> ui to t }.collect { (ui, t) ->
             val need = if (!t.isFlying) 0 else energy.returnPct(t.position?.let { LocalProjection.distanceM(it, t.home ?: home) } ?: 0.0).toInt()
             val wasPaused = paused
             precise?.setFlying("auto", ui.state.airborne || t.isFlying)

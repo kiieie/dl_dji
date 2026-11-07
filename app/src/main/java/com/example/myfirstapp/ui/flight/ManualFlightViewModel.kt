@@ -39,6 +39,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -61,6 +63,7 @@ data class ManualFlightUiState(
  * 셔터(화면 버튼·RC 셔터)는 언제든 찍고 원본을 받는다. 남은 전주가 있는 최근 미션의 전주가 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안이면 그 전주의 수동 사진으로,
  * 아니면 `manual/<날짜>/`에 둔다(6.4 RC 셔터). 자동 점검 비행은 미션의 [비행 시작]으로 한다.
  */
+@OptIn(FlowPreview::class) // sample
 class ManualFlightViewModel(
     private val dao: ProjectDao,
     private val appFilesDir: File?,
@@ -101,7 +104,7 @@ class ManualFlightViewModel(
         _state.update { it.copy(connected = drone != null, message = if (drone == null) "기체가 연결되지 않았습니다" else null) }
         drone?.let { d ->
             viewModelScope.launch {
-                d.telemetry.collect { t ->
+                d.telemetry.sample(AppConfig.Polling.UI_FRAME_MS).collect { t ->
                     precise?.setFlying("manual", t.isFlying)
                     _state.update { it.copy(flight = it.flight.copy(telemetry = t, home = t.home).withTrack(t)) }
                 }

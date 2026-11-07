@@ -30,6 +30,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -41,7 +42,8 @@ class InspectionExecutorTest {
 
     private val threePoles = listOf(pole("A", 100.0, 0.0), pole("B", 100.0, 100.0), pole("C", 0.0, 100.0))
 
-    private class MemoryRecorder : InspectionRecorder {
+    /** [saveGate]를 주면 사진 저장이 그것이 끝날 때까지 멈춘다(느린 저장 흉내). */
+    private class MemoryRecorder(val saveGate: CompletableDeferred<Unit>? = null) : InspectionRecorder {
         val transitions = mutableListOf<Pair<String, String>>()
         val visitUpdates = mutableListOf<Triple<Int, Int, VisitStatus>>()
         val captures = mutableListOf<Pair<Int, CaptureSource>>()
@@ -59,7 +61,10 @@ class InspectionExecutorTest {
             infos += capture
             return captures.size.toLong()
         }
-        override suspend fun saveImage(captureId: Long, bytes: ByteArray) { images += captureId }
+        override suspend fun saveImage(captureId: Long, bytes: ByteArray) {
+            saveGate?.await()
+            images += captureId
+        }
         override suspend fun saveDetections(captureId: Long, modelVersion: String, detections: List<Detection>) {
             this.detections[captureId] = detections
         }
@@ -106,10 +111,10 @@ class InspectionExecutorTest {
         droneConfig: FakeDroneGateway.Config = FakeDroneGateway.Config(),
         recoverSortie: Int? = null,
         config: ExecutorConfig = ExecutorConfig(),
+        recorder: MemoryRecorder = MemoryRecorder(),
         prepare: (FakeDroneGateway) -> Unit = {},
     ): Harness {
         val drone = FakeDroneGateway(backgroundScope, home, droneConfig).also(prepare)
-        val recorder = MemoryRecorder()
         val sounds = mutableListOf<Sound>()
         val energy = EnergyModel(EnergyParams(), params)
         val plans = sorties.map { SortiePlan(it, 0.0, 10.0, 0.0) }
@@ -144,6 +149,20 @@ class InspectionExecutorTest {
         )
         assertTrue(states.containsAll(listOf("ReturningHome", "SortieDone", "MissionDone")))
         assertTrue(h.drone.calls.contains("returnHome"))
+    }
+
+    @Test
+    fun `사진 저장이 느려도 RTH 명령은 바로 처리한다`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val h = harness(recorder = MemoryRecorder(gate))
+        h.send(Command.Start)
+        h.awaitState(ExecState.Downloading)
+        h.scope.advanceTimeBy(5_000)
+        h.send(Command.ReturnHome)
+        assertEquals(ExecState.ReturningHome, h.state) // 저장이 메시지 루프를 막으면 여기서 멈춘다
+        assertTrue(h.recorder.images.isEmpty())
+        gate.complete(Unit)
+        h.awaitUntil { h.recorder.images.size == 2 } // RTH로 단계가 끝나도 받은 사진은 저장한다
     }
 
     @Test

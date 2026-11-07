@@ -6,14 +6,13 @@ import com.example.myfirstapp.core.config.Tuning
  * 방문 순서 근사(5.3): 최근접 이웃 초기해 → 2-opt·Or-opt 반복 개선.
  * 0번 점(이륙 지점)에서 출발해 0번으로 돌아오는 순회를 최소화한다.
  */
-class TspSolver(private val timeLimitMs: Long = Tuning.Route.TSP_TIME_LIMIT_MS) {
+class TspSolver(val timeLimitMs: Long = Tuning.Route.TSP_TIME_LIMIT_MS) {
 
-    /** [points]의 0번은 이륙 지점이다. 0번을 뺀 방문 순서(점 번호)를 돌려준다. */
-    fun solve(points: List<Enu>): List<Int> {
+    /** [points]의 0번은 이륙 지점이다. 0번을 뺀 방문 순서(점 번호)를 돌려준다. [deadline](nanoTime)이 지나면 그때까지 찾은 순서. */
+    fun solve(points: List<Enu>, deadline: Long = System.nanoTime() + timeLimitMs * 1_000_000): List<Int> {
         val n = points.size
         if (n <= 1) return emptyList()
         val d = Array(n) { i -> DoubleArray(n) { j -> points[i].distanceTo(points[j]) } }
-        val deadline = System.nanoTime() + timeLimitMs * 1_000_000
         // tour[0] = 0(이륙 지점), 끝에서 0으로 돌아온다.
         val tour = nearestNeighbor(d)
         var improved = true
@@ -46,6 +45,8 @@ class TspSolver(private val timeLimitMs: Long = Tuning.Route.TSP_TIME_LIMIT_MS) 
         while (improved && System.nanoTime() < deadline) {
             improved = false
             for (i in 1 until tour.size - 1) {
+                // 한 바퀴가 O(n²)이라 큰 문제에서는 바퀴 안에서도 시간을 본다
+                if (System.nanoTime() >= deadline) return any
                 for (j in i + 1 until tour.size) {
                     val a = tour[i - 1]
                     val b = tour[i]

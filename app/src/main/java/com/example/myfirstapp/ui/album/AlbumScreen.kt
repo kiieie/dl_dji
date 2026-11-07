@@ -1,6 +1,9 @@
 package com.example.myfirstapp.ui.album
 
+import android.graphics.Bitmap
+import com.example.myfirstapp.AppConfig
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import com.example.myfirstapp.core.model.storageUsedLabel
 import com.example.myfirstapp.core.executor.sdFreeLabel
@@ -392,11 +395,30 @@ private fun Thumb(
 
 /** 사진 파일(작게 [sample]분의 1로 디코딩). 없으면 빈 칸. 홈 앨범 타일 바탕에도 쓴다. */
 @Composable
-internal fun Photo(path: String?, modifier: Modifier, sample: Int = 4) {
-    val bitmap by produceState<ImageBitmap?>(null, path) {
-        value = withContext(Dispatchers.IO) { path?.let { BitmapFactory.decodeFile(it, BitmapFactory.Options().apply { inSampleSize = sample }) }?.asImageBitmap() }
+internal fun Photo(path: String?, modifier: Modifier, sample: Int = 4, contentScale: ContentScale = ContentScale.Crop) {
+    val bitmap by produceState<ImageBitmap?>(null, path, sample) { value = path?.let { PhotoThumbs.load(it, sample) } }
+    bitmap?.let { Image(it, contentDescription = null, modifier, contentScale = contentScale) }
+}
+
+/**
+ * 앱 사진 썸네일(성능 2026-11-07): 같은 사진은 다시 풀지 않고(메모리 캐시), 동시에 [AppConfig.Album.THUMB_DECODERS]장까지만 푼다.
+ * 작은 그림이라 RGB_565(메모리 절반). 판독·뷰어의 큰 그림은 색을 지키려고 쓰지 않는다.
+ */
+internal object PhotoThumbs {
+    private val cache = object : LruCache<String, ImageBitmap>(AppConfig.Album.THUMB_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 2
     }
-    bitmap?.let { Image(it, contentDescription = null, modifier, contentScale = ContentScale.Crop) }
+    private val decoder = Dispatchers.IO.limitedParallelism(AppConfig.Album.THUMB_DECODERS)
+
+    suspend fun load(path: String, sample: Int): ImageBitmap? = withContext(Dispatchers.IO) {
+        // 크기·수정 시각을 키에 넣는다: 쓰는 중인 파일을 푼 그림이 남지 않게
+        val f = File(path)
+        val key = "$path#$sample#${f.length()}#${f.lastModified()}"
+        cache.get(key) ?: withContext(decoder) {
+            val options = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.RGB_565 }
+            BitmapFactory.decodeFile(path, options)?.asImageBitmap()
+        }?.also { cache.put(key, it) }
+    }
 }
 
 /** 아래 범례 26dp(10.4.3): 탐지 점과 설비 기호, 오른쪽 끝 조종기 남은 공간([freeBytes], 다운로드 완료 저장소). */
