@@ -104,7 +104,7 @@ CLAUDE.md               Claude Code 작업 안내서(규칙, 명령, 알려진 �
 
 ```bash
 ./gradlew installRelease          # 현장용 설치(PC 연결)
-bash tools/release.sh --upload    # NAS에 올림 → RC 브라우저: https://<NAS>/Projects/R26IA06/dl.apk
+bash tools/release.sh --upload    # NAS에 올림 → RC 브라우저: <NAS>/Projects/R26IA06/dl.apk
 ```
 
 ## 앱에 데이터 넣기

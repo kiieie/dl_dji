@@ -66,6 +66,7 @@ mkdir -p secrets
 | `secrets/dji.properties` | `DJI_API_KEY=<DJI 개발자 사이트에서 받은 앱 키>` | `app/build.gradle.kts`가 읽어 매니페스트 `com.dji.sdk.API_KEY`에 넣음 |
 | `secrets/license_kr.co.dl_dji.txt` | DJI LDM 오프라인 라이선스 원문 | 기체 PoC에서 LDM 등록에 사용(예정) |
 | `secrets/vworld.properties` | `VWORLD_API_KEY=<VWorld 오픈API 인증키>` | 배경 지도 VWorld(⑥ 설정에서 선택, 7.4). 없으면 배경 지도 없음(사용자 MBTiles만) |
+| `secrets/nas.properties` | `NAS_DAV=https://<NAS>/Projects/R26IA06/배포/dl_dji` | `tools/release.sh --upload`(배포). 주소는 공개 저장소에 쓰지 않음 |
 
 `dji.properties`가 없어도 빌드는 됩니다. 이 경우 Gradle이 `secrets/dji.properties 없음` 경고를 내고, 앱에서 DJI SDK 등록만 실패합니다(모의 기체 기능은 정상). DJI 앱 키는 패키지명(`applicationId`) `kr.co.dl_dji`에 묶여 있으므로 패키지명을 바꾸면 키를 새로 받아야 합니다.
 
@@ -99,8 +100,8 @@ Windows에서는 `./gradlew` 대신 `gradlew.bat`을 씁니다.
 
 - **배포 키**: `secrets/release.keystore`·`release.properties`(git 제외)가 있으면 debug·release 모두 이 키로 서명합니다. 어느 PC에서 빌드해도 RC에 데이터를 지우지 않고 덮어 설치됩니다. 키를 잃으면 업데이트가 안 되고 앱을 지웠다 다시 깔아야 하므로(데이터 삭제) NAS `R26IA06/배포/signing/`에 백업합니다(`--backup-key`). 새 PC는 `secrets/`에 이 두 파일을 복사합니다.
 - **버전**: `versionCode`는 git 커밋 수, `versionName`은 `1.0.<커밋 수>`입니다. 커밋하면 저절로 올라갑니다.
-- **NAS에 올리기**: `~/.netrc`에 `machine <NAS> login <아이디> password <암호>`를 넣고 `bash tools/release.sh --upload`를 실행합니다. `R26IA06/배포/dl_dji/dl_dji-<버전>.apk`와 `.json`(커밋, sha256)을 올리고, 같은 이름이 있으면 덮어쓰지 않습니다. 그다음 NAS 안에서 그 파일을 **최신 고정 주소 `R26IA06/dl.apk`·`dl.json`으로 복사**합니다(이 두 파일만 덮어씀, 다시 올리지 않음). APK에는 DJI API 키가 들어 있으므로 공개 위치(GitHub 등)에 올리지 않습니다.
-- **RC에 설치**: RC 브라우저에서 **https://<NAS>/Projects/R26IA06/dl.apk** 를 열고 NAS 계정으로 로그인해 받은 뒤 설치합니다. 이 주소는 늘 최신판입니다(처음 한 번 "출처를 알 수 없는 앱" 허용). 지난 버전은 `R26IA06/배포/dl_dji/`에 남습니다. PC가 옆에 있으면 `adb install -r build/dist/dl_dji-<버전>.apk`.
+- **NAS에 올리기**: NAS 주소를 `secrets/nas.properties`(`NAS_DAV=https://<NAS>/Projects/R26IA06/배포/dl_dji`, git 제외, 관리자에게 받음)에, 계정을 `~/.netrc`(`machine <NAS> login <아이디> password <암호>`)에 넣고 `bash tools/release.sh --upload`를 실행합니다. `R26IA06/배포/dl_dji/dl_dji-<버전>.apk`와 `.json`(커밋, sha256)을 올리고, 같은 이름이 있으면 덮어쓰지 않습니다. 그다음 NAS 안에서 그 파일을 **최신 고정 주소 `R26IA06/dl.apk`·`dl.json`으로 복사**합니다(이 두 파일만 덮어씀, 다시 올리지 않음). APK에는 DJI API 키가 들어 있으므로 공개 위치(GitHub 등)에 올리지 않습니다.
+- **RC에 설치**: RC 브라우저에서 **<NAS>/Projects/R26IA06/dl.apk** 를 열고 NAS 계정으로 로그인해 받은 뒤 설치합니다. 이 주소는 늘 최신판입니다(처음 한 번 "출처를 알 수 없는 앱" 허용). 지난 버전은 `R26IA06/배포/dl_dji/`에 남습니다. PC가 옆에 있으면 `adb install -r build/dist/dl_dji-<버전>.apk`.
 - **키를 바꿀 때(debug 키 → 배포 키, 2026-11-07에 한 번)**: 서명이 달라 덮어 설치되지 않습니다. 옛 debug 빌드에서 `adb exec-out run-as kr.co.dl_dji tar cf - -C /data/data/kr.co.dl_dji databases files shared_prefs > internal.tar`로 내부 데이터를 백업합니다. 그다음 `mv`로 `Android/data/kr.co.dl_dji/files`를 `/sdcard/`로 옮기고 앱을 지웁니다. 새 키 debug를 설치하고 `adb exec-in run-as kr.co.dl_dji tar xf - -C /data/data/kr.co.dl_dji < internal.tar`, 폴더를 되돌린 뒤 release를 설치합니다. 위치 권한은 다시 묻습니다.
 
 ## 5. 처음 실행 확인
