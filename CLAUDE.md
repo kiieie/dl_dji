@@ -67,7 +67,8 @@
 ./gradlew :core:test              # 도메인 단위 테스트 (기체·에뮬레이터 불필요)
 ./gradlew assembleDebug           # 디버그 APK 빌드
 ./gradlew installDebug            # 연결된 기기에 설치(개발용, run-as 됨)
-./gradlew installRelease          # 현장 배포용(시작 1.47→0.43초, debug 키 서명·R8 끔, 2026-11-07)
+./gradlew installRelease          # 현장용(시작 1.47→0.43초, R8 끔, 2026-11-07)
+bash tools/release.sh --upload    # 배포 APK(build/dist/, 배포 키 secrets/release.*, versionCode=커밋 수) → NAS R26IA06/배포/dl_dji/(README "배포")
 ./gradlew test                    # 로컬 단위 테스트 (app/src/test)
 ./gradlew connectedAndroidTest    # 기기 계측 테스트 (app/src/androidTest)
 ./gradlew lint                    # Android Lint

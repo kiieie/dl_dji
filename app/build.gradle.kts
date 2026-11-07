@@ -23,6 +23,16 @@ val ldmLicense: String = rootProject.file("secrets/license_kr.co.dl_dji.txt").ta
     ?.readText()?.trim().orEmpty()
     .also { if (it.isEmpty()) logger.warn("secrets/license_kr.co.dl_dji.txt 없음: LDM 라이선스 없이 빌드합니다") }
 
+// 배포 키(2026-11-07): secrets/release.properties(git 제외, 키 파일 secrets/release.keystore)가 있으면 debug·release 모두 이 키로 서명한다.
+// 어느 PC에서 빌드해도 RC에 데이터를 지우지 않고 덮어 설치된다. 없으면 PC마다 다른 debug 키(다른 PC에서 만든 APK는 덮어 설치 안 됨).
+val releaseSigning: Properties? = rootProject.file("secrets/release.properties").takeIf { it.exists() }
+    ?.let { f -> Properties().apply { f.inputStream().use(::load) } }
+
+// 버전 번호는 git 커밋 수(커밋할 때마다 커져 업데이트로 설치된다). git이 없으면 1
+val gitCommitCount: Int = runCatching {
+    providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }.standardOutput.asText.get().trim().toInt()
+}.getOrDefault(1)
+
 android {
     namespace = "com.example.myfirstapp"
     compileSdk = 35
@@ -31,8 +41,8 @@ android {
         applicationId = "kr.co.dl_dji"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = gitCommitCount
+        versionName = "1.0.$gitCommitCount"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["DJI_API_KEY"] = djiApiKey
@@ -45,10 +55,25 @@ android {
         }
     }
 
+    signingConfigs {
+        releaseSigning?.let { p ->
+            create("kepco") {
+                storeFile = rootProject.file("secrets/${p.getProperty("storeFile")}")
+                storePassword = p.getProperty("storePassword")
+                keyAlias = p.getProperty("keyAlias")
+                keyPassword = p.getProperty("keyPassword")
+            }
+        }
+    }
+    val signing = signingConfigs.findByName("kepco") ?: signingConfigs.getByName("debug")
+
     buildTypes {
+        debug {
+            signingConfig = signing
+        }
         release {
-            // 내부 배포용: debug 키로 서명해 debug 빌드 위에 데이터를 지우지 않고 덮어 설치한다(성능 측정 2026-11-07)
-            signingConfig = signingConfigs.getByName("debug")
+            // 내부 배포용: debug와 같은 키로 서명해 서로 데이터를 지우지 않고 덮어 설치한다(2026-11-07)
+            signingConfig = signing
             // 원본 설정을 유지하되, 필요에 따라 minifyEnabled 등 추가 조절 가능
             optimization {
                 enable = false
