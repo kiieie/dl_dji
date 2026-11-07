@@ -55,7 +55,7 @@
 
 ## 저장소와 push
 
-- 원격: https://github.com/kiieie/dl_dji (공개). 새 컴퓨터 준비 절차는 `README.md`의 "다른 컴퓨터에서 쓰는 법"에 있습니다.
+- 원격: https://github.com/kiieie/dl_dji (공개). 새 컴퓨터 준비·배포 절차는 `docs/setup.md`에 있습니다(README에서 분리, 2026-11-07).
 - push는 SSH 배포 키로 합니다(`~/.ssh/config`의 호스트 별칭 `github-dl_dji`, 원격 `git@github-dl_dji:kiieie/dl_dji.git`).
 - **`main`만 push합니다.** 로컬 `feat/room-import-screen`과 `master`는 이력에 DJI API 키가 남아 있으므로 절대 push하지 않습니다.
 
@@ -68,7 +68,7 @@
 ./gradlew assembleDebug           # 디버그 APK 빌드
 ./gradlew installDebug            # 연결된 기기에 설치(개발용, run-as 됨)
 ./gradlew installRelease          # 현장용(시작 1.47→0.43초, R8 끔, 2026-11-07)
-bash tools/release.sh --upload    # 배포 APK(build/dist/, 배포 키 secrets/release.*, versionCode=커밋 수) → NAS R26IA06/배포/dl_dji/(README "배포")
+bash tools/release.sh --upload    # 배포 APK(build/dist/, 배포 키 secrets/release.*, versionCode=커밋 수) → NAS R26IA06/배포/dl_dji/, 최신 고정 주소 R26IA06/dl.apk(`docs/setup.md` "배포")
 ./gradlew test                    # 로컬 단위 테스트 (app/src/test)
 ./gradlew connectedAndroidTest    # 기기 계측 테스트 (app/src/androidTest)
 ./gradlew lint                    # Android Lint
@@ -115,7 +115,7 @@ tools/export_coco_model.sh       # 개발용 COCO yolo11n 모델 폴더 생성(b
 tools/yolo_ref.py                # 같은 모델을 PC에서 돌린 탐지 기준값(스모크 대조용)
 secrets/                         # git 제외: DJI LDM 라이선스, VWorld 인증키, DJI API 키(dji.properties)
 .design-sync/                    # Claude Design용 토큰 묶음 생성(build.mjs, conventions.md). 출력 ds-bundle/은 git 제외
-README.md                        # 프로젝트 소개, 다른 컴퓨터에서 빌드·실행하는 법
+README.md                        # 프로젝트 소개(빌드·배포 절차는 docs/setup.md)
 docs/
 ├── evidence/                    # 작업별 증빙(스크린샷, README, 스모크 스크립트). reports/는 git 제외
 ├── DESIGN.md                    # 설계서 목차, 개요, 요구사항, 확정·미정 사항
