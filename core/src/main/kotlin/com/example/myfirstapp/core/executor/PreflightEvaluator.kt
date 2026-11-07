@@ -6,6 +6,7 @@ import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.port.PreflightReport
 import com.example.myfirstapp.core.route.LocalProjection
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 /**
  * 비행 전 점검 항목 하나(Pilot 2 비행 전 체크리스트처럼 값과 통과 여부를 함께 보여 준다). [problem]은 실패 때의 사유다.
@@ -44,6 +45,8 @@ object PreflightEvaluator {
         params: FlightParams,
         sortieEstBatteryPct: Double,
         firstPole: GeoPoint?,
+        /** 계획한 이륙 지점. 이륙 기준 고도면 기체 홈과 비교한다(이어하기 등 이륙 지점 이동, 6.7). */
+        planHome: GeoPoint? = null,
     ): List<PreflightCheck> {
         if (!report.connected) return listOf(PreflightCheck("기체 연결", "연결 안 됨", false, "기체가 연결되지 않았습니다.", blocking = true))
         // 업로드 전 배터리 판단(5.5): 남은 전주로 다시 센 소티 예상 사용량(올림) + 예비율
@@ -51,6 +54,8 @@ object PreflightEvaluator {
         val reserve = params.batteryReservePct.toInt()
         val now = report.batteryPct.toInt()
         val firstDist = if (report.home != null && firstPole != null) LocalProjection.distanceM(report.home, firstPole) else null
+        val shift = if (report.home != null && planHome != null) LocalProjection.distanceM(planHome, report.home) else null
+        val shiftOk = params.terrainFollow || shift == null || shift <= Tuning.Preflight.HOME_SHIFT_WARN_M
         return listOf(
             PreflightCheck("기체 연결", "연결됨", true, ""),
             PreflightCheck(
@@ -59,6 +64,10 @@ object PreflightEvaluator {
                 "GPS 신호가 약합니다(위성 ${report.gpsSatellites}개, 등급 ${report.gpsLevel}).",
             ),
             PreflightCheck("홈포인트", if (report.homeRecorded && report.home != null) "기록됨" else "미설정", report.homeRecorded && report.home != null, "홈포인트가 기록되지 않았습니다."),
+            PreflightCheck(
+                "이륙 지점", shift?.let { "계획과 ${it.roundToInt()}m" } ?: "-", shiftOk,
+                "이륙 지점이 계획과 ${shift?.roundToInt()}m 다릅니다. 이륙 기준 고도라 땅 높이 차이만큼 촬영 고도가 달라집니다. 전주가 선 땅보다 낮은 곳이면 고도를 올리세요.",
+            ),
             PreflightCheck(
                 BATTERY, "지금 $now% · 예상 사용 $use% (+예비 $reserve%)", report.batteryPct >= use + params.batteryReservePct,
                 "배터리가 부족합니다(지금 $now%, 예상 사용 $use% + 예비 $reserve% = ${use + reserve}%).",

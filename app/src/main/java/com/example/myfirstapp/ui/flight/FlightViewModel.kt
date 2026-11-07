@@ -172,6 +172,8 @@ data class FlightUiState(
 ) {
     /** 화면을 떠나도 되는 상태. 연결 끊김도 포함(기체 없이 복구로 열렸을 때 갇히지 않게, 다시 열면 복구가 이어짐). */
     val canExit get() = exec.state in setOf(ExecState.Idle, ExecState.Uploaded, ExecState.SortieDone, ExecState.MissionDone, ExecState.LinkLost)
+    /** 기체 홈이 계획 홈에서 떨어진 거리(m, 이륙 지점 이동, 6.7). 모르면 null. */
+    val homeShiftM: Int? get() = home?.let { h -> telemetry?.home?.let { LocalProjection.distanceM(h, it).toInt() } }
     /** 지금 소티의 미션 안 번호(1부터). */
     val sortieNumber get() = sortieNumbers.getOrElse(exec.sortieIndex) { exec.sortieIndex + 1 }
 
@@ -316,7 +318,7 @@ class FlightViewModel(
         val executor = InspectionExecutor(
             viewModelScope, drone, recorder, notifier, storage, energy, null, sorties,
             // 6.1 방식 A: 소티 미션 하나로 계속 비행(모의 기체도 같은 흐름)
-            config = ExecutorConfig(sortieMission = true),
+            config = ExecutorConfig(sortieMission = true, planHome = home),
             recoverSortie = open?.let { o -> groups.indexOfFirst { it.first == o.id } },
         ).also { executor = it }
         // 일시정지 중 수동 촬영·RC 셔터 사진 결과는 다른 사진 안내처럼 잠깐 보이고 지운다(11-06)
@@ -402,8 +404,11 @@ class FlightViewModel(
         val p = flightParams ?: return PreflightEvaluator.manual(report)
         val ui = _state.value.exec
         val index = nextSortieIndex()
-        val first = ui.visits.firstOrNull { it.sortieIndex == index && it.status == VisitStatus.PENDING }?.pole?.position
-        return PreflightEvaluator.checklist(report, p, plans.getOrNull(index)?.estBatteryPct ?: 0.0, first)
+        val left = ui.visits.filter { it.sortieIndex == index && (it.status == VisitStatus.PENDING || it.status == VisitStatus.IN_PROGRESS) }.map { it.pole }
+        val first = left.firstOrNull()?.position
+        // 실행기와 같은 셈: 배터리 예상은 실제 홈 기준(이륙 지점 이동, 5.4)
+        val est = report.home?.takeIf { left.isNotEmpty() }?.let { h -> energy?.sortiePlan(h, left)?.estBatteryPct } ?: plans.getOrNull(index)?.estBatteryPct ?: 0.0
+        return PreflightEvaluator.checklist(report, p, est, first, _state.value.home)
     }
 
     /**

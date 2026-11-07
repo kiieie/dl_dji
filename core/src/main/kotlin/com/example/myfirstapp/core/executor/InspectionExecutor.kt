@@ -72,6 +72,8 @@ data class ExecutorConfig(
      * false면 방식 B(전주마다 구간 미션, 도착 후 촬영·다운로드·분석·대기).
      */
     val sortieMission: Boolean = false,
+    /** 계획한 이륙 지점. 비행 전 점검이 기체 홈과 비교한다(이륙 지점 이동 경고, 6.7). */
+    val planHome: GeoPoint? = null,
 )
 
 /**
@@ -836,9 +838,12 @@ class InspectionExecutor(
             PreflightCheck -> {
                 val plan = sorties[sortieIndex]
                 val first = nextTarget()?.pole?.position
+                val left = visits.filter { it.sortieIndex == sortieIndex && (it.status == VisitStatus.PENDING || it.status == VisitStatus.IN_PROGRESS) }.map { it.pole }
                 launchStep {
                     val report = drone.preflight()
-                    val checks = PreflightEvaluator.checklist(report, params, plan.estBatteryPct, first)
+                    // 배터리 예상은 실제 홈 기준으로 다시 센다(이어하기 등으로 이륙 지점이 계획과 다를 수 있음, 5.4)
+                    val est = report.home?.takeIf { left.isNotEmpty() }?.let { energy.sortiePlan(it, left).estBatteryPct } ?: plan.estBatteryPct
+                    val checks = PreflightEvaluator.checklist(report, params, est, first, config.planHome)
                     StepResult.PreflightDone(checks.filterNot { it.ok }.map { it.problem }, report.home, PreflightEvaluator.blocked(checks))
                 }
             }

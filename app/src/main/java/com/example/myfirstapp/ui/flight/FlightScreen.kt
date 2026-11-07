@@ -89,6 +89,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
+import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.executor.ExecState
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.VisitStatus
@@ -260,13 +261,13 @@ private fun FlightContent(
 
         if (!mapMain) CameraNoticeView(s.notice)
         if (ui.state == ExecState.SortieDone) SortieDonePanel(s, vm)
-        if (ui.terrainFallbackAsk) TerrainFallbackDialog(ui.message, vm)
+        if (ui.terrainFallbackAsk) TerrainFallbackDialog(ui.message, s.homeShiftM, vm)
     }
 }
 
 /** 지형 추적 시작 거절(5.6, 2026-10-30 사용자 결정): 이륙 지점 기준으로 다시 올릴지 묻는다. 그동안 기체는 멈춰 호버링한다. */
 @Composable
-private fun TerrainFallbackDialog(reason: String?, vm: FlightViewModel) {
+private fun TerrainFallbackDialog(reason: String?, homeShiftM: Int?, vm: FlightViewModel) {
     FullscreenAlertDialog(
         onDismissRequest = vm::dismissTerrainFallback,
         title = { Text("지형 추적으로 시작하지 못했습니다") },
@@ -275,6 +276,10 @@ private fun TerrainFallbackDialog(reason: String?, vm: FlightViewModel) {
             Text(
                 listOfNotNull(
                     reason?.substringAfter("(", "")?.substringBeforeLast(")")?.takeIf { it.isNotBlank() }?.let { "기체 답: $it" },
+                    // 이륙 지점 이동(6.7): 이륙 기준이면 땅 높이 차이만큼 촬영 고도가 달라진다
+                    homeShiftM?.takeIf { it > Tuning.Preflight.HOME_SHIFT_WARN_M }?.let {
+                        "이륙 지점이 계획과 ${it}m 다릅니다. 이륙 기준 고도라 땅 높이 차이만큼 촬영 고도가 달라집니다. 전주가 선 땅보다 낮은 곳이면 고도를 올리세요."
+                    },
                     "이륙 지점 기준으로 다시 올리고 시작할까요? 비탈에서는 지면과의 거리가 달라지니 고도를 확인하세요. 취소하면 일시정지로 남습니다(수동 조종·RTH).",
                 ).joinToString("\n\n"),
             )
