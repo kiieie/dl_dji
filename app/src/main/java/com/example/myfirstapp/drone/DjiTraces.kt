@@ -18,9 +18,10 @@ fun cleanDjiTraces(externalFilesDir: File?, reason: String, checkMotors: Boolean
     val motorsOn = checkMotors && runCatching { KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyAreMotorsOn)) }.getOrNull() == true
     if (motorsOn) return
     var bytes = 0L
+    val started = System.currentTimeMillis()
     for (d in TRACE_DIRS) File(root, d).listFiles()?.forEach { f ->
         bytes += f.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
         f.deleteRecursively()
     }
-    if (bytes > 0) OpLog.log("privacy", "djiTracesCleaned", mapOf("reason" to reason, "bytes" to bytes))
+    if (bytes > 0) OpLog.log("privacy", "djiTracesCleaned", mapOf("reason" to reason, "bytes" to bytes, "ms" to System.currentTimeMillis() - started))
 }

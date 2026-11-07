@@ -6,7 +6,6 @@ import com.example.myfirstapp.detect.GpuCachePrep
 import com.example.myfirstapp.detect.ModelBench
 import com.example.myfirstapp.detect.PreciseDetection
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.CoroutineScope
@@ -105,14 +104,12 @@ class InspectionApp : Application() {
         rcBattery = RcBattery.watch(this)
         precise = PreciseDetection(this, database.projectDao(), settings, appScope, rcBattery)
         gpuPrep = GpuCachePrep(File(getExternalFilesDir(null), "models"), precise.gpuCache, settings, precise.pauseReason, appScope)
-        // SDK가 기록을 쓰기 시작하기 전에 지난 기록을 지운다(7.2). 처음엔 수 GB라 뒤에서 하고 끝나면 SDK를 켠다
-        appScope.launch {
-            withContext(Dispatchers.IO) {
-                cleanDjiTraces(getExternalFilesDir(null), "start", checkMotors = false)
-                getExternalFilesDir(null)?.let { dropBingCache(it, filesDir) }
-            }
-            initDjiSdk()
-        }
+        // SDK가 기록을 쓰기 시작하기 전에 지난 기록을 지운다(7.2). SDK 초기화는 미루지 않는다: init 전에 화면이 DJI 매니저
+        // (LDMManager·DeviceHealthManager 등)를 건드리면 클래스 초기화가 실패한 채 남아 SDK 초기화 때 앱이 죽는다(2026-11-07 RC).
+        // ponytail: 메인 스레드에서 지움. 보통 지난 세션 기록만이라 짧고, 수 GB가 쌓인 첫 실행만 몇 초 걸림
+        cleanDjiTraces(getExternalFilesDir(null), "start", checkMotors = false)
+        initDjiSdk()
+        appScope.launch(Dispatchers.IO) { getExternalFilesDir(null)?.let { dropBingCache(it, filesDir) } }
         appScope.launch { rcButtons.collect { OpLog.log("rc", it.name) } }
     }
 
