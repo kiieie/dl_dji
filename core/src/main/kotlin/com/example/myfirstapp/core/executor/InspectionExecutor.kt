@@ -96,6 +96,11 @@ class InspectionExecutor(
     private val config: ExecutorConfig = ExecutorConfig(),
     /** 앱 재시작 복구(6.4): 비정상 종료 때 진행 중이던 소티 번호. 값이 있으면 시작하자마자 기체 상태로 복귀 상태를 정한다. */
     private val recoverSortie: Int? = null,
+    /**
+     * RC 셔터 사진의 전주(6.4): 찍은 자리에서 20m 안 가장 가까운 전주(모든 프로젝트, 같은 전주 중복 포함)의 전주번호. 없으면 빈 집합.
+     * 이 미션 전주가 그 안에 있을 때만 붙인다. null이면 이 미션 전주만 본다(모의·테스트).
+     */
+    private val shutterPoles: (suspend (GeoPoint) -> Set<String>)? = null,
 ) {
     /** 비행 파라미터. 지형 추적 시작이 거절되어 운용자가 이륙 기준을 고르면 `terrainFollow`만 끈다(5.6). */
     private var params = energy.flight
@@ -121,7 +126,8 @@ class InspectionExecutor(
         data class Recover(val sortieIndex: Int) : Msg
 
         /** RC 셔터로 앱이 찍은 사진(실패면 null). */
-        data class Shutter(val capture: CaptureInfo?) : Msg
+        /** [near]: 찍은 자리 가장 가까운 전주번호([shutterPoles], 루프 밖에서 셈). null이면 이 실행 전주만 본다. */
+        data class Shutter(val capture: CaptureInfo?, val near: Set<String>? = null) : Msg
 
         /** 방식 A 사진 받기 결과(다운로드 실패면 [bytes]가 null). */
         data class Photo(val captureId: Long, val saved: Boolean) : Msg
@@ -233,7 +239,7 @@ class InspectionExecutor(
                 if (m.capture == null) {
                     _photoNotes.tryEmit("셔터 촬영 실패")
                     notifier.play(Sound.ERROR)
-                } else onShutterPhoto(m.capture)
+                } else onShutterPhoto(m.capture, m.near)
             }
         }
         publish()
@@ -290,7 +296,12 @@ class InspectionExecutor(
             // 일시정지 중, 또는 실행기는 쉬는데 기체가 떠 있음(수동 비행에서 넘어옴·소티 완료 뒤). 화면 촬영과 같은 capture → download 경로
             is Command.RcShutter -> if (!shutterBusy && (state == Paused || (state in REST && drone.telemetry.value.isFlying))) {
                 shutterBusy = true
-                scope.launch { inbox.send(Msg.Shutter(drone.capture(c.lens, params.gimbalPitchDeg, params.zoomRatio).getOrNull()?.copy(lens = c.lens))) }
+                scope.launch {
+                    val info = drone.capture(c.lens, params.gimbalPitchDeg, params.zoomRatio).getOrNull()?.copy(lens = c.lens)
+                    // 가까운 전주 찾기(DB)는 메시지 루프 밖에서. 실패하면 빈 집합(붙이지 않음): null로 두면 옛 동작(미션 전주 아무거나)이 된다
+                    val near = info?.position?.let { p -> shutterPoles?.let { f -> runCatching { f(p) }.getOrElse { e -> if (e is CancellationException) throw e; emptySet() } } }
+                    inbox.send(Msg.Shutter(info, near))
+                }
             }
             Command.EndMission -> if (state == SortieDone) enter(MissionDone, "운용자 미션 종료")
             Command.FlyTakeoffHeight -> when {
@@ -686,14 +697,19 @@ class InspectionExecutor(
     }
 
     /**
-     * RC 셔터 사진(6.4, 앱이 찍음): 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 이번 실행의 방문(남은 전주)에 수동 사진으로 기록하고
+     * RC 셔터 사진(6.4, 앱이 찍음): 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 전주([shutterPoles])가 이번 실행의 방문이면 그 방문에 수동 사진으로 기록하고
      * 처리 줄(다운로드 → 탐지)에 넣는다. 없으면 기록하지 않고 SD에만 남긴다(앞선 비행에서 끝낸 전주는 이번 실행에 없다).
      * 전주 상태도 사진 수([Visit.captureCount])도 바꾸지 않는다: 완료 판정은 자동 사진과 일시정지 중 화면 수동 촬영만 본다.
      */
-    private suspend fun onShutterPhoto(capture: CaptureInfo) {
-        val visit = shutterLinkTarget(capture.position, visits) { it.pole.position }
+    private suspend fun onShutterPhoto(capture: CaptureInfo, near: Set<String>?) {
+        // 가장 가까운 전주가 이번 비행 전주가 아니면 붙이지 않는다(11-09: 미션 밖 TEST0004 앞 사진이 20m 안 TEST0003에 붙음)
+        val pool = if (near == null) visits else visits.filter { it.pole.poleId in near }
+        val visit = shutterLinkTarget(capture.position, pool) { it.pole.position }
         if (visit == null) {
-            _photoNotes.tryEmit("셔터 사진을 연결할 전주가 없습니다(사진은 SD 카드에 있음).")
+            _photoNotes.tryEmit(
+                if (near.isNullOrEmpty()) "셔터 사진을 연결할 전주가 없습니다(사진은 SD 카드에 있음)."
+                else "가까운 전주 ${near.first()}는 이번 비행 전주가 아닙니다(사진은 SD 카드에 있음).",
+            )
             return
         }
         val id = saveCapture(visit, capture.copy(viewpoint = null), CaptureSource.MANUAL)

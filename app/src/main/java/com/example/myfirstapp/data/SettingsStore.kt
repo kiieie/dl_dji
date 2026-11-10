@@ -6,9 +6,11 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.myfirstapp.core.detect.LabelColors
 import com.example.myfirstapp.core.model.FlightParams
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONObject
 
 private val Context.settingsDataStore by preferencesDataStore("settings")
 
@@ -74,7 +76,25 @@ class SettingsStore(context: Context) {
         store.edit { if (name == null) it.remove(FULL_MODEL) else it[FULL_MODEL] = name }
     }
 
+    /** 라벨 → 상자 색 번호(9.8). 한 번 준 번호는 바꾸지 않는다(`LabelColors`). */
+    val labelColors: Flow<Map<String, Int>> = store.data.map { p ->
+        labelColorsOf(p[LABEL_COLORS])
+    }
+
+    /** 처음 보는 라벨에 다음 색 번호를 준다(옛 라벨 번호는 그대로). */
+    suspend fun ensureLabelColors(labels: List<String>) {
+        store.edit { p ->
+            val known = labelColorsOf(p[LABEL_COLORS])
+            val next = LabelColors.assign(known, labels)
+            if (next !== known) p[LABEL_COLORS] = JSONObject(next).toString()
+        }
+    }
+
+    private fun labelColorsOf(json: String?): Map<String, Int> =
+        json?.let { runCatching { JSONObject(it).let { o -> o.keys().asSequence().associateWith(o::getInt) } }.getOrNull() }.orEmpty()
+
     private companion object {
+        val LABEL_COLORS = stringPreferencesKey("label_colors")
         val FLIGHT = stringPreferencesKey("flight_defaults")
         val MODEL = stringPreferencesKey("model_dir")
         val FULL_MODEL = stringPreferencesKey("full_model_dir")

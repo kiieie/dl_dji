@@ -1,5 +1,6 @@
 package com.example.myfirstapp.ui.theme
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 // 10.2 Pilot 2 토큰(2026-10-30 시안 확정): 검정 바탕, 회색 4단계(패널·컨트롤·선택·구분선), 채운 버튼 파랑 하나.
@@ -91,6 +92,21 @@ val DetectedText = Color(0xFFFF6B61)
 val FacilityBox = Color(0xFFB4B4B4)
 /** 사진 위 검출 대상 상자(경고 라벨). */
 val DetectedBox = Color(0xFFFF5449)
+
+/**
+ * 라벨별 상자 색(9.8, 11-09): 라벨마다 받은 번호(`SettingsStore.labelColors`)의 색. 노랑부터, 경고 빨강·설비 회색과 겹치지 않게.
+ * 번호가 팔레트보다 크면 처음부터 다시 쓴다. 이 목록 순서를 바꾸면 이미 쓰던 라벨 색이 바뀌므로 뒤에만 더한다.
+ */
+val LabelPalette = listOf(
+    Color(0xFFFFD60A), Color(0xFF40C8E0), Color(0xFFFF5AC8), Color(0xFF34C759), Color(0xFFFF9F0A),
+    Color(0xFF5E9BFF), Color(0xFFBF5AF2), Color(0xFFB8E986), Color(0xFF00C7BE), Color(0xFFFFB3A7),
+)
+
+/** 화면 전체에 주는 라벨 → 색 번호(MainActivity에서 설정 값을 넣는다). */
+val LocalLabelColors = staticCompositionLocalOf { emptyMap<String, Int>() }
+
+/** 라벨 상자 색. 아직 번호가 없는 라벨은 설비 회색. */
+fun labelColor(label: String, colors: Map<String, Int>): Color = colors[label]?.let { LabelPalette[it % LabelPalette.size] } ?: FacilityBox
 
 // 지도(MapLibre) 색: 스타일 식에 문자열로 넘긴다.
 /** 점검 영역 면·선·꼭짓점 테두리. */

@@ -5,12 +5,14 @@ import com.example.myfirstapp.AppConfig
 import com.example.myfirstapp.core.detect.BackfillProgress
 import com.example.myfirstapp.core.detect.ModelPick
 import com.example.myfirstapp.core.detect.PreciseBackfill
+import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.port.Detector
 import com.example.myfirstapp.data.DetectionEntity
 import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.ProjectDao
 import com.example.myfirstapp.data.RcBattery
 import com.example.myfirstapp.data.SettingsStore
+import com.example.myfirstapp.data.lensOfFile
 import com.example.myfirstapp.data.watchThermal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -98,6 +100,21 @@ class PreciseDetection(
         backfill.kick()
     }
 
+    /** 판독 [탐지] 전에 확인(11-09): 탐지할 사진 수. 정밀 모델이 없으면 null. */
+    suspend fun pending(missionId: Long): Int? {
+        val specs = withContext(Dispatchers.IO) { readModelSpecs(modelsDir) }
+        val order = ModelPick.fullOrder(specs.map { (d, s) -> s.choice(d) }, settings.fullModelDir.first(), settings.liveModelDir.first())
+        val first = order.firstOrNull() ?: return null
+        return dao.capturesWithoutDetection(specs.getValue(first).version, listOf(missionId)).size
+    }
+
+    /** 판독 [탐지] 다시(11-09): 이 미션 사진을 처음부터 다시 정밀 탐지한다. */
+    suspend fun redo(missionId: Long) {
+        dao.clearDetectModel(missionId)
+        OpLog.log("precise", "redo", mapOf("mission" to missionId))
+        request(missionId)
+    }
+
     private var model: Detector? = null
 
     /**
@@ -109,7 +126,7 @@ class PreciseDetection(
         val order = ModelPick.fullOrder(specs.map { (d, s) -> s.choice(d) }, settings.fullModelDir.first(), settings.liveModelDir.first())
         val m = TfliteYoloDetector.openFirst(modelsDir, order, gpu = true, gpuCache) ?: error("탐지 모델이 없습니다")
         try {
-            val t = m.detectTimed(file)
+            val t = m.detectTimed(file, fit = fitFor(withContext(Dispatchers.IO) { lensOfFile(file) }))
             OpLog.log("precise", "one", mapOf("model" to m.modelVersion, "count" to t.detections.size, "ms" to t.totalMs.toInt()))
             val summary = t.detections.groupingBy { it.label }.eachCount().entries.joinToString(" · ") { "${m.spec.displayNames[it.key] ?: it.key} ${it.value}" }
             return LastPhoto(file.path, t.detections, 1f, summary.ifEmpty { "탐지 없음" }, m.spec.displayNames)
@@ -141,16 +158,21 @@ class PreciseDetection(
 
     private suspend fun process(captureId: Long) {
         val m = model ?: return
-        val path = dao.capture(captureId)?.filePath ?: return
-        val file = File(path)
-        val timed = (m as? TfliteYoloDetector)?.detectTimed(file)
+        val c = dao.capture(captureId) ?: return
+        val file = File(c.filePath ?: return)
+        // 렌즈는 파일 EXIF로 본다(예전 사진은 DB 렌즈가 화면 렌즈라 광각 센서 줌 사진도 ZOOM일 수 있음)
+        val fit = fitFor(withContext(Dispatchers.IO) { lensOfFile(file) } ?: c.lens)
+        val timed = (m as? TfliteYoloDetector)?.detectTimed(file, fit = fit)
         val list = timed?.detections ?: m.detect(withContext(Dispatchers.IO) { file.readBytes() })
         dao.savePreciseDetections(captureId, m.modelVersion, list.map { DetectionEntity(0, captureId, it.label, it.score, it.x, it.y, it.w, it.h, it.alert) })
         OpLog.log(
             "precise", "photo",
-            mapOf("capture" to captureId, "model" to m.modelVersion, "count" to list.size, "alert" to list.count { it.alert }, "ms" to timed?.totalMs?.toInt()),
+            mapOf("capture" to captureId, "model" to m.modelVersion, "count" to list.size, "alert" to list.count { it.alert }, "ms" to timed?.totalMs?.toInt(), "fit" to fit),
         )
     }
+
+    /** 망원 사진은 [AppConfig.Detector.TELE_FIT_PX]로 줄여 넣는다(9.6). 그 밖은 모델 입력 그대로(큰 값이면 입력으로 줄어듦). */
+    private fun fitFor(lens: String?) = if (lens == Lens.ZOOM.name) AppConfig.Detector.TELE_FIT_PX else Int.MAX_VALUE
 
     /** 쉬거나 다 끝나고 [AppConfig.Precise.IDLE_CLOSE_MS]가 지나면 모델을 닫아 메모리를 돌려준다(다음에 다시 연다, 설정에서 바꾼 모델도 그때 반영). */
     private fun closeModel() {

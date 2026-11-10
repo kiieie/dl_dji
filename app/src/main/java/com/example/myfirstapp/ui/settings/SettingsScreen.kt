@@ -55,7 +55,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val app = context.applicationContext as InspectionApp
     val vm: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.factory(app.settings, context.getExternalFilesDir(null), context.contentResolver, app.gpuPrep::kick),
+        factory = SettingsViewModel.factory(app.settings, context.getExternalFilesDir(null), context.contentResolver) { app.gpuPrep.kick(); app.seedLabelColors() },
     )
     val s by vm.state.collectAsStateWithLifecycle()
     val gpu by app.gpuPrep.status.collectAsStateWithLifecycle()

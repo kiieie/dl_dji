@@ -94,10 +94,11 @@ class TfliteYoloDetector private constructor(
         infer(t0, d, crop)
     }
 
-    /** 저장한 사진 파일(정밀 탐지·속도 측정). */
-    suspend fun detectTimed(file: File, crop: Float = 1f): Timed = withContext(worker) {
+    /** 저장한 사진 파일(정밀 탐지·속도 측정). [fit]이 입력보다 작으면 긴 변을 그만큼으로 줄여 가운데 넣는다(망원 사진, 9.6). */
+    suspend fun detectTimed(file: File, crop: Float = 1f, fit: Int = size): Timed = withContext(worker) {
         val t0 = System.nanoTime()
-        infer(t0, decodeSampled(crop) { BitmapFactory.decodeFile(file.path, it) }, crop)
+        val f = fit.coerceIn(1, size)
+        infer(t0, decodeSampled(crop, f) { BitmapFactory.decodeFile(file.path, it) }, crop, f)
     }
 
     /** 회색 입력으로 한 번 돌린다(9.7 A). GPU 프로그램 준비·메모리 잡기를 땅 위에서 끝내 비행 중 첫 사진이 늦지 않게. 걸린 시간(ms). */
@@ -117,10 +118,10 @@ class TfliteYoloDetector private constructor(
     )
 
     /** 20MP 원본을 다 풀지 않는다: 쓸 영역의 긴 변이 입력 이상으로 남는 만큼만 줄여 전체를 풀고(inSampleSize) 가운데를 고른다. */
-    private fun decodeSampled(crop: Float, decode: (BitmapFactory.Options) -> Bitmap?): Decoded {
+    private fun decodeSampled(crop: Float, fit: Int = size, decode: (BitmapFactory.Options) -> Bitmap?): Decoded {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { decode(it) }
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "이미지를 읽지 못했습니다" }
-        val sample = sampleSize(maxOf(bounds.outWidth, bounds.outHeight), crop, size)
+        val sample = sampleSize(maxOf(bounds.outWidth, bounds.outHeight), crop, fit)
         val bitmap = requireNotNull(decode(BitmapFactory.Options().apply { inSampleSize = sample })) { "이미지를 읽지 못했습니다" }
         val r = centerRegion(bitmap.width, bitmap.height, crop)
         return Decoded(bitmap, r.toRect(), r, bitmap.width, bitmap.height, sample, regionDecoded = false)
@@ -140,9 +141,9 @@ class TfliteYoloDetector private constructor(
         }
     }.onFailure { Log.w(TAG, "가운데 영역 디코딩 실패, 전체 디코딩으로: ${it.message}") }.getOrNull()
 
-    private fun infer(t0: Long, d: Decoded, crop: Float): Timed {
+    private fun infer(t0: Long, d: Decoded, crop: Float, fit: Int = size): Timed {
         val t1 = System.nanoTime()
-        val box = Letterbox(d.src.width(), d.src.height(), size)
+        val box = Letterbox(d.src.width(), d.src.height(), size, fit)
         letterbox(d.bitmap, d.src, box)
         d.bitmap.recycle()
         val t2 = System.nanoTime()
@@ -157,7 +158,7 @@ class TfliteYoloDetector private constructor(
             // 9.4 C++ 전환 판단용 단계별 시간
             Log.i(
                 TAG,
-                "${spec.version} $delegate crop=$crop region=${d.regionDecoded} sample=${d.sample} decode=${it.decodeMs.toInt()} " +
+                "${spec.version} $delegate crop=$crop fit=$fit region=${d.regionDecoded} sample=${d.sample} decode=${it.decodeMs.toInt()} " +
                     "pre=${it.preMs.toInt()} infer=${it.inferMs.toInt()} post=${it.postMs.toInt()}ms n=${list.size}",
             )
         }

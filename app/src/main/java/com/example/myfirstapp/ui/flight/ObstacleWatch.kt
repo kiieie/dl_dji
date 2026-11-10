@@ -14,11 +14,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.launch
 
 /**
  * 충돌 경고(13번, 11장): 기체 장애물 거리를 등급으로 바꿔 [set]으로 상태에 넣는다. 땅에서도 보인다(10.5.3, Pilot 2와 같음).
- * 신호음은 모터가 돌거나 떠 있을 때만, 가장 높은 등급이 바뀔 때 반복을 시작·정지한다. 주의는 느린 삑(0.8초), 위험은 빠른 삑(0.25초).
+ * 신호음은 모터가 돌거나 떠 있을 때만(11장): 주의는 들어갈 때 삑 한 번, 위험은 움직이면 빠른 삑(0.25초), 멈춰 있으면([Tuning.Obstacle.HOVER_STOP_MPS] 아래, [Tuning.Obstacle.HOVER_MOVE_MPS] 위로 올라야 다시 움직임)
+ * 느린 삑(1.5초)을 반복한다(11-09 전문가가 3~5m 근접 작업 내내 빠른 삑). 등급·움직임이 바뀔 때만 다시 시작한다.
  * 운용 로그(4.4): 어느 방향이든 [Tuning.Obstacle.LOG_M] 안이면 [AppConfig.Polling.OBSTACLE_LOG_MS]마다, 등급이 바뀌면 바로 `obstacle` 한 줄(방향별 거리, 위·아래 포함).
  * 땅에서는 아래 센서가 늘 땅을 보므로 아래 거리로는 남기지 않는다(다른 방향으로 남길 때 줄에는 넣는다).
  * 자동·수동 비행 화면이 같이 쓴다.
@@ -26,19 +28,25 @@ import kotlinx.coroutines.launch
 internal fun CoroutineScope.watchObstacles(drone: DroneGateway, tone: ToneNotifier, set: (ObstacleWarning) -> Unit) = launch {
     var w = ObstacleWarning()
     var beep: Job? = null
-    var beeping = ObstacleLevel.NONE
+    var beeping: Pair<ObstacleLevel, Boolean> = ObstacleLevel.NONE to false
     var loggedAt = 0L
     val armed = drone.telemetry.map { it.isFlying || it.motorsOn }.distinctUntilChanged()
-    combine(drone.obstacles, armed) { o, a -> o to a }.collect { (o, a) ->
+    val moving = drone.telemetry.scan(true) { mv, t -> if (mv) t.speedMps >= Tuning.Obstacle.HOVER_STOP_MPS else t.speedMps > Tuning.Obstacle.HOVER_MOVE_MPS }
+        .distinctUntilChanged()
+    combine(drone.obstacles, armed, moving) { o, a, mv -> Triple(o, a, mv) }.collect { (o, a, mv) ->
         val next = w.next(o)
-        val sound = if (a) next.level else ObstacleLevel.NONE
+        val level = if (a) next.level else ObstacleLevel.NONE
+        // 주의는 움직임과 상관없이 한 번만 울리므로 움직임이 바뀌어도 다시 울리지 않는다
+        val sound = level to (level == ObstacleLevel.DANGER && mv)
         if (sound != beeping) {
+            val wasLevel = beeping.first
             beeping = sound
             beep?.cancel()
-            beep = when (sound) {
-                ObstacleLevel.NONE -> null
+            beep = when {
+                level == ObstacleLevel.NONE -> null
+                level == ObstacleLevel.CAUTION -> if (wasLevel == ObstacleLevel.NONE) launch { tone.obstacleBeep() } else null
                 else -> launch {
-                    val gap = if (sound == ObstacleLevel.DANGER) AppConfig.Sound.OBSTACLE_DANGER_GAP_MS else AppConfig.Sound.OBSTACLE_CAUTION_GAP_MS
+                    val gap = if (sound.second) AppConfig.Sound.OBSTACLE_DANGER_GAP_MS else AppConfig.Sound.OBSTACLE_DANGER_HOVER_GAP_MS
                     while (true) { tone.obstacleBeep(); delay(gap) }
                 }
             }

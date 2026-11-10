@@ -42,7 +42,7 @@ fun lineTree(photos: List<AlbumPhoto>, manualDays: List<AlbumGroup.ManualDay>, z
                     val p = ps.first()
                     val poleKey = "$lineKey|${p.poleId}"
                     val days = ps.groupBy { fmt.format(Date(it.capture.takenAt)) }.entries.sortedByDescending { it.key }
-                        .map { (day, dayPhotos) -> TreeNode("$poleKey|$day", dayTitle(day), 2, photos = dayPhotos.sortedWith(compareBy({ it.capture.takenAt }, { it.capture.id }))) }
+                        .map { (day, dayPhotos) -> TreeNode("$poleKey|$day", dayTitle(day), 2, photos = dayPhotos.sortedWith(compareByDescending<AlbumPhoto> { it.capture.takenAt }.thenByDescending { it.capture.id })) }
                     TreeNode(poleKey, p.lineNo?.takeIf(String::isNotBlank) ?: p.poleId, 1, days, photos = days.flatMap { it.photos })
                 }
             TreeNode(lineKey, line ?: NO_LINE, 0, poles, photos = poles.flatMap { it.photos })

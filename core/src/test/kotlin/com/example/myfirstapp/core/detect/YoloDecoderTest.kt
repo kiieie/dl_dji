@@ -32,6 +32,25 @@ class YoloDecoderTest {
     }
 
     @Test
+    fun `작게 넣은 레터박스(망원 9_6)도 원본 비율로 되돌린다`() {
+        // 4000×3000 원본 → 1280 입력 가운데 긴 변 480: 배율 0.12, 패딩 가로 400 세로 460
+        val box = Letterbox(4000, 3000, 1280, fit = 480)
+        assertEquals(0.12f, box.scale, 1e-6f)
+        assertEquals(400f, box.padX, 1e-3f)
+        assertEquals(460f, box.padY, 1e-3f)
+        // 원본 (1000,750)-(2000,1500) → 입력 (520,550)-(640,640), 중심 (580,595) 크기 120×90
+        val out = output(floatArrayOf(580 / 1280f, 595 / 1280f, 120 / 1280f, 90 / 1280f, 0.9f, 0.1f))
+        val d = YoloDecoder(labels, setOf("person"), 0.35f, 0.5f).decode(out, 1, box).single()
+        assertEquals(0.25f, d.x, 1e-4f)
+        assertEquals(0.25f, d.y, 1e-4f)
+        assertEquals(0.25f, d.w, 1e-4f)
+        assertEquals(0.25f, d.h, 1e-4f)
+        // 여백(왼쪽 위 0~400)에서만 나온 상자는 버린다
+        val pad = output(floatArrayOf(100 / 1280f, 100 / 1280f, 80 / 1280f, 80 / 1280f, 0.9f, 0.1f))
+        assertTrue(YoloDecoder(labels, setOf("person"), 0.35f, 0.5f).decode(pad, 1, box).isEmpty())
+    }
+
+    @Test
     fun `점수 필터와 클래스별 NMS`() {
         val box = Letterbox(640, 640, 640)
         val out = output(

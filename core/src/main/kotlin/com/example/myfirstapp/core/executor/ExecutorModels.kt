@@ -8,6 +8,7 @@ import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.Pole
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.core.port.CaptureInfo
+import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.route.nearestWithin
 
 /** 실행 상태(6.4 상태도). [Uploaded]: 체크리스트 [비행 임무 업로드]로 미션을 올리고 [시작]을 기다림(땅, 10.5.5). */
@@ -132,3 +133,32 @@ fun shutterRoute(state: ExecState, flying: Boolean, missionPhotos: Boolean = fal
 /** 셔터 사진을 붙일 전주: 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 후보. 위치가 없거나 20m 안에 없으면 null(SD에만 남김). */
 fun <T> shutterLinkTarget(position: GeoPoint?, candidates: List<T>, pos: (T) -> GeoPoint): T? =
     position?.let { nearestWithin(it, candidates, Tuning.Photo.SHUTTER_POLE_LINK_M, pos) }
+
+/**
+ * 수동 사진의 전주(6.4): 찍은 위치에서 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안의 가장 가까운 전주와, 다른 프로젝트에 같은 전주를 또 가져온 것
+ * ([Tuning.Photo.SAME_POLE_M] 안, 또는 전주번호가 같고 [Tuning.Photo.SHUTTER_POLE_LINK_M] 안). 같은 프로젝트의 가까운 다른 전주(쌍주 등)는 넣지 않는다. 가까운 순서, 없으면 빈 목록.
+ */
+fun <T> shutterPole(position: GeoPoint?, poles: List<T>, pos: (T) -> GeoPoint, project: (T) -> Long, poleId: (T) -> String): List<T> {
+    val at = position ?: return emptyList()
+    val first = nearestWithin(at, poles, Tuning.Photo.SHUTTER_POLE_LINK_M, pos) ?: return emptyList()
+    val same = poles.filter {
+        it !== first && project(it) != project(first) &&
+            LocalProjection.distanceM(pos(first), pos(it)).let { d ->
+                d <= Tuning.Photo.SAME_POLE_M || (poleId(it) == poleId(first) && d <= Tuning.Photo.SHUTTER_POLE_LINK_M)
+            }
+    }
+    return listOf(first) + same.sortedBy { LocalProjection.distanceM(at, pos(it)) }
+}
+
+/** 수동 사진을 붙일 수 있는 방문: 그 전주가 든 미션의 방문. [flownAt]은 미션의 가장 최근 소티 시작(안 날았으면 null), [open]은 그 방문이 남았는지. */
+data class ManualLinkCandidate(val missionId: Long, val visitId: Long, val createdAt: Long, val flownAt: Long?, val open: Boolean)
+
+/**
+ * 수동 사진을 붙일 방문(6.4). [fixedMission]이 있으면(미션 화면) 그 미션의 방문만. 없으면(수동 비행) [Tuning.Photo.MANUAL_LINK_FLOWN_MS] 안에 비행한
+ * 미션(최근 비행 먼저), 없으면 그 전주가 남은 가장 최근 미션. 없으면 null(기타 `manual/`).
+ */
+fun pickManualLink(candidates: List<ManualLinkCandidate>, nowMs: Long, fixedMission: Long? = null): ManualLinkCandidate? {
+    if (fixedMission != null) return candidates.firstOrNull { it.missionId == fixedMission }
+    return candidates.filter { it.flownAt != null && nowMs - it.flownAt <= Tuning.Photo.MANUAL_LINK_FLOWN_MS }.maxByOrNull { it.flownAt!! }
+        ?: candidates.filter { it.open }.maxByOrNull { it.createdAt }
+}

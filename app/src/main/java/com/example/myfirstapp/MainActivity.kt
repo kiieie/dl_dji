@@ -54,6 +54,7 @@ import com.example.myfirstapp.ui.replay.FlightRecordsScreen
 import com.example.myfirstapp.ui.replay.ReplayScreen
 import com.example.myfirstapp.ui.settings.SettingsHub
 import com.example.myfirstapp.ui.theme.LightScreen
+import com.example.myfirstapp.ui.theme.LocalLabelColors
 import com.example.myfirstapp.ui.theme.MyFirstAppTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -115,9 +116,12 @@ class MainActivity : ComponentActivity() {
         val dao = (application as InspectionApp).database.projectDao()
         startBenchIfAsked(intent)
         setContent {
+            val labelColors by (application as InspectionApp).settings.labelColors.collectAsState(emptyMap())
             MyFirstAppTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    AppNavHost(dao)
+                CompositionLocalProvider(LocalLabelColors provides labelColors) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        AppNavHost(dao)
+                    }
                 }
             }
         }

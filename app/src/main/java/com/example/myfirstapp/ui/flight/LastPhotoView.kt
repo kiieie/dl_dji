@@ -41,9 +41,9 @@ import com.example.myfirstapp.core.detect.sampleSize
 import com.example.myfirstapp.detect.LastPhoto
 import com.example.myfirstapp.ui.FullscreenAlertDialog
 import com.example.myfirstapp.ui.theme.CardBg
-import com.example.myfirstapp.ui.theme.DetectedBox
 import com.example.myfirstapp.ui.theme.Dimens
-import com.example.myfirstapp.ui.theme.FacilityBox
+import com.example.myfirstapp.ui.theme.LocalLabelColors
+import com.example.myfirstapp.ui.theme.labelColor
 import com.example.myfirstapp.ui.theme.FontSize
 import com.example.myfirstapp.ui.theme.TextSoft
 import kotlinx.coroutines.Dispatchers
@@ -94,6 +94,7 @@ internal fun PhotoWithBoxes(p: LastPhoto, longSidePx: Int, labels: Boolean, modi
     val measurer = rememberTextMeasurer()
     Box(modifier.background(Color.Black)) {
         bitmap?.let { Image(it, contentDescription = "마지막 사진", Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+        val colors = LocalLabelColors.current
         Canvas(Modifier.fillMaxSize()) {
             val b = bitmap ?: return@Canvas
             val k = minOf(size.width / b.width, size.height / b.height)
@@ -106,9 +107,9 @@ internal fun PhotoWithBoxes(p: LastPhoto, longSidePx: Int, labels: Boolean, modi
                 drawRect(Color.White.copy(alpha = 0.35f), Offset(left + o * w, top + o * h), Size(p.crop * w, p.crop * h), style = Stroke(1.dp.toPx()))
             }
             p.detections.forEach { d ->
-                val c = if (d.alert) DetectedBox else FacilityBox
+                val c = labelColor(d.label, colors)
                 val at = Offset(left + d.x * w, top + d.y * h)
-                drawRect(c, at, Size(d.w * w, d.h * h), style = Stroke((if (labels) 2 else 1).dp.toPx()))
+                drawRect(c, at, Size(d.w * w, d.h * h), style = Stroke((if (labels) Dimens.BoxStroke else Dimens.BoxStrokeSmall).toPx()))
                 if (labels) {
                     val text = measurer.measure(p.names[d.label] ?: d.label, TextStyle(color = Color.Black, fontSize = FontSize.Caption, fontWeight = FontWeight.Bold))
                     val ty = (at.y - text.size.height).coerceAtLeast(top)

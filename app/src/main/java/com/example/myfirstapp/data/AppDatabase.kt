@@ -68,6 +68,19 @@ data class PoleEntity(
     fun toPole() = Pole(poleId, GeoPoint(lat, lon), lineName, note, lineNo, lengthM, equipment, guy, installedYm, voltage)
 }
 
+/** 수동 사진을 붙일 수 있는 방문 한 줄([ProjectDao.manualLinkRows]). */
+data class ManualLinkRow(
+    val missionId: Long,
+    val projectId: Long,
+    val createdAt: Long,
+    val sortieId: Long,
+    val visitId: Long,
+    val poleRowId: Long,
+    val poleId: String,
+    val flownAt: Long?,
+    val open: Boolean,
+)
+
 @Entity(
     tableName = "mission",
     foreignKeys = [ForeignKey(ProjectEntity::class, ["id"], ["projectId"], onDelete = ForeignKey.CASCADE)],
@@ -172,6 +185,8 @@ data class CaptureEntity(
     val equipmentShot: Boolean = false,
     /** 착륙 뒤 정밀 탐지(9.6)를 한 모델 버전. null이면 아직 안 했다(탐지 결과가 0개인 사진과 구별). */
     val detectModel: String? = null,
+    /** 사람이 상자를 고친 시각(9.8). null이 아니면 정밀 탐지가 덮어쓰지 않고, 재학습 데이터(`training/`)에 있다. */
+    val boxesEditedAt: Long? = null,
 )
 
 @Entity(
@@ -190,6 +205,8 @@ data class DetectionEntity(
     val h: Float,
     /** 경고 라벨(9.1 `alertLabels`)이면 true. 이상 개수는 이것만 센다. */
     val alert: Boolean,
+    /** 사람이 그리거나 라벨을 바꾼 상자(9.8). */
+    val human: Boolean = false,
 )
 
 /**
@@ -387,7 +404,7 @@ data class ResultRow(
 }
 
 /** 앨범 미션 한 줄. */
-data class AlbumMission(val missionId: Long, val projectId: Long, val projectName: String, val createdAt: Long, val photoCount: Int)
+data class AlbumMission(val missionId: Long, val projectId: Long, val projectName: String, val createdAt: Long, val photoCount: Int, val lastTakenAt: Long?)
 
 /** 앨범 사진 한 장과 그 전주. */
 data class AlbumPhoto(
@@ -524,6 +541,26 @@ interface ProjectDao {
     )
     suspend fun latestOpenMission(): MissionEntity?
 
+    /** 위경도 사각형 안의 전주(모든 프로젝트, 수동 사진의 가까운 전주 6.4). */
+    @Query("SELECT * FROM pole WHERE lat BETWEEN :south AND :north AND lon BETWEEN :west AND :east")
+    suspend fun polesIn(south: Double, north: Double, west: Double, east: Double): List<PoleEntity>
+
+    /** 이 전주들이 든 미션의 방문(대체된 미션 제외): 수동 사진을 붙일 후보(6.4 `pickManualLink`). */
+    @Query(
+        "SELECT m.id AS missionId, m.projectId, m.createdAt, s.id AS sortieId, v.id AS visitId, v.poleRowId, p.poleId, " +
+            // 최근 비행: 소티 착륙(없으면 이륙)과 사진 시각 중 가장 늦은 값(이어 날기는 처음 이륙 시각을 둠). SQLite max(a, b)는 NULL이 있으면 NULL이라 0으로 메움
+            "NULLIF(max(COALESCE((SELECT MAX(COALESCE(s2.endedAt, s2.startedAt)) FROM sortie s2 WHERE s2.missionId = m.id), 0), " +
+            "COALESCE((SELECT MAX(c.takenAt) FROM capture c JOIN visit v2 ON v2.id = c.visitId JOIN sortie s3 ON s3.id = v2.sortieId WHERE s3.missionId = m.id), 0)), 0) AS flownAt, " +
+            "v.status IN ('PENDING', 'IN_PROGRESS') AS open " +
+            "FROM visit v JOIN sortie s ON s.id = v.sortieId JOIN mission m ON m.id = s.missionId JOIN pole p ON p.id = v.poleRowId " +
+            "WHERE v.poleRowId IN (:poleRowIds) AND m.status != 'REPLACED'",
+    )
+    suspend fun manualLinkRows(poleRowIds: List<Long>): List<ManualLinkRow>
+
+    /** 받은 파일로 확인한 실제 렌즈(5.6, EXIF 초점). */
+    @Query("UPDATE capture SET lens = :lens WHERE id = :captureId")
+    suspend fun setCaptureLens(captureId: Long, lens: String)
+
     @Query(
         "SELECT s.id AS sortieId, s.seq, v.id AS visitId, v.status, p.poleId, p.lat, p.lon, p.lineName, p.note, p.lineNo, p.lengthM, p.equipment, p.voltage, p.guy, p.installedYm " +
             "FROM sortie s JOIN visit v ON v.sortieId = s.id JOIN pole p ON p.id = v.poleRowId " +
@@ -655,7 +692,7 @@ interface ProjectDao {
      */
     @Query(
         "SELECT c.id FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId JOIN mission m ON m.id = s.missionId " +
-            "WHERE c.filePath IS NOT NULL AND (c.detectModel IS NULL OR c.detectModel != :version) AND m.id IN (:missionIds) " +
+            "WHERE c.filePath IS NOT NULL AND c.boxesEditedAt IS NULL AND (c.detectModel IS NULL OR c.detectModel != :version) AND m.id IN (:missionIds) " +
             "ORDER BY m.id DESC, c.id",
     )
     suspend fun capturesWithoutDetection(version: String, missionIds: List<Long>): List<Long>
@@ -665,6 +702,23 @@ interface ProjectDao {
 
     @Query("UPDATE capture SET detectModel = :version WHERE id = :captureId")
     suspend fun setDetectModel(captureId: Long, version: String)
+
+    /** 판독 [탐지] 다시(9.6, 11-09): 미션 사진의 정밀 표시를 지워 처음부터 다시 탐지하게 한다(옛 상자는 사진마다 탐지할 때 바뀜). 사람이 고친 사진은 그대로. */
+    @Query("UPDATE capture SET detectModel = NULL WHERE boxesEditedAt IS NULL AND visitId IN (SELECT v.id FROM visit v JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = :missionId)")
+    suspend fun clearDetectModel(missionId: Long)
+
+    // 상자 고치기(9.8): 판독 화면에서 사람이 지우기·라벨 바꾸기·그리기
+    @Query("DELETE FROM detection WHERE id = :id")
+    suspend fun deleteDetection(id: Long)
+
+    @Query("UPDATE detection SET label = :label, alert = :alert, human = 1 WHERE id = :id")
+    suspend fun relabelDetection(id: Long, label: String, alert: Boolean)
+
+    @Query("SELECT * FROM detection WHERE captureId = :captureId ORDER BY id")
+    suspend fun detections(captureId: Long): List<DetectionEntity>
+
+    @Query("UPDATE capture SET boxesEditedAt = :at WHERE id = :captureId")
+    suspend fun setBoxesEdited(captureId: Long, at: Long)
 
     @Query(
         "UPDATE mission SET modelVersion = :version WHERE id = (SELECT s.missionId FROM capture c JOIN visit v ON v.id = c.visitId " +
@@ -708,16 +762,17 @@ interface ProjectDao {
     @Query("SELECT filePath FROM capture WHERE filePath IS NOT NULL ORDER BY id DESC LIMIT :limit")
     suspend fun recentPhotoPaths(limit: Int): List<String>
 
-    /** 앨범(10.4.3 ⑦) 왼쪽 목록: 모든 미션, 최신순, 사진 수. */
+    /** 앨범(10.4.3 ⑦) 왼쪽 목록: 모든 미션, 사진 수와 마지막 사진 시각(최신순 정렬은 `AlbumViewModel`). */
     @Query(
         "SELECT m.id AS missionId, m.projectId, p.name AS projectName, m.createdAt, " +
-            "(SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS photoCount " +
+            "(SELECT COUNT(*) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS photoCount, " +
+            "(SELECT MAX(c.takenAt) FROM capture c JOIN visit v ON v.id = c.visitId JOIN sortie s ON s.id = v.sortieId WHERE s.missionId = m.id) AS lastTakenAt " +
             "FROM mission m JOIN project p ON p.id = m.projectId ORDER BY m.createdAt DESC",
     )
     suspend fun albumMissions(): List<AlbumMission>
 
-    /** 앨범 사진: 방문 순서대로, 전주 이름·설비와 경고 탐지 수. */
-    @Query("$ALBUM_PHOTO WHERE s.missionId = :missionId ORDER BY s.seq, v.`order`, c.id")
+    /** 앨범 사진: 최신 먼저(11-09), 전주 이름·설비와 경고 탐지 수. */
+    @Query("$ALBUM_PHOTO WHERE s.missionId = :missionId ORDER BY c.takenAt DESC, c.id DESC")
     suspend fun albumPhotos(missionId: Long): List<AlbumPhoto>
 
     /** 앨범 선로별 보기(10.4.3): 모든 미션의 사진. 나무(선로 → 전주 → 날짜)는 `lineTree`가 묶는다. */
@@ -808,7 +863,7 @@ interface ProjectDao {
         CaptureEntity::class, DetectionEntity::class, FlightEventEntity::class, ReviewEntity::class, TelemetrySampleEntity::class,
         ManualSessionEntity::class, ManualTrackEntity::class, AnnotationEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -816,7 +871,15 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         fun create(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "inspection.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12).build()
+
+        /** 11 → 12(2026-11-09): 사람이 고친 상자(9.8 재학습 데이터). */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `capture` ADD COLUMN `boxesEditedAt` INTEGER")
+                db.execSQL("ALTER TABLE `detection` ADD COLUMN `human` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
 
         /** 10 → 11(2026-11-04): 지도 주석(핀포인트·선·영역, 10.4.7). 새 표만 만든다. */
         val MIGRATION_10_11 = object : Migration(10, 11) {

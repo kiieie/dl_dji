@@ -141,8 +141,8 @@ erDiagram
   MISSION { long id; long projectId; datetime createdAt; string areaGeoJson; double homeLat; double homeLon; json flightParams; string modelVersion; string status }
   SORTIE { long id; long missionId; int seq; double estDistanceM; double estBatteryPct; string status; datetime startedAt; datetime endedAt }
   VISIT { long id; long sortieId; long poleRowId; int order; string status; datetime arrivedAt; string skipReason }
-  CAPTURE { long id; long visitId; string mediaId; string filePath; string lens; string source; int viewpoint; double lat; double lon; double altRel; double gimbalPitch; double heading; datetime takenAt; bool originalDownloaded; string detectModel }
-  DETECTION { long id; long captureId; string label; float score; float x; float y; float w; float h; bool alert }
+  CAPTURE { long id; long visitId; string mediaId; string filePath; string lens; string source; int viewpoint; double lat; double lon; double altRel; double gimbalPitch; double heading; datetime takenAt; bool originalDownloaded; string detectModel; datetime boxesEditedAt }
+  DETECTION { long id; long captureId; string label; float score; float x; float y; float w; float h; bool alert; bool human }
   REVIEW { long id; long visitId; string verdict; string tags; string memo; datetime at }
   FLIGHT_EVENT { long id; long sortieId; string fromState; string toState; string reason; long visitId; datetime at }
   TELEMETRY_SAMPLE { long id; long sortieId; datetime at; double lat; double lon; double altRel; float speed; float heading; float gimbalPitch; int batteryPct; string flightMode }
@@ -160,7 +160,7 @@ erDiagram
 - `CAPTURE.viewpoint`: 촬영 방식(5.6)의 촬영 지점 번호. 전주 위 방식은 0, 4방향 사선은 0~3(선로 방향 기준 45°부터 시계 방향). 수동 촬영은 비움.
 - `CAPTURE.source`: `AUTO`(도착 시 자동), `MANUAL`(수동 촬영 버튼), `PERIODIC`(주기 분석 프레임)
 - `MISSION.flightParams`에는 실행 시점의 파라미터를 그대로 저장한다(나중에 설정을 바꿔도 기록은 유지된다). 전주별 고도·짐벌 피치(5.7)도 이 JSON의 `poleOverrides`(전주번호 → 값)로 남기고, 방문 순서(경로 역전·가져온 경로)는 `VISIT.order`로 남는다(스키마 그대로).
-- 탐지 모델 버전을 기록해 어떤 모델로 분석했는지 추적한다(`MISSION.modelVersion`). `CAPTURE.detectModel`은 그 사진을 착륙 뒤 정밀 탐지한 모델 버전이고, 비어 있으면 아직 안 한 것이다(결과 0개와 구별, DB 8, 2026-11-04, 9.6).
+- 탐지 모델 버전을 기록해 어떤 모델로 분석했는지 추적한다(`MISSION.modelVersion`). `CAPTURE.boxesEditedAt`·`DETECTION.human`(Room 12)은 사람이 고친 상자와 재학습 데이터 `training/`(9.8)다. `CAPTURE.detectModel`은 그 사진을 착륙 뒤 정밀 탐지한 모델 버전이고, 비어 있으면 아직 안 한 것이다(결과 0개와 구별, DB 8, 2026-11-04, 9.6).
 - `FLIGHT_EVENT`: 상태머신의 모든 전이를 기록한다(6.4 복구용). `TELEMETRY_SAMPLE`: 1~2초 간격으로 기록하며 에너지 모델 보정(5.5)과 사후 분석, 비행 다시 보기(10.4.6)에 쓴다. `MANUAL_SESSION`·`MANUAL_TRACK`(DB 10, 2026-11-04): 수동 비행(카메라 뷰) 한 번(뜬 때부터 내리거나 화면을 떠날 때까지)과 그 궤적(같은 열, 1초). `endedAt`은 앱이 갑자기 꺼지면 비고, `projectId`는 그때 최근 미션의 프로젝트(표시용, 외래 키 없음). 9 → 10 마이그레이션은 표만 만든다.
 
 ### 4.3 파일 저장

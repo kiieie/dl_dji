@@ -21,6 +21,10 @@ import com.example.myfirstapp.data.SettingsStore
 import com.example.myfirstapp.data.exportMission
 import com.example.myfirstapp.detect.PreciseDetection
 import com.example.myfirstapp.detect.labelNames
+import com.example.myfirstapp.detect.alertLabels
+import com.example.myfirstapp.detect.classesFor
+import com.example.myfirstapp.data.TrainingData
+import com.example.myfirstapp.core.detect.LabeledBox
 import com.example.myfirstapp.ui.theme.Dimens
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -74,6 +78,11 @@ data class ResultUiState(
     val precise: String? = null,
     /** 왼쪽 전주 목록 폭(dp). 가운데 막대를 끌어 바꾸고 설정에 남긴다. */
     val listWidthDp: Float = Dimens.ResultListDefault.value,
+    /** 상자 고치기 중(9.8): 사진 위를 끌면 새 상자, 상자를 눌러 고른 뒤 라벨 바꾸기·지우기. */
+    val editing: Boolean = false,
+    /** 고를 수 있는 라벨(정밀 모델 `labels.txt` 순서)과 새 상자에 붙일 라벨. */
+    val classes: List<String> = emptyList(),
+    val newLabel: String? = null,
 ) {
     val statusCounts: Map<String, Int> = rows.groupingBy { STATUS_TITLE[it.status] ?: it.status }.eachCount()
 
@@ -136,8 +145,10 @@ class ResultViewModel(
         viewModelScope.launch { rcButtons.collect(::on5d) }
         settings?.let { st -> viewModelScope.launch { st.resultListWidth.first()?.let { w -> _state.update { it.copy(listWidthDp = clampListWidth(w)) } } } }
         viewModelScope.launch {
-            val names = modelsDir?.let { withContext(Dispatchers.IO) { labelNames(it) } }.orEmpty()
-            _state.update { it.copy(labelNames = names) }
+            val (names, classes) = modelsDir?.let { d -> withContext(Dispatchers.IO) { labelNames(d) to classesFor(d, null)?.second.orEmpty() } } ?: (emptyMap<String, String>() to emptyList())
+            alerts = modelsDir?.let { d -> withContext(Dispatchers.IO) { alertLabels(d) } }.orEmpty()
+            _state.update { it.copy(labelNames = names, classes = classes, newLabel = classes.firstOrNull()) }
+            settings?.ensureLabelColors(classes)
             load()
         }
         precise?.let { p ->
@@ -171,10 +182,66 @@ class ResultViewModel(
         }
     }
 
-    /** [탐지](9.6, 11-07): 이 미션 사진 중 정밀 결과가 없는 것을 정밀 탐지한다. 비행 중에도 막지 않는다. */
+    private var redoArmed = false
+    private var alerts: Set<String> = emptySet()
+
+    /** [상자 고치기] 켜고 끄기(9.8). */
+    fun setEditing(on: Boolean) = _state.update { it.copy(editing = on) }
+
+    fun setNewLabel(label: String) = _state.update { it.copy(newLabel = label) }
+
+    fun deleteBox(d: DetectionEntity) = editBoxes(d.captureId, "delete", d.label) { dao.deleteDetection(d.id) }
+
+    fun relabelBox(d: DetectionEntity, label: String) = editBoxes(d.captureId, "relabel", "${d.label}>$label") { dao.relabelDetection(d.id, label, label in alerts) }
+
+    /** 사람이 그린 새 상자(0~1 비율). 너무 작으면(손 떨림) 무시한다. */
+    fun addBox(captureId: Long, x: Float, y: Float, w: Float, h: Float) {
+        val label = _state.value.newLabel ?: return
+        if (w < MIN_BOX || h < MIN_BOX) return
+        editBoxes(captureId, "add", label) { dao.insertDetections(listOf(DetectionEntity(0, captureId, label, 1f, x, y, w, h, label in alerts, human = true))) }
+    }
+
+    /** 상자를 고치고, 사진을 사람이 고친 것으로 표시하고(정밀 탐지가 덮어쓰지 않음), 재학습 데이터(`training/`)를 다시 쓴다. */
+    private fun editBoxes(captureId: Long, what: String, detail: String, op: suspend () -> Unit) {
+        viewModelScope.launch {
+            op()
+            dao.setBoxesEdited(captureId, now())
+            OpLog.log("review", "box", mapOf("what" to what, "capture" to captureId, "label" to detail))
+            val c = dao.capture(captureId)
+            val file = c?.filePath?.let(::File)
+            val models = modelsDir
+            if (file != null && models != null) {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        // ponytail: 사진을 탐지한 모델이 없으면 정밀 모델 클래스로 쓴다. 그 모델에 없는 라벨 상자는 학습 파일에서 빠진다
+                        val (version, classes) = classesFor(models, c.detectModel) ?: return@withContext
+                        val boxes = dao.detections(captureId).map { LabeledBox(it.label, it.x, it.y, it.w, it.h) }
+                        TrainingData.write(File(exportDir, "training"), version, file, boxes, classes)
+                    }
+                }.onFailure { e -> _state.update { it.copy(message = "학습 데이터 저장 실패: ${e.message}") } }
+            }
+            load()
+        }
+    }
+
+    /**
+     * [탐지](9.6, 11-07): 이 미션 사진 중 정밀 결과가 없는 것을 정밀 탐지한다. 비행 중에도 막지 않는다.
+     * 이미 다 했으면 알리고, 이어 한 번 더 누르면 처음부터 다시 한다(11-09).
+     */
     fun detect() {
         val p = precise ?: return _state.update { it.copy(message = "탐지기를 쓸 수 없습니다") }
-        p.request(missionId)
+        viewModelScope.launch {
+            val left = p.pending(missionId) ?: return@launch _state.update { it.copy(message = "탐지 모델이 없습니다") }
+            when {
+                left > 0 -> { redoArmed = false; p.request(missionId) }
+                redoArmed -> { redoArmed = false; p.redo(missionId) }
+                else -> {
+                    redoArmed = true
+                    val n = detections.values.sumOf { it.size }
+                    _state.update { it.copy(message = "이미 탐지했습니다 · 설비 ${n}개 · 한 번 더 누르면 다시 탐지") }
+                }
+            }
+        }
     }
 
     fun messageShown() = _state.update { it.copy(message = null) }
@@ -285,7 +352,7 @@ class ResultViewModel(
         OpLog.log("review", "export")
         viewModelScope.launch {
             val zip = File(exportDir, "projects/$projectId/missions/$missionId/export/$missionId.zip")
-            runCatching { exportMission(dao, missionId, zip) }
+            runCatching { exportMission(dao, missionId, zip, File(exportDir, "training")) }
                 .onSuccess { r ->
                     exported = r
                     Log.i("Export", "zip=${r.zip.absolutePath} poles=${r.poleCount} images=${r.imageCount}")
@@ -309,6 +376,9 @@ class ResultViewModel(
     }
 
     companion object {
+        /** 새 상자 최소 크기(사진 비율). 이보다 작게 끌면 손 떨림으로 보고 버린다. */
+        private const val MIN_BOX = 0.005f
+
         fun factory(
             dao: ProjectDao, projectId: Long, missionId: Long, exportDir: File,
             rcButtons: Flow<RcButton>, precise: PreciseDetection, settings: SettingsStore, openOutput: (Uri) -> OutputStream?,

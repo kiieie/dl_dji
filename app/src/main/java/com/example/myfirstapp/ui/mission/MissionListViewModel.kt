@@ -368,7 +368,7 @@ class MissionListViewModel(
         viewModelScope.launch {
             val results = list.mapNotNull { m ->
                 val zip = missionDir(m.projectId, m.id)?.let { File(it, "export/${m.id}.zip") } ?: return@mapNotNull null
-                runCatching { exportMission(dao, m.id, zip) }.getOrNull()?.let { r ->
+                runCatching { exportMission(dao, m.id, zip, mapsDir?.parentFile?.let { File(it, "training") }) }.getOrNull()?.let { r ->
                     // 저장 폴더에서 알아볼 이름: <프로젝트>_mission<번호>.zip
                     val named = File(zip.parentFile, "${m.projectName}_mission${m.id}.zip")
                     if (zip.renameTo(named)) r.copy(zip = named) else r

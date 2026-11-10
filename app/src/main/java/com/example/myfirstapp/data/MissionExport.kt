@@ -45,8 +45,9 @@ private fun csvField(v: Any?): String {
  * - `annotations.geojson`: 미션 둘레의 핀포인트·선·영역(10.4.7, 2차 판독 플랫폼이 이상 위치·메모로 쓴다)
  * - `images/`: 받은 사진(파일이 없는 사진은 JSON에만 남는다)
  * - `logs/`: 미션 기간의 운용 로그(4.4)
+ * - `labels/`·`train.txt`·`data.yaml`: 사람이 상자를 고친 사진의 재학습 데이터(9.8, YOLO 형식. `images/`와 나란히 두어 ZIP을 풀면 바로 학습에 씀)
  */
-suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportResult {
+suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File, trainingRoot: File? = null): ExportResult {
     val mission = requireNotNull(dao.mission(missionId)) { "미션 #$missionId 없음" }
     val rows = dao.resultRows(missionId)
     val captures = dao.missionCaptures(missionId)
@@ -71,6 +72,8 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
     }
 
     val images = captures.mapNotNull { c -> c.filePath?.let(::File)?.takeIf { it.isFile } }
+    val training = captures.filter { it.boxesEditedAt != null }
+        .mapNotNull { c -> c.filePath?.let(::File)?.takeIf { it.isFile }?.let { f -> TrainingData.labelFor(trainingRoot, f)?.let { f to it } } }
     val around = rows.map { GeoPoint(it.lat, it.lon) } + GeoPoint(mission.homeLat, mission.homeLon)
     val notes = Annotations.near(dao.annotations().map { it.toAnnotation() }, around, AppConfig.Annotation.EXPORT_MARGIN_M)
     val json = JSONObject()
@@ -121,6 +124,14 @@ suspend fun exportMission(dao: ProjectDao, missionId: Long, zip: File): ExportRe
                 out.putNextEntry(ZipEntry("images/${f.name}")); f.inputStream().use { it.copyTo(out) }; out.closeEntry()
             }
             out.setLevel(Deflater.DEFAULT_COMPRESSION)
+            training.forEach { (_, label) ->
+                out.putNextEntry(ZipEntry("labels/${label.first.name}")); label.first.inputStream().use { it.copyTo(out) }; out.closeEntry()
+            }
+            training.lastOrNull()?.second?.second?.takeIf { it.isFile }?.let { yaml ->
+                out.putNextEntry(ZipEntry("data.yaml")); yaml.inputStream().use { it.copyTo(out) }; out.closeEntry()
+                val list = training.joinToString("\n", postfix = "\n") { "./images/${it.first.name}" }
+                out.putNextEntry(ZipEntry("train.txt")); out.write(list.toByteArray()); out.closeEntry()
+            }
             // 운용 로그(4.4): 미션을 만든 날부터의 조작 기록
             OpLog.files(mission.createdAt - DAY_MS).forEach { f ->
                 out.putNextEntry(ZipEntry("logs/${f.name}")); f.inputStream().use { it.copyTo(out) }; out.closeEntry()

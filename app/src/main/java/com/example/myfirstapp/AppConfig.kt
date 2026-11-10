@@ -285,11 +285,17 @@ object AppConfig {
         /** 충돌 위험 삑 간격. */
         const val OBSTACLE_DANGER_GAP_MS = 250L
 
-        /** 충돌 주의 삑 간격. */
-        const val OBSTACLE_CAUTION_GAP_MS = 800L
+        /** 충돌 위험인데 기체가 멈춰 있을 때 삑 간격(11장, 11-09 근접 작업). 주의는 들어갈 때 한 번만 울린다. */
+        const val OBSTACLE_DANGER_HOVER_GAP_MS = 1_500L
     }
 
     object Detector {
+        /**
+         * 망원 사진 정밀 탐지 때 긴 변을 이만큼으로 줄여 입력 가운데 넣는다(9.6, 2026-11-10 사용자 결정 480). 11-09 전문가 망원 5장:
+         * 1280 0장, 640 1장, 480 2장, 320 3장. 현장 사진을 보고 다시 고른다.
+         */
+        const val TELE_FIT_PX = 480
+
         /** TFLite 추론 스레드 수. */
         const val THREADS = 4
 

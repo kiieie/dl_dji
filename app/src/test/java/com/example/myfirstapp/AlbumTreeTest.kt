@@ -30,6 +30,7 @@ class AlbumTreeTest {
     fun `선로 - 전주(선로번호 자연 순서) - 날짜(최신 먼저), 선로 없음과 기타는 맨 뒤`() {
         val photos = listOf(
             photo("대평선", "137L28R13", "P13", 3),
+            photo("대평선", "137L28R13", "P13", 3, hour = 10),
             photo("대평선", "137L28R2", "P2", 3),
             photo("대평선", "137L28R2", "P2", 4, mission = 2), // 다른 미션·프로젝트라도 같은 전주
             photo("대평선", null, "P0", 4),
@@ -42,7 +43,9 @@ class AlbumTreeTest {
         assertEquals(listOf("가평선", "대평선", "선로 없음", "기타"), tree.map { it.title })
         val daepyeong = tree[1]
         assertEquals(listOf("137L28R2", "137L28R13", "P0"), daepyeong.children.map { it.title })
-        assertEquals(listOf(4, 2, 1, 1), listOf(daepyeong.count, daepyeong.children[0].count, daepyeong.children[1].count, daepyeong.children[2].count))
+        assertEquals(listOf(5, 2, 2, 1), listOf(daepyeong.count, daepyeong.children[0].count, daepyeong.children[1].count, daepyeong.children[2].count))
+        // 같은 날 안에서도 최신 사진 먼저(11-09)
+        assertEquals(listOf(10, 9), daepyeong.children[1].children[0].photos.map { GregorianCalendar(utc).apply { timeInMillis = it.capture.takenAt }.get(java.util.Calendar.HOUR_OF_DAY) })
         assertEquals(listOf("2026-11-04", "2026-11-03"), daepyeong.children[0].children.map { it.title })
         assertEquals(listOf("2026-11-04", "2026-11-02"), tree[3].children.map { it.title })
         assertEquals(3, tree[3].count)

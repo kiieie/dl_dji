@@ -5,6 +5,7 @@ import com.example.myfirstapp.drone.DjiFlySafe
 import com.example.myfirstapp.detect.GpuCachePrep
 import com.example.myfirstapp.detect.ModelBench
 import com.example.myfirstapp.detect.PreciseDetection
+import com.example.myfirstapp.detect.labelsForColors
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -111,6 +112,12 @@ class InspectionApp : Application() {
         initDjiSdk()
         appScope.launch(Dispatchers.IO) { getExternalFilesDir(null)?.let { dropBingCache(it, filesDir) } }
         appScope.launch { rcButtons.collect { OpLog.log("rc", it.name) } }
+        seedLabelColors()
+    }
+
+    /** 모델 라벨에 상자 색을 준다(9.8, 앱 시작·모델 추가 뒤). 이미 색이 있는 라벨은 그대로. */
+    fun seedLabelColors() {
+        appScope.launch(Dispatchers.IO) { settings.ensureLabelColors(labelsForColors(File(getExternalFilesDir(null), "models"))) }
     }
 
     private val _ldmStatus = MutableStateFlow("LDM: 확인 전")

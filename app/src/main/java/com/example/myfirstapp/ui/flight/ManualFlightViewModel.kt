@@ -92,8 +92,8 @@ class ManualFlightViewModel(
             _state.update { s -> s.copy(flight = s.flight.copy(lastPhoto = p)) }
         }
     }
-    /** 셔터·타이머 사진: 남은 전주가 있는 최근 미션의 전주가 20m 안이면 그 전주, 아니면 기타(6.4). */
-    private val photos = ManualPhotos(dao, appFilesDir, { dao.latestOpenMission() }, live)
+    /** 셔터·타이머 사진: 20m 안 가장 가까운 전주 → 그 전주가 든 24시간 안 비행 미션 → 전주가 남은 최근 미션, 없으면 기타(6.4). */
+    private val photos = ManualPhotos(dao, appFilesDir, null, live)
 
     init {
         OpLog.log("manual", "open", mapOf("connected" to (drone != null)))

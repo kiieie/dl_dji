@@ -57,7 +57,10 @@ class RoomRecorder(
         }
 
     override suspend fun saveImage(captureId: Long, bytes: ByteArray) {
-        val c = dao.capture(captureId) ?: return
+        val c0 = dao.capture(captureId) ?: return
+        // 렌즈는 받은 파일로 확인한다(5.6): 화면에서 ZOOM이어도 7배 미만이면 광각 센서 사진. EXIF 읽기는 IO에서
+        val lens = withContext(Dispatchers.IO) { actualLens(bytes, c0.lens) }
+        val c = c0.copy(lens = lens)
         // 4.3 파일 이름 규칙: <poleId>_<viewpoint>_<timestamp>_<mediaId>_<lens>.jpg (수동 촬영은 지점 m, 사진 번호로 같은 초 겹침을 막음)
         // 설비 조준 사진은 지점 번호 뒤에 e
         val file = File(imagesDir, "${poleIdOfVisit[c.visitId]}_${c.viewpoint ?: "m"}${if (c.equipmentShot) "e" else ""}_${c.takenAt}_${c.mediaId}_${c.lens}.jpg")
@@ -65,6 +68,11 @@ class RoomRecorder(
         withContext(Dispatchers.IO) {
             imagesDir.mkdirs()
             file.writeBytes(bytes)
+        }
+        // 파일을 쓴 뒤에 렌즈를 고친다(쓰기가 실패하면 DB는 그대로)
+        if (lens != c0.lens) {
+            dao.setCaptureLens(captureId, lens)
+            OpLog.log("photo", "lensFixed", mapOf("capture" to captureId, "from" to c0.lens, "to" to lens))
         }
         dao.setCaptureFile(captureId, file.absolutePath, original = downloadMode == DownloadMode.ORIGINAL)
         // 성능 리포트 B-SAVE: 다운로드 로그(media download)와의 간격 = 받기 시간

@@ -52,5 +52,30 @@ fun readModelSpecs(root: File): Map<String, ModelSpec> =
     root.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }.orEmpty()
         .mapNotNull { d -> runCatching { d.name to ModelSpec.read(d) }.getOrNull() }.toMap()
 
+/** 모델 폴더의 `labels.txt`(9.1) 라벨, 줄 순서 = YOLO 클래스 번호. 없으면 빈 목록. */
+fun modelLabels(dir: File): List<String> =
+    File(dir, "labels.txt").takeIf { it.isFile }?.readLines()?.map(String::trim)?.filter(String::isNotEmpty).orEmpty()
+
+/**
+ * 상자 색을 줄 라벨 순서(9.8): 정밀(`full`) 모델 → 비행 중(`live`) → 나머지 모델, 같은 역할은 폴더 이름 순. IO 스레드에서 부른다.
+ * 설비 모델 라벨이 개발용 COCO 라벨보다 먼저 앞 색(노랑부터)을 받게 한다.
+ */
+fun labelsForColors(root: File): List<String> = readModelSpecs(root).entries
+    .sortedWith(compareBy({ (_, s) -> when (s.role) { "full" -> 0; "live" -> 1; else -> 2 } }, { it.key }))
+    .flatMap { (dir, _) -> modelLabels(File(root, dir)) }
+
+/**
+ * 재학습 데이터(9.8)의 클래스 목록: 버전이 [version]인 모델, 없으면 정밀(`full`) 모델 먼저 아무 모델. (모델 버전, 라벨) 또는 null. IO 스레드에서 부른다.
+ */
+fun classesFor(root: File, version: String?): Pair<String, List<String>>? {
+    val specs = readModelSpecs(root).entries
+    val pick = specs.firstOrNull { it.value.version == version }
+        ?: specs.sortedWith(compareBy({ if (it.value.role == "full") 0 else 1 }, { it.key })).firstOrNull() ?: return null
+    return pick.value.version to modelLabels(File(root, pick.key))
+}
+
+/** 모든 모델의 경고 라벨(9.1 `alertLabels`)을 합친 것(사람이 바꾼 라벨의 `alert`). */
+fun alertLabels(root: File): Set<String> = readModelSpecs(root).values.flatMap { it.alertLabels }.toSet()
+
 /** 모든 모델의 라벨 화면 이름을 합친 것(판독·앨범 상자 이름). */
 fun labelNames(root: File): Map<String, String> = readModelSpecs(root).values.fold(emptyMap()) { acc, s -> acc + s.displayNames }

@@ -43,7 +43,9 @@ class ParamItemTest {
         assertTrue(ParamItem.ZOOM_RATIO in p.items())
         assertTrue(ParamItem.ZOOM_RATIO !in p.copy(lenses = listOf(Lens.WIDE)).items())
         assertEquals(9.0, p.step(ParamItem.ZOOM_RATIO, 1).zoomRatio, 0.0)
-        assertEquals(2.0, p.copy(zoomRatio = 2.0).step(ParamItem.ZOOM_RATIO, -1).zoomRatio, 0.0)
-        assertTrue(p.copy(zoomRatio = 1.0).validate().any { "망원 배율" in it })
+        // 7배 미만은 광각 센서를 잘라낸 사진이라 계획에서 뺀다(2026-11-10)
+        assertEquals(7.0, p.copy(zoomRatio = 7.0).step(ParamItem.ZOOM_RATIO, -1).zoomRatio, 0.0)
+        assertEquals(7.0, p.copy(zoomRatio = 2.0).step(ParamItem.ZOOM_RATIO, 1).zoomRatio, 0.0)
+        assertTrue(p.copy(zoomRatio = 4.0).validate().any { "망원 배율" in it })
     }
 }

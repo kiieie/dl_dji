@@ -96,9 +96,9 @@ class AlbumViewModel(
                     .map { d -> AlbumGroup.ManualDay(d.name, d.listFiles { f -> f.extension.equals("jpg", true) }.orEmpty().sortedByDescending { it.name }) }
                     .filter { it.files.isNotEmpty() }
             }
-            // 최신순: 미션은 계획 시각, 수동 하루치는 그날 끝으로 본다
+            // 최신순(11-09): 미션은 마지막 사진 시각, 수동 하루치는 그날 마지막 파일 시각
             val groups = (missions + days).sortedByDescending { g ->
-                when (g) { is AlbumGroup.Mission -> g.m.createdAt.toString(); is AlbumGroup.ManualDay -> dayKey(g.day) }
+                when (g) { is AlbumGroup.Mission -> g.m.lastTakenAt ?: g.m.createdAt; is AlbumGroup.ManualDay -> g.files.maxOf { it.lastModified() } }
             }
             val tree = lineTree(dao.albumAllPhotos(), days)
             val first = tree.firstOrNull()?.key
@@ -151,11 +151,6 @@ class AlbumViewModel(
             reload()
         }
     }
-
-    // 정렬 열쇠: 미션 시각(ms)과 날짜(yyyyMMdd)를 같은 자리수 문자열로
-    private fun dayKey(day: String) = runCatching {
-        java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.ROOT).parse(day)!!.time + 86_399_999
-    }.getOrDefault(0L).toString()
 
     fun select(g: AlbumGroup) {
         _state.update { it.copy(selected = g.key, photos = emptyList()) }

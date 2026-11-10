@@ -7,10 +7,11 @@ import kotlin.math.min
 
 /**
  * 원본 이미지를 정사각 입력(한 변 [size])에 레터박스로 넣은 배치(9.3 2단계).
- * 비율을 지켜 [scale]배 줄이고 남는 가장자리를 [padX], [padY]만큼 채운다.
+ * 비율을 지켜 긴 변이 [fit]이 되게 [scale]배 줄이고 남는 가장자리를 [padX], [padY]만큼 채운다. [fit]이 [size]보다 작으면 입력 가운데에
+ * 작게 넣는다(망원 사진, 9.6: 같은 모델에 작은 입력처럼).
  */
-data class Letterbox(val imageW: Int, val imageH: Int, val size: Int) {
-    val scale = min(size.toFloat() / imageW, size.toFloat() / imageH)
+data class Letterbox(val imageW: Int, val imageH: Int, val size: Int, val fit: Int = size) {
+    val scale = min(fit.toFloat() / imageW, fit.toFloat() / imageH)
     val padX = (size - imageW * scale) / 2
     val padY = (size - imageH * scale) / 2
 }
@@ -110,6 +111,8 @@ class YoloDecoder(
             val y0 = ((cy - h / 2 - box.padY) / box.scale / box.imageH).coerceIn(0f, 1f)
             val x1 = ((cx + w / 2 - box.padX) / box.scale / box.imageW).coerceIn(0f, 1f)
             val y1 = ((cy + h / 2 - box.padY) / box.scale / box.imageH).coerceIn(0f, 1f)
+            // 회색 여백에서만 나온 상자는 잘리면 넓이가 0이다(망원 480처럼 여백이 넓을 때, 9.6)
+            if (x1 <= x0 || y1 <= y0) return@mapNotNull null
             Detection(labels[best], score, x0, y0, x1 - x0, y1 - y0, labels[best] in alertLabels)
         }
         return nms(candidates)

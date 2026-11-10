@@ -227,8 +227,8 @@ class FlightViewModel(
     private val live = LiveDetection(viewModelScope, File(appFilesDir, "models"), settings, precise?.gpuCache, precise?.thermal) { p ->
         _state.update { it.copy(lastPhoto = p) }
     }
-    /** 땅 위 셔터·타이머 사진(수동 사진 경로, 10.4.3): 이 미션의 전주가 20m 안이면 그 전주, 아니면 기타. 실행기를 거치지 않는다. */
-    private val photos = ManualPhotos(dao, appFilesDir, { dao.mission(missionId) }, live)
+    /** 땅 위 셔터·타이머 사진(수동 사진 경로, 10.4.3): 20m 안 가장 가까운 전주가 이 미션에 있으면 그 전주, 아니면 기타. 실행기를 거치지 않는다. */
+    private val photos = ManualPhotos(dao, appFilesDir, missionId, live)
     private var executor: InspectionExecutor? = null
     private var drone: DroneGateway? = null
     private var energy: EnergyModel? = null
@@ -320,6 +320,8 @@ class FlightViewModel(
             // 6.1 방식 A: 소티 미션 하나로 계속 비행(모의 기체도 같은 흐름)
             config = ExecutorConfig(sortieMission = true, planHome = home),
             recoverSortie = open?.let { o -> groups.indexOfFirst { it.first == o.id } },
+            // 일시정지 RC 셔터도 가장 가까운 전주(모든 프로젝트)가 이 미션 전주일 때만 붙인다(6.4, 11-10)
+            shutterPoles = { p -> photos.polesAt(p).map { it.poleId }.toSet() },
         ).also { executor = it }
         // 일시정지 중 수동 촬영·RC 셔터 사진 결과는 다른 사진 안내처럼 잠깐 보이고 지운다(11-06)
         viewModelScope.launch { executor.photoNotes.collect(shotFlash::show) }

@@ -112,6 +112,7 @@ class InspectionExecutorTest {
         recoverSortie: Int? = null,
         config: ExecutorConfig = ExecutorConfig(),
         recorder: MemoryRecorder = MemoryRecorder(),
+        shutterPoles: (suspend (GeoPoint) -> Set<String>)? = null,
         prepare: (FakeDroneGateway) -> Unit = {},
     ): Harness {
         val drone = FakeDroneGateway(backgroundScope, home, droneConfig).also(prepare)
@@ -120,6 +121,7 @@ class InspectionExecutorTest {
         val plans = sorties.map { SortiePlan(it, 0.0, 10.0, 0.0) }
         val executor = InspectionExecutor(
             backgroundScope, drone, recorder, { sounds += it }, { true }, energy, detector, plans, config = config, recoverSortie = recoverSortie,
+            shutterPoles = shutterPoles,
         )
         executor.start()
         runCurrent()
@@ -774,6 +776,47 @@ class InspectionExecutorTest {
         assertEquals(1, h.recorder.captures.count { it.second == CaptureSource.MANUAL })
         h.awaitUntil { h.recorder.images.size == 4 }
         h.executor.uiState.value.visits.forEach { assertEquals(VisitStatus.DONE, it.status) }
+    }
+
+    @Test
+    fun `방식 A - RC 셔터는 가장 가까운 전주가 이 미션에 없으면 붙이지 않는다`() = runTest {
+        // 11-09: 미션 밖 전주(TEST0004) 바로 앞에서 찍은 사진이 20m 안의 미션 전주(TEST0003)에 붙었다
+        val h = harness(config = sortieMode, params = wideOnly, shutterPoles = { setOf("OUTSIDE") })
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("B").captureCount == 1 }
+        h.drone.pressRcPause()
+        h.awaitState(ExecState.Paused)
+        h.send(Command.RcShutter(Lens.ZOOM))
+        h.awaitUntil { "capture:ZOOM" in h.drone.calls }
+        h.scope.advanceTimeBy(5_000); h.scope.runCurrent()
+        assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
+    }
+
+    @Test
+    fun `방식 A - RC 셔터의 전주 찾기가 실패해도 붙이지 않고 실행기는 계속 돈다`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly, shutterPoles = { error("DB 오류") })
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("B").captureCount == 1 }
+        h.drone.pressRcPause()
+        h.awaitState(ExecState.Paused)
+        h.send(Command.RcShutter(Lens.ZOOM))
+        h.awaitUntil { "capture:ZOOM" in h.drone.calls }
+        h.scope.advanceTimeBy(5_000); h.scope.runCurrent()
+        assertTrue(h.recorder.captures.none { it.second == CaptureSource.MANUAL })
+        h.send(Command.Resume)
+        h.awaitState(ExecState.MissionDone)
+    }
+
+    @Test
+    fun `방식 A - RC 셔터는 가장 가까운 전주가 이 미션 전주면 그 전주에`() = runTest {
+        val h = harness(config = sortieMode, params = wideOnly, shutterPoles = { setOf("B") })
+        h.send(Command.Start)
+        h.awaitUntil { h.visit("B").captureCount == 1 }
+        h.drone.pressRcPause()
+        h.awaitState(ExecState.Paused)
+        h.send(Command.RcShutter(Lens.ZOOM))
+        h.awaitUntil { h.recorder.captures.any { it.second == CaptureSource.MANUAL } }
+        assertEquals(1 to CaptureSource.MANUAL, h.recorder.captures.last())
     }
 
     @Test

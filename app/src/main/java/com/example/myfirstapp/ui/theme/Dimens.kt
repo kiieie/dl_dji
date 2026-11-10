@@ -38,6 +38,10 @@ object Dimens {
     val ResultListDefault = 240.dp
     /** 목록과 사진 사이 끄는 막대의 터치 폭(장갑). */
     val ResultDivider = 16.dp
+    /** 사진 위 탐지 상자 선(9.8, 11-09 얇게: 3 → 1.5dp), 고른 상자·작은 미리보기. */
+    val BoxStroke = 1.5.dp
+    val BoxStrokeSelected = 3.dp
+    val BoxStrokeSmall = 1.dp
     /** 앨범 왼쪽 나무(선로 → 전주 → 날짜) 폭. */
     val AlbumTree = 216.dp
     /** 카메라 뷰 상단 바 시스템 상태 칸. 왼쪽에 우리 표지(10.5.1)가 들어가 가운데 비행 상태 글자와 겹치지 않게 줄였다. */

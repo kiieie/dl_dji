@@ -1,5 +1,7 @@
 package com.example.myfirstapp.core.model
 
+import com.example.myfirstapp.core.config.Tuning
+
 /** WGS84 좌표(십진수 도). */
 data class GeoPoint(val lat: Double, val lon: Double)
 
@@ -38,6 +40,13 @@ enum class VisitStatus { PENDING, IN_PROGRESS, DONE, SKIPPED, FAILED }
 enum class CaptureSource { AUTO, MANUAL, PERIODIC }
 
 enum class Lens { WIDE, ZOOM, THERMAL }
+
+/** 받은 사진의 실제 렌즈(5.6): EXIF 35mm 환산 초점([focal35], 모르면 0 이하)이 [Tuning.Photo.TELE_FOCAL35_MIN_MM] 이상이면 망원, 아니면 광각. 모르거나 열화상이면 [claimed]. */
+fun lensOfFocal35(focal35: Int, claimed: Lens): Lens = when {
+    focal35 <= 0 || claimed == Lens.THERMAL -> claimed
+    focal35 >= Tuning.Photo.TELE_FOCAL35_MIN_MM -> Lens.ZOOM
+    else -> Lens.WIDE
+}
 
 /** 탐지 결과 한 개. 좌표는 이미지 크기 대비 0~1 비율(좌상단 기준). [alert]는 경고 라벨(9.1 `alertLabels`)인지다. */
 data class Detection(
