@@ -91,6 +91,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myfirstapp.InspectionApp
 import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.executor.ExecState
+import com.example.myfirstapp.core.port.rcModeProblem
 import com.example.myfirstapp.core.model.Lens
 import com.example.myfirstapp.core.model.VisitStatus
 import com.example.myfirstapp.data.ProjectDao
@@ -236,7 +237,15 @@ private fun FlightContent(
             )
         }
         val notices = listOfNotNull(ui.message?.let { it to Color.White }, s.shotMessage?.let { it to Color.White }) + ui.preflightFailures.map { "점검 실패: $it" to Error }
-        NoticeLines(notices, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 48.dp).widthIn(max = 300.dp))
+        // 모드 스위치가 N이 아니면 시작·재개가 거절된다: 시작 전·일시정지 중에 크게 알린다(2026-11-11 현장)
+        val modeProblem = s.telemetry?.takeIf { it.connected && ui.state in MODE_CHECK_STATES }?.let { rcModeProblem(it.rcMode) }
+        if (modeProblem != null) ActionCard(
+            "모드 스위치를 N으로", modeProblem, Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + 48.dp).widthIn(max = 380.dp),
+        )
+        NoticeLines(
+            notices.filterNot { it.first == modeProblem },
+            Modifier.align(Alignment.TopCenter).padding(top = Dimens.TopBar + if (modeProblem != null) 120.dp else 48.dp).widthIn(max = 380.dp),
+        )
         if (ui.state != ExecState.SortieDone) {
             val summary = remember(ui.state, ui.sortieIndex, s.params) { vm.checklistSummary() }
             MissionChip(s, summary, vm, onShowResult, Modifier.align(Alignment.TopStart).padding(start = 48.dp, top = Dimens.TopBar + 19.dp))
@@ -526,3 +535,6 @@ internal fun stateLabel(s: ExecState, remaining: Int = 0) = when (s) {
     ExecState.SortieDone -> "소티 완료"
     ExecState.MissionDone -> if (remaining > 0) "부분 완료 · 남은 전주 $remaining" else "미션 완료"
 }
+
+/** 모드 스위치 안내를 보이는 상태: 시작 전(대기·올림)·구간 준비·일시정지. 비행 중에는 스위치를 옮기면 기체가 알아서 멈춘다. */
+private val MODE_CHECK_STATES = setOf(ExecState.Idle, ExecState.Uploaded, ExecState.PreparingLeg, ExecState.Paused)

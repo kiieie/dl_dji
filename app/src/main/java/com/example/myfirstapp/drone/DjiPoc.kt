@@ -133,6 +133,8 @@ object DjiPoc {
     /** PoC ⑥ 준비: 시뮬레이터 켜기(프로펠러 제거 상태). 위치는 현장 KMZ M1(대평선 137L-A)의 첫 웨이포인트 근처. */
     suspend fun simulator(on: Boolean): String {
         val sim = SimulatorManager.getInstance()
+        // 배포 빌드에서는 켜지 않는다(2026-11-11 사용자: 현장에서 헷갈림). 끄기는 된다
+        if (on && !com.example.myfirstapp.BuildConfig.DEBUG) return log("배포 빌드에서는 시뮬레이터를 켜지 않습니다")
         if (on) done { sim.enableSimulator(InitializationSettings.createInstance(LocationCoordinate2D(36.48010, 127.33090), 15), it) }
         else done { sim.disableSimulator(it) }
         return log("시뮬레이터 ${if (sim.isSimulatorEnabled) "켜짐" else "꺼짐"}")

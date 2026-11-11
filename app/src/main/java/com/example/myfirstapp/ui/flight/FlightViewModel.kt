@@ -1,6 +1,7 @@
 package com.example.myfirstapp.ui.flight
 
 import com.example.myfirstapp.AppConfig
+import com.example.myfirstapp.BuildConfig
 import com.example.myfirstapp.data.OpLog
 import com.example.myfirstapp.data.logTelemetry
 import com.example.myfirstapp.core.model.VisitStatus
@@ -252,18 +253,26 @@ class FlightViewModel(
         }
     }
 
+    /** 실행기가 일시정지가 된 시각(경과 시간). 일시정지 버튼 재개의 연타 막기에 쓴다. */
+    private var pausedAtMs = 0L
+
     /**
      * RC 버튼(10.5.10, Pilot 2 기본값): 일시정지는 실제 기체면 펌웨어가 멈추고 어댑터가 알리므로 모의 기체만 흉내 낸다.
-     * C1 광각/줌, C2 지도/카메라, 일시정지 중 5D 누름 = 미션 칸 ▶ 재개. 셔터·녹화는 화면 버튼과 같다.
+     * 일시정지 중 일시정지 버튼 = 미션 칸 ▶ 재개(2026-11-11 사용자 결정, 5D 누름 재개는 없앰). 멈춘 직후
+     * [AppConfig.Rc.PAUSE_RESUME_GUARD_MS] 안의 누름은 연타로 보고 무시한다. C1 광각/줌, C2 지도/카메라. 셔터·녹화는 화면 버튼과 같다.
      */
     private fun onRcButton(b: RcButton) {
         Log.i("RcKey", "$b state=${_state.value.exec.state}")
         when (b) {
-            RcButton.PAUSE -> rcPause()
+            RcButton.PAUSE -> when {
+                !paused -> rcPause()
+                // 절차 화면·다른 화면이 위에 있으면 재개하지 않는다(펌웨어는 이미 멈춰 있음)
+                !active || _state.value.page != null -> Unit
+                android.os.SystemClock.elapsedRealtime() - pausedAtMs < AppConfig.Rc.PAUSE_RESUME_GUARD_MS -> OpLog.log("rc", "pauseResumeGuard")
+                else -> resume()
+            }
             RcButton.C1 -> if (active) toggleLens() // 판독 화면 C1(다음 사진)과 겹치지 않게 맨 위일 때만
             RcButton.C2 -> if (active) swapView()
-            // 5D·○ 누름은 다른 화면(앨범·설정)에서도 오므로 이 화면이 맨 위이고 절차 화면이 없을 때만 재개로 받는다
-            RcButton.FIVE_D_CENTER -> if (paused && active && _state.value.page == null) resume()
             RcButton.RTH -> if (drone is FakeDroneGateway) returnHome() // 실제 기체는 펌웨어 RTH
             // RC 셔터·녹화는 앱이 찍고 녹화한다(6.4, 2026-11-04). 화면 셔터와 같은 자리로 간다(자동 비행 중만 막음, [shutterRoute])
             RcButton.SHUTTER -> if (active) camera.rcShutter { shutter(rc = true) }
@@ -370,6 +379,7 @@ class FlightViewModel(
                 it.copy(exec = ui, telemetry = t, returnNeedPct = need, nextWaypoint = nextWaypoint(ui, t)).withTrack(t)
                     .let { s -> if (ui.state in CLOSES_PROCEDURE) s.copy(page = null) else s }
             }
+            if (!wasPaused && ui.state == ExecState.Paused) pausedAtMs = android.os.SystemClock.elapsedRealtime()
             // RC 재개 등으로 일시정지를 벗어나면 녹화를 멈추고 사진 모드로(10.4.3)
             if (wasPaused && ui.state != ExecState.Paused) camera.backToPhoto()
         }
@@ -684,9 +694,10 @@ class FlightViewModel(
                         dao, projectId, missionId, appFilesDir, settings, rcButtons = rcButtons, precise = precise, appScope = appScope,
                         droneFactory = { scope, home, dir, airborneAt ->
                             // 앱 재시작 복구(열린 소티, [airborneAt] 있음): 앱이 막 켜져 SDK 등록·기체 연결 전일 수 있으니 기다린다(6.4).
-                            // 실제 RC(SDK 초기화됨, 등록 실패여도)에서는 연결이 안 돼도 모의 기체로 가지 않는다 — 실행기가 연결 끊김으로 두고 붙으면 맞춘다
+                            // 실제 RC(SDK 초기화됨, 등록 실패여도)에서는 연결이 안 돼도 모의 기체로 가지 않는다 — 실행기가 연결 끊김으로 두고 붙으면 맞춘다.
+                            // 배포 빌드는 늘 실제 기체 연결부(모의 기체는 개발 빌드만, 2026-11-11 현장 #33: 기체가 붙기 전 열어 모의로 돎) — 점검의 "기체 연결 안 됨"이 시작을 막는다
                             if (airborneAt != null) withTimeoutOrNull(AppConfig.Timeouts.RECOVER_CONNECT_MS) { while (!(sdkReady.value && djiAircraftConnected())) delay(500) }
-                            if (djiAircraftConnected() || (airborneAt != null && sdkInitialized.value)) DjiDroneGateway(scope, File(dir, "projects/$projectId/missions/$missionId/kmz"))
+                            if (djiAircraftConnected() || !BuildConfig.DEBUG || (airborneAt != null && sdkInitialized.value)) DjiDroneGateway(scope, File(dir, "projects/$projectId/missions/$missionId/kmz"))
                             else fakeDrone(scope, home, dir, airborneAt)
                         },
                     )

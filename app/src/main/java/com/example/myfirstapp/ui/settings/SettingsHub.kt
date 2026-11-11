@@ -103,7 +103,7 @@ import com.example.myfirstapp.ui.theme.Muted
 fun SettingsHub(onBack: () -> Unit, initialGeneral: Boolean = false, initialCamera: Boolean = false) {
     val settings = (LocalContext.current.applicationContext as InspectionApp).settings
     val vm: AircraftSettingsViewModel = viewModel(
-        factory = AircraftSettingsViewModel.factory({ djiAircraftSettingTabs(fake = !djiAircraftConnected(), general = appGeneralSettings(settings)) }) {
+        factory = AircraftSettingsViewModel.factory({ djiAircraftSettingTabs(fake = com.example.myfirstapp.BuildConfig.DEBUG && !djiAircraftConnected(), general = appGeneralSettings(settings)) }) {
             djiAircraftCheck(settings.flightDefaults.first().rthAltitudeM)
         },
     )

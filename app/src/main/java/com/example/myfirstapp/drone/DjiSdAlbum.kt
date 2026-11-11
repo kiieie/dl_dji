@@ -111,6 +111,21 @@ object DjiSdAlbum {
         OpLog.log("media", "sdAlbumDelete", mapOf("name" to p.name))
     }
 
+    /**
+     * 현장 분석용(adb `--es bench sd --es benchPhoto 20261111`): SD에서 이름이 `DJI_<날짜>`로 시작하는 사진 목록을 `<files>/sd_dump/list.txt`에 쓰고,
+     * `<files>/sd_dump/skip.txt`(한 줄에 이름 하나, 앱이 이미 받은 것)에 없는 것만 원본으로 받는다. 이미 받은 파일은 건너뛴다.
+     */
+    suspend fun dumpDay(filesDir: File, date: String) {
+        val dir = File(filesDir, "sd_dump").apply { mkdirs() }
+        val skip = File(dir, "skip.txt").takeIf { it.exists() }?.readLines()?.map { it.trim() }?.toSet().orEmpty()
+        val day = list().getOrElse { OpLog.log("bench", "sdDump", mapOf("error" to it.message)); return }.filter { it.name.startsWith("DJI_$date") }
+        File(dir, "list.txt").writeText(day.joinToString("\n") { "${it.name}\t${it.takenAtMs}\t${it.sizeBytes}" })
+        val want = day.filter { it.name !in skip && !File(dir, it.name).exists() }
+        OpLog.log("bench", "sdDump", mapOf("day" to day.size, "download" to want.size))
+        want.forEach { download(it, File(dir, it.name)) }
+        OpLog.log("bench", "sdDumpDone", mapOf("files" to dir.list()?.size))
+    }
+
     private fun millis(d: DateTime?): Long = if (d == null) 0 else Calendar.getInstance().apply {
         set(d.year, d.month - 1, d.day, d.hour, d.minute, d.second)
         set(Calendar.MILLISECOND, 0)

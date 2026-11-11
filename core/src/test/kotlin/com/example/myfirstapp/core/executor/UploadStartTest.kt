@@ -134,6 +134,49 @@ class UploadStartTest {
     }
 
     @Test
+    fun `모드 스위치가 N이 아니면 비행 전 점검에서 막고 무엇을 할지 알린다`() = runTest {
+        val h = harness { it.setRcMode('T') }
+        h.send(Command.Upload())
+        h.await(ExecState.Idle)
+        assertTrue(h.executor.uiState.value.message!!, "N으로 옮긴" in h.executor.uiState.value.message!!)
+        assertTrue(h.drone.calls.none { it.startsWith("startSortie") })
+    }
+
+    @Test
+    fun `기체가 모드 스위치로 시작을 거절하면 지형 추적을 묻지 않고 재시도하지 않는다`() = runTest {
+        val h = harness(params.copy(terrainFollow = true)) {
+            it.rejectRcModeStarts = true
+            it.kmzTakesOff = true
+        }
+        h.send(Command.Upload())
+        h.await(ExecState.Uploaded)
+        h.send(Command.Start)
+        h.await(ExecState.Idle)
+        assertFalse(h.executor.uiState.value.terrainFallbackAsk)
+        assertTrue(h.executor.uiState.value.message!!, "N으로 옮긴" in h.executor.uiState.value.message!!)
+        assertEquals(1, h.drone.calls.count { it.startsWith("startSortie") })
+    }
+
+    @Test
+    fun `일시정지 중 모드 스위치가 N이 아니면 재개하지 않고 안내하며, N으로 돌리면 재개한다`() = runTest {
+        val h = harness()
+        h.send(Command.Start)
+        h.await(ExecState.FlyingLeg)
+        h.drone.pressRcPause()
+        h.await(ExecState.Paused)
+        h.drone.setRcMode('T')
+        h.send(Command.Resume)
+        h.scope.advanceTimeBy(1_000)
+        h.scope.runCurrent()
+        assertEquals(ExecState.Paused, h.state)
+        assertTrue(h.executor.uiState.value.message!!, "T 모드" in h.executor.uiState.value.message!!)
+        assertTrue("resumeMission" !in h.drone.calls)
+        h.drone.setRcMode('N')
+        h.send(Command.Resume)
+        h.await(ExecState.FlyingLeg)
+    }
+
+    @Test
     fun `비행 중에는 업로드 명령을 받지 않는다`() = runTest {
         val h = harness()
         h.send(Command.Start)

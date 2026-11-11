@@ -144,7 +144,10 @@ class MainActivity : ComponentActivity() {
         val arg = intent?.getStringExtra("bench") ?: return
         val photo = intent.getStringExtra("benchPhoto")
         OpLog.log("bench", "adb", mapOf("arg" to arg, "photo" to photo))
-        if (arg == "keys") lifecycleScope.launch { DjiKeyProbe.run() } else if (arg == "capture") lifecycleScope.launch { DjiKeyProbe.captureLenses() } else if (arg == "obstacle") lifecycleScope.launch { DjiKeyProbe.obstacleRaw() } else (application as InspectionApp).startBench(full = arg == "full", photo = photo, only = intent.getStringExtra("benchOnly"))
+        if (arg == "sd") lifecycleScope.launch { com.example.myfirstapp.drone.DjiSdAlbum.dumpDay(getExternalFilesDir(null)!!, photo ?: return@launch) }
+        else if (arg == "tapzoom") lifecycleScope.launch { DjiKeyProbe.tapZoom() }
+        else if (arg == "aim") lifecycleScope.launch { DjiKeyProbe.aim() }
+        else if (arg == "keys") lifecycleScope.launch { DjiKeyProbe.run() } else if (arg == "capture") lifecycleScope.launch { DjiKeyProbe.captureLenses() } else if (arg == "obstacle") lifecycleScope.launch { DjiKeyProbe.obstacleRaw() } else (application as InspectionApp).startBench(full = arg == "full", photo = photo, only = intent.getStringExtra("benchOnly"))
     }
 
     /**

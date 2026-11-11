@@ -4,6 +4,7 @@ import com.example.myfirstapp.core.config.Tuning
 import com.example.myfirstapp.core.model.FlightParams
 import com.example.myfirstapp.core.model.GeoPoint
 import com.example.myfirstapp.core.port.PreflightReport
+import com.example.myfirstapp.core.port.rcModeProblem
 import com.example.myfirstapp.core.route.LocalProjection
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -39,6 +40,9 @@ object PreflightEvaluator {
     /** 첫 전주 거리 항목 이름(미션이 없는 수동 비행에는 빠진다). */
     const val FIRST_POLE = "첫 전주 거리"
 
+    /** 비행 모드 항목 이름(RC 스위치). */
+    const val FLIGHT_MODE = "비행 모드"
+
     /** 모든 항목. 기체가 연결되지 않았으면 연결 항목 하나만 돌려준다. */
     fun checklist(
         report: PreflightReport,
@@ -58,6 +62,8 @@ object PreflightEvaluator {
         val shiftOk = params.terrainFollow || shift == null || shift <= Tuning.Preflight.HOME_SHIFT_WARN_M
         return listOf(
             PreflightCheck("기체 연결", "연결됨", true, ""),
+            // 기체가 N 모드가 아니면 미션 시작을 거절한다(2026-11-11 현장: T 모드로 13분 헤맴)
+            PreflightCheck(FLIGHT_MODE, report.rcMode?.let { "$it 모드" } ?: "--", rcModeProblem(report.rcMode) == null, rcModeProblem(report.rcMode).orEmpty(), blocking = true),
             PreflightCheck(
                 "GNSS", "위성 ${report.gpsSatellites}개 · 등급 ${report.gpsLevel}",
                 report.gpsSatellites >= Tuning.Preflight.MIN_GPS_SATELLITES && report.gpsLevel >= Tuning.Preflight.MIN_GPS_LEVEL,
@@ -79,7 +85,13 @@ object PreflightEvaluator {
                 "LDM(로컬 데이터 모드)이 꺼져 있어 비행을 시작할 수 없습니다. 조종기 Wi-Fi·SIM을 끄고 앱을 다시 시작하세요.", blocking = true,
             ),
             PreflightCheck("장애물 감지", if (report.obstacleAvoidanceOn) "켜짐" else "꺼짐", report.obstacleAvoidanceOn, "장애물 회피가 꺼져 있습니다."),
-            PreflightCheck("RTH 고도", "${report.rthAltitudeM.toInt()}m", report.rthAltitudeM <= Tuning.Safety.MAX_ALTITUDE_M, "RTH 고도가 150m를 넘습니다(${report.rthAltitudeM}m)."),
+            // 0m는 못 읽은 값이다(기체 RTH 고도는 20m 이상, 11-11 현장: "0m"을 OK로 보임)
+            PreflightCheck(
+                "RTH 고도", if (report.rthAltitudeM > 0) "${report.rthAltitudeM.toInt()}m" else "읽지 못함",
+                report.rthAltitudeM > 0 && report.rthAltitudeM <= Tuning.Safety.MAX_ALTITUDE_M,
+                if (report.rthAltitudeM > 0) "RTH 고도가 150m를 넘습니다(${report.rthAltitudeM}m). 비행 전 점검에서 낮추세요."
+                else "RTH 고도를 기체에서 읽지 못했습니다. 비행 전 점검 화면의 RTH 고도 칸에 값이 보이는지 확인하세요.",
+            ),
             PreflightCheck("신호 끊김 조치", if (report.lostLinkActionIsRth) "RTH" else "RTH 아님", report.lostLinkActionIsRth, "신호 끊김 조치가 RTH가 아닙니다."),
             PreflightCheck(
                 FIRST_POLE, firstDist?.let { "${it.toInt()}m" } ?: "--",
@@ -90,7 +102,7 @@ object PreflightEvaluator {
 
     /** 수동 비행(미션 없음, 10.5.5 [카메라 뷰 입력])의 항목: 소티 배터리 예상·첫 전주 거리를 뺀다. */
     fun manual(report: PreflightReport): List<PreflightCheck> =
-        checklist(report, FlightParams(), 0.0, null).filterNot { it.label == BATTERY || it.label == FIRST_POLE }
+        checklist(report, FlightParams(), 0.0, null).filterNot { it.label == BATTERY || it.label == FIRST_POLE || it.label == FLIGHT_MODE } // 수동 비행은 T·S 모드도 된다
 
     /** 경고를 확인해도 시작할 수 없는 실패가 있는지. */
     fun blocked(checks: List<PreflightCheck>) = checks.any { !it.ok && it.blocking }

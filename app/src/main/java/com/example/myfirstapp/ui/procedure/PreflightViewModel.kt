@@ -94,6 +94,22 @@ class PreflightViewModel(
                 }
             }
         }
+        // 못 읽은 설정 값("–")은 기체가 붙어 있는 동안 다시 읽는다(2026-11-11 현장 녹화: 열 때 한 번 읽어 RTH 고도 등이 빈 채로 남음)
+        viewModelScope.launch {
+            active.collectLatest { on ->
+                while (on) {
+                    delay(AppConfig.Preflight.STATUS_MS)
+                    if (_state.value.report?.connected == true) refillMissing()
+                }
+            }
+        }
+    }
+
+    private suspend fun refillMissing() {
+        val missing = settings.all.filter { it.kind !is AircraftSetting.Kind.Action && _state.value.values[it.label] == null }
+        if (missing.isEmpty()) return
+        val got = missing.associate { it.label to it.load() }.filterValues { it != null }
+        if (got.isNotEmpty()) _state.update { it.copy(values = it.values + got) }
     }
 
     private suspend fun refreshStatus() {
@@ -135,7 +151,8 @@ class PreflightViewModel(
         ) = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]!!
-                val real = djiAircraftConnected()
+                // 배포 빌드는 기체가 없어도 모의 값을 보이지 않는다(값 칸 "–", 기체 연결 안 됨, 2026-11-11)
+                val real = djiAircraftConnected() || !com.example.myfirstapp.BuildConfig.DEBUG
                 // 모의 기체의 점검 값(만들기만 하고 돌리지 않으므로 빈 scope)
                 val fake = FakeDroneGateway(CoroutineScope(EmptyCoroutineContext), GeoPoint(0.0, 0.0)).preflightReport
                 PreflightViewModel(

@@ -33,6 +33,8 @@ import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.InspectionRecorder
 import com.example.myfirstapp.core.port.LegMission
 import com.example.myfirstapp.core.port.MissionStartRejected
+import com.example.myfirstapp.core.port.RcModeRejected
+import com.example.myfirstapp.core.port.rcModeProblem
 import com.example.myfirstapp.core.port.Notifier
 import com.example.myfirstapp.core.port.Sound
 import com.example.myfirstapp.core.port.StorageMonitor
@@ -142,7 +144,7 @@ class InspectionExecutor(
         data class Downloaded(val images: List<Pair<Long, ByteArray>>) : StepResult
         data class Analyzed(val detections: Map<Long, List<Detection>>, val error: String?) : StepResult
         data object WaitDone : StepResult
-        /** [cameraError]: 카메라를 단일 사진으로 맞추지 못해 재개하지 않음(미션은 기체에 그대로, 6.4). */
+        /** [cameraError]: 카메라를 단일 사진으로 맞추지 못했거나(6.4) RC 모드가 N이 아니라(11-11) 재개하지 않음(미션은 기체에 그대로, 일시정지 유지). */
         data class Resumed(val ok: Boolean, val cameraError: String? = null) : StepResult
         data class RthCommanded(val ok: Boolean, val error: String? = null) : StepResult
         data class ManualCaptured(val capture: CaptureInfo?, val image: ByteArray?) : StepResult
@@ -400,7 +402,8 @@ class InspectionExecutor(
                     // 체크리스트 [업로드]는 이륙 없이 올리기만 한다(이륙은 [시작] 뒤)
                     enter(if (uploadOnly) PreparingLeg else Takeoff, "비행 전 점검 통과")
                 } else {
-                    message = "비행 전 점검 실패"
+                    // 무엇을 할지 보이게: 실패 사유를 그대로(예: 모드 스위치를 N으로). 여럿이면 첫 사유와 개수(11-11 사용자: "점검 실패"만으로는 알 수 없음)
+                    message = r.failures.singleOrNull() ?: "비행 전 점검 ${r.failures.size}개 실패: ${r.failures.first()}"
                     enter(Idle, "비행 전 점검 실패: ${r.failures.joinToString()}")
                 }
             }
@@ -586,12 +589,18 @@ class InspectionExecutor(
             return
         }
         if (!batteryAllowsNext()) return
+        // 기체는 N 모드가 아니면 재개·새 미션 시작을 거절한다: 보내지 않고 할 일을 알린다(일시정지 유지, 2026-11-11 현장)
+        rcModeProblem(drone.telemetry.value.rcMode)?.let {
+            message = it
+            notifier.play(Sound.ERROR)
+            return
+        }
         notifier.play(Sound.RESUMED)
         if (config.sortieMission && missionActive) {
             // 방식 A: 기체에 남은 미션을 이어 간다(멈춘 지점으로 돌아간 뒤 계속, 6.1)
             launchStep {
                 val r = drone.resumeMission()
-                StepResult.Resumed(r.isSuccess, (r.exceptionOrNull() as? CameraNotReady)?.message)
+                StepResult.Resumed(r.isSuccess, r.exceptionOrNull()?.takeIf { it is CameraNotReady || it is RcModeRejected }?.message)
             }
             return
         }
@@ -778,11 +787,15 @@ class InspectionExecutor(
     private suspend fun prepareSortie(points: List<Viewpoint>, stopFirst: Boolean, uploadOnly: Boolean = false): StepResult {
         if (stopFirst) drone.stopMission()
         if (!storage.hasEnoughSpace()) return StepResult.LegReady(false, "저장 공간 부족")
+        // 올리기는 어느 모드에서나 되지만 시작은 N에서만 된다
+        if (!uploadOnly) rcModeProblem(drone.telemetry.value.rcMode)?.let { return StepResult.LegReady(false, it) }
         repeat(config.legRetries + 1) { attempt ->
             val r = if (uploadOnly) drone.uploadSortie(points, params) else drone.startSortie(points, params)
             if (r.isSuccess) return StepResult.LegReady(true, "")
             // 카메라를 단일 사진으로 못 바꿈: 다시 올려도 같다. 운용자가 카메라를 정리하도록 이유를 그대로 보인다
             (r.exceptionOrNull() as? CameraNotReady)?.let { return StepResult.LegReady(false, it.message.orEmpty()) }
+            // 모드 스위치 거절: 다시 올려도 같고 지형 추적과 상관없다(11-11 현장: 지형 추적 거절로 잘못 묻고 3회씩 재시도)
+            (r.exceptionOrNull() as? RcModeRejected)?.let { return StepResult.LegReady(false, it.message.orEmpty()) }
             // 올라갔는데 시작만 거절: 같은 KMZ는 다시 올려도 같다. 지형 추적이면 운용자에게 이륙 기준을 묻는다
             r.exceptionOrNull()?.let { x -> if (x is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, terrainAsk(x), terrainRejected = true) }
             if (attempt < config.legRetries) delay(config.legRetryDelayMs)
@@ -792,7 +805,9 @@ class InspectionExecutor(
 
     /** 체크리스트 [시작]: 올려 둔 미션을 시작한다. 거절은 다시 올려도 같으므로 재시도하지 않는다. */
     private suspend fun startUploadedStep(): StepResult {
+        rcModeProblem(drone.telemetry.value.rcMode)?.let { return StepResult.LegReady(false, it) }
         val e = drone.startUploaded().exceptionOrNull() ?: return StepResult.LegReady(true, "")
+        if (e is RcModeRejected) return StepResult.LegReady(false, e.message.orEmpty())
         if (e is MissionStartRejected && params.terrainFollow) return StepResult.LegReady(false, terrainAsk(e), terrainRejected = true)
         return StepResult.LegReady(false, "미션 시작 실패: ${e.message}")
     }

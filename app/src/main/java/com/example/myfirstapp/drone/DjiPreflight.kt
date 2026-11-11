@@ -71,14 +71,18 @@ suspend fun djiPreflightReport(): PreflightReport {
         rthAltitudeM = (readKey(FlightControllerKey.KeyGoHomeHeight) ?: 0).toDouble(),
         lostLinkActionIsRth = readKey(FlightControllerKey.KeyFailsafeAction) == FailsafeAction.GOHOME,
         home = home?.let { GeoPoint(it.latitude, it.longitude) },
+        rcMode = readFlightMode(),
     )
 }
 
+/** RC 비행 모드 스위치 글자(상단 바·비행 전 점검과 같은 규칙). 못 읽으면 null. */
+private suspend fun readFlightMode(): Char? = flightModeLetter(
+    readKey(FlightControllerKey.KeyRemoteControllerFlightMode).letter(),
+    readKey(FlightControllerKey.KeyMultipleFlightModeEnabled), readKey(FlightControllerKey.KeyCustomFunctionMode).fLetter(),
+)
+
 /** 상태 줄 추가 값. 못 읽으면 null. */
 suspend fun djiPreflightExtras() = PreflightExtras(
-    flightMode = flightModeLetter(
-        readKey(FlightControllerKey.KeyRemoteControllerFlightMode).letter(),
-        readKey(FlightControllerKey.KeyMultipleFlightModeEnabled), readKey(FlightControllerKey.KeyCustomFunctionMode).fLetter(),
-    ),
+    flightMode = readFlightMode(),
     voltageV = readKey(BatteryKey.KeyVoltage)?.let { it / 1000.0 },
 )

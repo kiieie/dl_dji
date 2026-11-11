@@ -20,6 +20,7 @@ import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.LegMission
 import com.example.myfirstapp.core.port.MissionStartRejected
 import com.example.myfirstapp.core.port.PreflightReport
+import com.example.myfirstapp.core.port.RcModeRejected
 import com.example.myfirstapp.core.route.Enu
 import com.example.myfirstapp.core.route.LocalProjection
 import com.example.myfirstapp.core.route.Viewpoint
@@ -94,12 +95,24 @@ class FakeDroneGateway(
     var preflightReport = PreflightReport(
         connected = true, gpsSatellites = 20, gpsLevel = 5, homeRecorded = true, batteryPct = 100.0,
         batteryTempC = 25.0, sdFreeMb = 32_000, ldmEnabled = true, obstacleAvoidanceOn = true,
-        rthAltitudeM = 60.0, lostLinkActionIsRth = true, home = homePoint,
+        rthAltitudeM = 60.0, lostLinkActionIsRth = true, home = homePoint, rcMode = 'N',
     )
     var failNextLegStarts = 0
 
     /** 지형 추적 미션 시작을 거절한다(2026-10-30 시뮬레이터에서 본 동작). */
     var rejectTerrainStarts = false
+
+    /** 기체 펌웨어처럼 RC 모드 스위치가 N이 아니면(텔레메트리 [Telemetry.rcMode], 또는 이 값이 켜져 있으면 'T') 시작·재개를 [RcModeRejected]로 거절한다(2026-11-11 현장). */
+    var rejectRcModeStarts = false
+
+    private fun rcModeRejection(): RcModeRejected? = when {
+        rejectRcModeStarts -> RcModeRejected('T')
+        _telemetry.value.rcMode.let { it != null && it != 'N' } -> RcModeRejected(_telemetry.value.rcMode)
+        else -> null
+    }
+
+    /** RC 비행 모드 스위치(모의). */
+    fun setRcMode(mode: Char?) = _telemetry.update { it.copy(rcMode = mode) }
 
     /** 실제 기체처럼 이륙을 KMZ에 맡긴다(takeoff는 바로 성공하고 뜨지 않음, 방식 A). */
     var kmzTakesOff = false
@@ -121,7 +134,7 @@ class FakeDroneGateway(
 
     override suspend fun preflight(): PreflightReport {
         calls += "preflight"
-        return preflightReport.copy(batteryPct = _telemetry.value.batteryPct)
+        return preflightReport.copy(batteryPct = _telemetry.value.batteryPct, rcMode = _telemetry.value.rcMode ?: preflightReport.rcMode)
     }
 
     override suspend fun takeoff(): Result<Unit> {
@@ -184,6 +197,7 @@ class FakeDroneGateway(
 
     private fun runUploaded(): Result<Unit> {
         val (points, params) = uploaded ?: return Result.failure(IllegalStateException("올린 미션 없음"))
+        rcModeRejection()?.let { return Result.failure(it) }
         if (rejectTerrainStarts && params.terrainFollow) return Result.failure(MissionStartRejected("모의 지형 추적 시작 거절"))
         uploaded = null
         missionPaused = false
@@ -233,6 +247,7 @@ class FakeDroneGateway(
     override suspend fun resumeMission(): Result<Unit> {
         calls += "resumeMission"
         cameraNotReady?.let { return Result.failure(CameraNotReady(it)) }
+        rcModeRejection()?.let { return Result.failure(it) }
         if (!missionPaused || motionJob?.isActive != true) return Result.failure(IllegalStateException("멈춘 미션 없음"))
         missionPaused = false
         _telemetry.update { it.copy(flightMode = FlightMode.MISSION) }

@@ -966,6 +966,16 @@ internal fun MiniMap(mapMain: Boolean, onSwap: () -> Unit, modifier: Modifier, c
     }
 }
 
+/** 할 일 안내 카드: 제목(무엇을)과 설명(왜·어떻게). */
+@Composable
+internal fun ActionCard(title: String, body: String, modifier: Modifier) {
+    // 할 일 안내(2026-11-11 현장: 시작 거절만 작게 보여 무엇을 할지 몰랐음). 주황 바탕 검정 글자로 영상 위에서도 크게 보인다
+    Column(modifier.background(Warning, RoundedCornerShape(6.dp)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text(title, color = Color.Black, fontSize = FontSize.Number, fontWeight = FontWeight.Bold)
+        Text(body, color = Color.Black, fontSize = FontSize.Body)
+    }
+}
+
 /** 영상 위 안내 줄(Pilot 2 안내문 자리, 가운데 위 줌 상자 아래): 미션 안내·점검 실패·수동 비행 안내. */
 @Composable
 internal fun NoticeLines(lines: List<Pair<String, Color>>, modifier: Modifier) {
@@ -973,7 +983,8 @@ internal fun NoticeLines(lines: List<Pair<String, Color>>, modifier: Modifier) {
         lines.forEach { (text, color) ->
             Text(
                 text, Modifier.background(CardBg, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
-                color = color, fontSize = FontSize.Caption, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                // 이유와 할 일까지 읽히게 4줄(11-11 현장: 2줄에서 잘려 무엇을 할지 안 보임)
+                color = color, fontSize = FontSize.Body, maxLines = 4, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
             )
         }
     }

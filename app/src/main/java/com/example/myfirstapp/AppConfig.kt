@@ -11,6 +11,11 @@ import com.example.myfirstapp.core.model.HmsLevel
  * 도메인 조정값은 :core `Tuning`, 화면 크기·글자는 `Dimens`·`FontSize`에 둔다. 모의 기체·PoC 값은 그 파일에 남긴다.
  */
 object AppConfig {
+    object Rc {
+        /** 일시정지 버튼 재개(2026-11-11): 일시정지가 된 뒤 이 시간 안에 누른 것은 연타로 보고 재개하지 않는다. */
+        const val PAUSE_RESUME_GUARD_MS = 2_000L
+    }
+
     object Timeouts {
         /** DJI 키 값 하나 읽기(기체 점검·상태·지금 위치). */
         const val KEY_READ_MS = 2_000L

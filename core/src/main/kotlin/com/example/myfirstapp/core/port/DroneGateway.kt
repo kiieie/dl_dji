@@ -145,7 +145,23 @@ interface DroneGateway {
 class CameraNotReady(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
 
 /** 미션은 올렸지만 기체가 시작을 거절함([DroneGateway.startSortie]). 다시 올려도 같으므로 재시도하지 않는다(지형 추적 KMZ, 2026-10-30 시뮬레이터). */
-class MissionStartRejected(message: String, cause: Throwable? = null) : Exception(message, cause)
+open class MissionStartRejected(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** RC 비행 모드 스위치가 N이 아니라 기체가 시작·재개를 거절함(SDK `CANNOT_START_AT_CURRENT_RC_MODE`, 2026-11-11 현장). 스위치를 옮기기 전에는 다시 해도 같다. */
+class RcModeRejected(val mode: Char?, cause: Throwable? = null) : MissionStartRejected(rcModeHint(mode), cause)
+
+/** 자동 비행(미션 시작·재개)은 RC 모드 스위치 N에서만 된다. N이 아니면 운용자에게 보일 안내(무엇을 할지), N이거나 모르면 null. */
+fun rcModeProblem(mode: Char?): String? = mode?.takeIf { it != 'N' }?.let(::rcModeHint)
+
+fun rcModeHint(mode: Char?): String {
+    // 스위치 자리 글자는 F·N·S, 상단 바는 F 자리의 기능(T 삼각대·A 자세)을 보인다
+    val where = when (mode) {
+        null -> "N이 아닌 자리"
+        'T', 'A', 'F' -> "F 자리($mode 모드)"
+        else -> "$mode 자리"
+    }
+    return "조종기 비행 모드 스위치가 ${where}에 있습니다. 자동 비행(시작·재개)은 N에서만 됩니다 → 스위치를 N으로 옮긴 뒤 다시 누르세요."
+}
 
 /** 줌 단계(10.4.3). */
 val ZOOM_STEPS = listOf(1.0, 2.0, 4.0, 7.0, 14.0, 28.0)
@@ -230,4 +246,6 @@ data class PreflightReport(
     val rthAltitudeM: Double,
     val lostLinkActionIsRth: Boolean,
     val home: GeoPoint?,
+    /** RC 비행 모드 스위치 글자(N/S/T/A). 모르면 null(점검 통과로 본다). */
+    val rcMode: Char? = null,
 )

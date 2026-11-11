@@ -22,6 +22,7 @@ import com.example.myfirstapp.core.port.DroneEvent
 import com.example.myfirstapp.core.port.DroneGateway
 import com.example.myfirstapp.core.port.LegMission
 import com.example.myfirstapp.core.port.MissionStartRejected
+import com.example.myfirstapp.core.port.RcModeRejected
 import com.example.myfirstapp.core.port.PreflightReport
 import com.example.myfirstapp.core.route.Viewpoint
 import com.example.myfirstapp.core.route.WpmlWriter
@@ -465,7 +466,10 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
         ensureSinglePhoto("start")
         missionName = name
         // 올라간 뒤 시작만 거절되면 같은 KMZ로 다시 해도 같다(지형 추적, 2026-10-30 시뮬레이터 "Unknown error")
-        runCatching { djiDone { missions.startMission(name, it) } }.onFailure { throw MissionStartRejected(startRejectReason(it.message), it) }
+        runCatching { djiDone { missions.startMission(name, it) } }.onFailure {
+            // 모드 스위치(N 아님)는 지형 추적과 상관없다: 따로 알린다(2026-11-11 현장)
+            throw if (it.isRcModeError()) RcModeRejected(_telemetry.value.rcMode, it) else MissionStartRejected(startRejectReason(it.message), it)
+        }
         uploadedName = null
         // 땅에서 돌린 타이머의 파일 붙잡기를 푼다(이제 오는 파일은 지점 사진)
         owners.missionResumed()
@@ -520,7 +524,7 @@ class DjiDroneGateway(private val scope: CoroutineScope, private val kmzDir: Fil
     override suspend fun resumeMission(): Result<Unit> = runCatching {
         check(missionName != null) { "올린 미션 없음" }
         ensureSinglePhoto("resume")
-        djiDone { missions.resumeMission(it) }
+        runCatching { djiDone { missions.resumeMission(it) } }.onFailure { throw if (it.isRcModeError()) RcModeRejected(_telemetry.value.rcMode, it) else it }
         owners.missionResumed()
     }
 
